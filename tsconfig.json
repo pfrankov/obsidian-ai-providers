@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
+    "baseUrl": "./src",
+    "outDir": "./dist",
     "inlineSourceMap": true,
     "inlineSources": true,
     "module": "ESNext",
@@ -15,10 +16,18 @@
       "DOM",
       "ES5",
       "ES6",
-      "ES7"
-    ]
+      "ES7",
+      "ES2017",
+      "ES2018",
+      "ES2018.AsyncIterable"
+    ],
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["jest", "@testing-library/jest-dom", "node", "electron"],
+    "resolveJsonModule": true
   },
   "include": [
-    "**/*.ts"
-  ]
+    "src/**/*.ts"
+, "__mocks__/electron.ts", "__mocks__/obsidian.ts"  ]
 }
