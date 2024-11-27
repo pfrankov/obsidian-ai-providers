@@ -1,0 +1,50 @@
+.model-pill {
+    display: inline-block;
+    padding: 2px 6px;
+    margin-top: 4px;
+    border-radius: var(--radius-s);
+    background-color: var(--background-modifier-border);
+    color: var(--text-muted);
+    font-size: var(--font-smallest);
+    opacity: 0.8;
+    text-shadow: var(--background-primary) 0 0 1px, var(--background-primary) 0 0 1px;
+}
+
+.provider-icon {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 6px;
+    vertical-align: text-top;
+}
+
+.provider-icon svg {
+    width: 16px;
+    height: 16px;
+    fill: var(--text-muted);
+}
+
+.developer-settings-item {
+    margin-top: 1.5em;
+    border: 0;
+}
+
+.developer-settings {
+    margin-top: 0.75em;
+    padding: 1em;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+}
+
+.ai-providers-notice {
+    margin: 0 -1em 1em;
+    padding: 1em;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+    background-color: var(--background-secondary);
+}
+
+.ai-providers-notice-content {
+    color: var(--text-muted);
+    font-size: var(--font-smallest);
+    line-height: var(--line-height-tight);
+}

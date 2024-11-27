@@ -1,0 +1,53 @@
+{
+  "settings": {
+    "notice": "This plugin is a configuration hub for AI providers. It doesn't do anything on its own, but <a href=\"https://github.com/pfrankov/obsidian-ai-providers\">other plugins</a> can use it to avoid configuring AI settings repeatedly.",
+    "configuredProviders": "AI Providers",
+    "addNewProvider": "Add new provider",
+    "addProvider": "Add Provider",
+    "providerName": "Provider Name",
+    "providerNameDesc": "Enter a name for this provider",
+    "providerNamePlaceholder": "My Provider",
+    "providerType": "Provider Type",
+    "providerTypeDesc": "Select the type of AI provider",
+    "providerUrl": "Provider URL",
+    "providerUrlDesc": "Enter the API endpoint URL",
+    "providerUrlPlaceholder": "https://...",
+    "apiKey": "API Key",
+    "apiKeyDesc": "Enter your API key (if required)",
+    "apiKeyPlaceholder": "sk-...",
+    "defaultModel": "Default Model",
+    "defaultModelDesc": "Select the default AI model for this provider",
+    "save": "Save",
+    "cancel": "Cancel",
+    "options": "Options",
+    "delete": "Delete",
+    "duplicate": "Duplicate",
+    "deleteConfirmation": "Are you sure you want to delete provider \"{{name}}\"?",
+    "modelsUpdated": "Models list updated",
+    "refreshModelsList": "Refresh models list",
+    "model": "Model",
+    "modelDesc": "Select the AI model for this provider",
+    "loadingModels": "Loading models...",
+    "noModelsAvailable": "No models available",
+    "editProvider": "Edit Provider",
+    "developerSettings": "Developer Settings",
+    "developerSettingsDesc": "Enable additional settings for development and debugging",
+    "debugLogging": "Debug Logging",
+    "debugLoggingDesc": "Enable detailed logging in the console",
+    "useNativeFetch": "Use Native Fetch",
+    "useNativeFetchDesc": "Use Fetch API instead of Obsidian's for better request debugging in DevTools"
+  },
+  "modals": {
+    "confirm": "Confirm",
+    "cancel": "Cancel"
+  },
+  "errors": {
+    "failedToFetchModels": "Failed to fetch models",
+    "failedToExecuteRequest": "Failed to execute request",
+    "missingApiKey": "API key is required",
+    "missingUrl": "Provider URL is required",
+    "missingModel": "Model must be selected",
+    "pluginMustBeUpdated": "Plugin must be updated",
+    "pluginMustBeUpdatedFormatted": "Plugin must be updated to work with this version of AI Providers"
+  }
+} 

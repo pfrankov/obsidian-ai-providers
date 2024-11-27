@@ -1,0 +1,53 @@
+{
+  "settings": {
+    "notice": "此插件是 AI 提供商的配置中心。它本身不提供任何功能，但<a href=\"https://github.com/pfrankov/obsidian-ai-providers\">其他插件</a>可以使用它来避免重复配置 AI 设置。",
+    "configuredProviders": "AI 服务提供商",
+    "addNewProvider": "添加新的服务提供商",
+    "addProvider": "添加提供商",
+    "providerName": "提供商名称",
+    "providerNameDesc": "为此服务提供商输入名称",
+    "providerNamePlaceholder": "我的服务提供商",
+    "providerType": "提供商类型",
+    "providerTypeDesc": "选择 AI 服务提供商类型",
+    "providerUrl": "服务地址",
+    "providerUrlDesc": "输入 API 接口地址",
+    "providerUrlPlaceholder": "https://...",
+    "apiKey": "API 密钥",
+    "apiKeyDesc": "输入您的 API 密钥（如需要）",
+    "apiKeyPlaceholder": "sk-...",
+    "defaultModel": "默认模型",
+    "defaultModelDesc": "选择此提供商的默认 AI 模型",
+    "save": "保存",
+    "cancel": "取消",
+    "options": "选项",
+    "delete": "删除",
+    "duplicate": "复制",
+    "deleteConfirmation": "确定要删除提供商\"{{name}}\"吗？",
+    "modelsUpdated": "模型列表已更新",
+    "refreshModelsList": "刷新模型列表",
+    "model": "模型",
+    "modelDesc": "选择此提供商的 AI 模型",
+    "loadingModels": "正在加载模型...",
+    "noModelsAvailable": "没有可用的模型",
+    "editProvider": "编辑提供商",
+    "developerSettings": "开发者设置",
+    "developerSettingsDesc": "启用额外的开发和调试设置",
+    "debugLogging": "调试日志",
+    "debugLoggingDesc": "在控制台启用详细日志记录",
+    "useNativeFetch": "使用原生 Fetch",
+    "useNativeFetchDesc": "使用 Fetch API 替代 Obsidian，以便在 DevTools 中更好地调试请求"
+  },
+  "modals": {
+    "confirm": "确认",
+    "cancel": "取消"
+  },
+  "errors": {
+    "failedToFetchModels": "获取模型列表失败",
+    "failedToExecuteRequest": "请求执行失败",
+    "missingApiKey": "需要提供 API 密钥",
+    "missingUrl": "需要提供服务地址",
+    "missingModel": "需要选择模型",
+    "pluginMustBeUpdated": "插件需要更新",
+    "pluginMustBeUpdatedFormatted": "插件需要更新才能与此版本的 AI Providers 一起使用"
+  }
+} 

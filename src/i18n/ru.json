@@ -1,0 +1,53 @@
+{
+  "settings": {
+    "notice": "Этот плагин помогает настраивать AI-сервисы. Сам по себе он ничего не делает, но служит общим хранилищем настроек, которым могут пользоваться <a href=\"https://github.com/pfrankov/obsidian-ai-providers\">другие плагины</a> вместо повторной настройки.",
+    "configuredProviders": "AI Провайдеры",
+    "addNewProvider": "Добавить нового провайдера",
+    "addProvider": "Добавить провайдера",
+    "providerName": "Имя провайдера",
+    "providerNameDesc": "Введите имя для этого провайдера",
+    "providerNamePlaceholder": "Мой провайдер",
+    "providerType": "Тип провайдера",
+    "providerTypeDesc": "Выберите тип AI провайдера",
+    "providerUrl": "URL провайдера",
+    "providerUrlDesc": "Введите URL конечной точки API",
+    "providerUrlPlaceholder": "https://...",
+    "apiKey": "API ключ",
+    "apiKeyDesc": "Введите ваш API ключ (если требуется)",
+    "apiKeyPlaceholder": "sk-...",
+    "defaultModel": "Модель по умолчанию",
+    "defaultModelDesc": "Выберите модель AI по умолчанию для этого провайдера",
+    "save": "Сохранить",
+    "cancel": "Отмена",
+    "options": "Настройки",
+    "delete": "Удалить",
+    "duplicate": "Дублировать",
+    "deleteConfirmation": "Вы уверены, что хотите удалить провайдера \"{{name}}\"?",
+    "modelsUpdated": "Список моделей обновлен",
+    "refreshModelsList": "Обновить список моделей",
+    "model": "Модель",
+    "modelDesc": "Выберите AI модель для этого провайдера",
+    "loadingModels": "Загрузка моделей...",
+    "noModelsAvailable": "Нет доступных моделей",
+    "editProvider": "Редактировать провайдера",
+    "developerSettings": "Настройки разработчика",
+    "developerSettingsDesc": "Включить дополнительные настройки для разработки и отладки",
+    "debugLogging": "Отладочное логирование",
+    "debugLoggingDesc": "Включить подробное логирование в консоли",
+    "useNativeFetch": "Использовать нативный Fetch",
+    "useNativeFetchDesc": "Использовать Fetch API вместо Obsidian для удобной отладки запросов в DevTools"
+  },
+  "modals": {
+    "confirm": "Подтвердить",
+    "cancel": "Отмена"
+  },
+  "errors": {
+    "failedToFetchModels": "Не удалось получить список моделей",
+    "failedToExecuteRequest": "Не удалось выполнить запрос",
+    "missingApiKey": "Требуется API ключ",
+    "missingUrl": "Требуется URL провайдера",
+    "missingModel": "Необходимо выбрать модель",
+    "pluginMustBeUpdated": "Плагин требует обновления",
+    "pluginMustBeUpdatedFormatted": "Для работы с этой версией AI Providers требуется обновление плагина"
+  }
+} 

@@ -1,0 +1,53 @@
+{
+  "settings": {
+    "notice": "Dieses Plugin ist eine Konfigurationszentrale für KI-Anbieter. Es macht selbst nichts, aber <a href=\"https://github.com/pfrankov/obsidian-ai-providers\">andere Plugins</a> können es nutzen, um KI-Einstellungen nicht mehrfach konfigurieren zu müssen.",
+    "configuredProviders": "KI-Anbieter",
+    "addNewProvider": "Neuen Anbieter hinzufügen",
+    "addProvider": "Anbieter hinzufügen",
+    "providerName": "Anbietername",
+    "providerNameDesc": "Geben Sie einen Namen für diesen Anbieter ein",
+    "providerNamePlaceholder": "Mein Anbieter",
+    "providerType": "Anbietertyp",
+    "providerTypeDesc": "Wählen Sie den KI-Anbietertyp aus",
+    "providerUrl": "Anbieter-URL",
+    "providerUrlDesc": "Geben Sie die API-Endpunkt-URL ein",
+    "providerUrlPlaceholder": "https://...",
+    "apiKey": "API-Schlüssel",
+    "apiKeyDesc": "Geben Sie Ihren API-Schlüssel ein (falls erforderlich)",
+    "apiKeyPlaceholder": "sk-...",
+    "defaultModel": "Standardmodell",
+    "defaultModelDesc": "Wählen Sie das Standard-KI-Modell für diesen Anbieter",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "options": "Optionen",
+    "delete": "Löschen",
+    "duplicate": "Duplizieren",
+    "deleteConfirmation": "Möchten Sie den Anbieter \"{{name}}\" wirklich löschen?",
+    "modelsUpdated": "Modellliste aktualisiert",
+    "refreshModelsList": "Modellliste aktualisieren",
+    "model": "Modell",
+    "modelDesc": "Wählen Sie das KI-Modell für diesen Anbieter",
+    "loadingModels": "Modelle werden geladen...",
+    "noModelsAvailable": "Keine Modelle verfügbar",
+    "editProvider": "Anbieter bearbeiten",
+    "developerSettings": "Entwicklereinstellungen",
+    "developerSettingsDesc": "Zusätzliche Einstellungen für Entwicklung und Debugging aktivieren",
+    "debugLogging": "Debug-Protokollierung",
+    "debugLoggingDesc": "Detaillierte Protokollierung in der Konsole aktivieren",
+    "useNativeFetch": "Nativen Fetch verwenden",
+    "useNativeFetchDesc": "Verwendet Fetch API anstelle von Obsidian für besseres Debugging der Anfragen in DevTools"
+  },
+  "modals": {
+    "confirm": "Bestätigen",
+    "cancel": "Abbrechen"
+  },
+  "errors": {
+    "failedToFetchModels": "Modelle konnten nicht abgerufen werden",
+    "failedToExecuteRequest": "Anfrage konnte nicht ausgeführt werden",
+    "missingApiKey": "API-Schlüssel ist erforderlich",
+    "missingUrl": "Anbieter-URL ist erforderlich",
+    "missingModel": "Modell muss ausgewählt werden",
+    "pluginMustBeUpdated": "Plugin muss aktualisiert werden",
+    "pluginMustBeUpdatedFormatted": "Das Plugin muss aktualisiert werden, um mit dieser Version von AI Providers zu funktionieren"
+  }
+} 
