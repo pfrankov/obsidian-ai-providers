@@ -2,6 +2,7 @@ import { App, Notice } from 'obsidian';
 import { IAIProvider, IAIProvidersService, IAIProvidersExecuteParams, IChunkHandler, IAIProvidersEmbedParams, IAIHandler, AIProviderType } from '@obsidian-ai-providers/sdk';
 import { OpenAIHandler } from './handlers/OpenAIHandler';
 import { OllamaHandler } from './handlers/OllamaHandler';
+import { AnthropicHandler } from './handlers/AnthropicHandler';
 import { I18n } from './i18n';
 import AIProvidersPlugin from './main';
 import { ConfirmationModal } from './modals/ConfirmationModal';
@@ -24,6 +25,7 @@ export class AIProvidersService implements IAIProvidersService {
             gemini: new OpenAIHandler(plugin.settings),
             lmstudio: new OpenAIHandler(plugin.settings),
             groq: new OpenAIHandler(plugin.settings),
+            anthropic: new AnthropicHandler(plugin.settings),
         };
     }
 

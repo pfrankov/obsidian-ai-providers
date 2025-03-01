@@ -14,6 +14,7 @@ export class ProviderFormModal extends Modal {
         openrouter: "https://openrouter.ai/api/v1",
         lmstudio: "http://localhost:1234/v1",
         groq: "https://api.groq.com/openai/v1",
+        anthropic: "https://api.anthropic.com/v1",
     };
 
     constructor(
@@ -149,7 +150,8 @@ export class ProviderFormModal extends Modal {
                         "openrouter": "OpenRouter",
                         "gemini": "Google Gemini",
                         "lmstudio": "LM Studio",
-                        "groq": "Groq"
+                        "groq": "Groq",
+                        "anthropic": "Anthropic"
                     })
                     .setValue(this.provider.type)
                     .onChange(value => {

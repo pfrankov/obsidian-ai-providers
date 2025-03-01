@@ -4,7 +4,7 @@ export type ObsidianEvents = {
     'ai-providers-ready': () => void;
 };
 
-export type AIProviderType = 'openai' | 'ollama' | 'gemini' | 'openrouter' | 'lmstudio';
+export type AIProviderType = 'openai' | 'ollama' | 'gemini' | 'openrouter' | 'lmstudio' | 'anthropic';
 export interface IAIProvider {
     id: string;
     name: string;
