@@ -1,5 +1,5 @@
-import { IAIHandler, IAIProvider, IAIProvidersExecuteParams, IChunkHandler, IAIProvidersEmbedParams, IAIProvidersPluginSettings } from '@obsidian-ai-providers/sdk';
-import { electronFetch } from '../utils/electronFetch';
+import { IAIHandler, IAIProvider, IAIProvidersExecuteParams, IAIProvidersEmbedParams, IChunkHandler, IAIProvidersPluginSettings } from '@obsidian-ai-providers/sdk';
+import { electronFetch, nativeFetch } from '../utils/electronFetch';
 import OpenAI from 'openai';
 import { obsidianFetch } from '../utils/obsidianFetch';
 import { logger } from '../utils/logger';
@@ -7,7 +7,7 @@ import { logger } from '../utils/logger';
 export class OpenAIHandler implements IAIHandler {
     constructor(private settings: IAIProvidersPluginSettings) {}
 
-    private getClient(provider: IAIProvider, fetch: typeof electronFetch | typeof obsidianFetch): OpenAI {
+    private getClient(provider: IAIProvider, fetch: typeof electronFetch | typeof obsidianFetch | typeof nativeFetch): OpenAI {
         return new OpenAI({
             apiKey: provider.apiKey,
             baseURL: provider.url,
@@ -17,14 +17,14 @@ export class OpenAIHandler implements IAIHandler {
     }
 
     async fetchModels(provider: IAIProvider): Promise<string[]> {
-        const openai = this.getClient(provider, this.settings.useNativeFetch ? fetch : obsidianFetch);
+        const openai = this.getClient(provider, this.settings.useNativeFetch ? nativeFetch : obsidianFetch);
         const response = await openai.models.list();
         
         return response.data.map(model => model.id);
     }
 
     async embed(params: IAIProvidersEmbedParams): Promise<number[][]> {
-        const openai = this.getClient(params.provider, this.settings.useNativeFetch ? fetch : obsidianFetch);
+        const openai = this.getClient(params.provider, this.settings.useNativeFetch ? nativeFetch : obsidianFetch);
         
         // Support for both input and text (for backward compatibility)
         // Using type assertion to bypass type checking
@@ -45,7 +45,7 @@ export class OpenAIHandler implements IAIHandler {
 
     async execute(params: IAIProvidersExecuteParams): Promise<IChunkHandler> {
         const controller = new AbortController();
-        const openai = this.getClient(params.provider, this.settings.useNativeFetch ? fetch : electronFetch.bind({
+        const openai = this.getClient(params.provider, this.settings.useNativeFetch ? nativeFetch : electronFetch.bind({
             controller
         }));
         let isAborted = false;
@@ -163,4 +163,4 @@ export class OpenAIHandler implements IAIHandler {
             }
         };
     }
-} 
+}

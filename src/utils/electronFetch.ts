@@ -1,7 +1,51 @@
 // @ts-ignore
 import { remote, IncomingMessage } from "electron";
-import { Platform } from "obsidian";
+import { Platform, requestUrl, RequestUrlParam } from "obsidian";
 import { logger } from './logger';
+
+// Native fetch wrapper that uses Obsidian's requestUrl to bypass CORS
+export async function nativeFetch(url: string, options: RequestInit = {}): Promise<Response> {
+    delete (options.headers as Record<string, string>)["content-length"];
+    
+    logger.debug('nativeFetch request:', {
+        url,
+        method: options.method || 'GET',
+        headers: options.headers,
+        hasBody: !!options.body
+    });
+    
+    const requestParams: RequestUrlParam = {
+        url,
+        method: options.method || 'GET',
+        headers: options.headers as Record<string, string>,
+    };
+
+    if (options.body) {
+        requestParams.body = options.body as string;
+        logger.debug('Request body prepared for nativeFetch:', requestParams.body);
+    }
+
+    try {
+        logger.debug('Sending request via requestUrl (nativeFetch)');
+        const obsidianResponse = await requestUrl(requestParams);
+        
+        logger.debug('Response received via nativeFetch:', {
+            status: obsidianResponse.status,
+            headers: obsidianResponse.headers,
+            contentLength: obsidianResponse.text.length
+        });
+
+        const responseInit: ResponseInit = {
+            status: obsidianResponse.status,
+            headers: obsidianResponse.headers,
+        };
+
+        return new Response(obsidianResponse.text, responseInit);
+    } catch (error) {
+        logger.error('nativeFetch request failed:', error);
+        throw error;
+    }
+}
 
 export async function electronFetch(url: string, options: RequestInit = {}): Promise<Response> {
     delete (options.headers as Record<string, string>)["content-length"];

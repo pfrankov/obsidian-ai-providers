@@ -1,6 +1,6 @@
 import { IAIHandler, IAIProvider, IAIProvidersExecuteParams, IChunkHandler, IAIProvidersEmbedParams, IAIProvidersPluginSettings } from '@obsidian-ai-providers/sdk';
 import { Ollama } from 'ollama';
-import { electronFetch } from '../utils/electronFetch';
+import { electronFetch, nativeFetch } from '../utils/electronFetch';
 import { obsidianFetch } from '../utils/obsidianFetch';
 import { logger } from '../utils/logger';
 
@@ -34,7 +34,7 @@ export class OllamaHandler implements IAIHandler {
         this.modelInfoCache.clear();
     }
 
-    private getClient(provider: IAIProvider, fetch: typeof electronFetch | typeof obsidianFetch): Ollama {
+    private getClient(provider: IAIProvider, fetch: typeof electronFetch | typeof obsidianFetch | typeof nativeFetch): Ollama {
         return new Ollama({
             host: provider.url || '',
             fetch
@@ -55,7 +55,7 @@ export class OllamaHandler implements IAIHandler {
             return cached;
         }
 
-        const ollama = this.getClient(provider, this.settings.useNativeFetch ? fetch : obsidianFetch);
+        const ollama = this.getClient(provider, this.settings.useNativeFetch ? nativeFetch : obsidianFetch);
         try {
             const response = await ollama.show({ model: modelName });
             const modelInfo = this.getDefaultModelInfo();
@@ -90,7 +90,7 @@ export class OllamaHandler implements IAIHandler {
     }
 
     async fetchModels(provider: IAIProvider): Promise<string[]> {
-        const ollama = this.getClient(provider, this.settings.useNativeFetch ? fetch : obsidianFetch);
+        const ollama = this.getClient(provider, this.settings.useNativeFetch ? nativeFetch : obsidianFetch);
         const models = await ollama.list();
         return models.models.map(model => model.name);
     }
@@ -136,7 +136,7 @@ export class OllamaHandler implements IAIHandler {
 
         const ollama = this.getClient(
             params.provider, 
-            this.settings.useNativeFetch ? fetch : obsidianFetch
+            this.settings.useNativeFetch ? nativeFetch : obsidianFetch
         );
         
         // Support for both input and text (for backward compatibility)
@@ -213,7 +213,7 @@ export class OllamaHandler implements IAIHandler {
         const controller = new AbortController();
         const ollama = this.getClient(
             params.provider, 
-            this.settings.useNativeFetch ? fetch : electronFetch.bind({
+            this.settings.useNativeFetch ? nativeFetch : electronFetch.bind({
                 controller
             })
         );
@@ -424,4 +424,4 @@ export class OllamaHandler implements IAIHandler {
             }
         };
     }
-} 
+}
