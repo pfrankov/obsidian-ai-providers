@@ -175,9 +175,8 @@ class AIProvidersFallbackSettingsTab extends PluginSettingTab {
 
         containerEl.empty();
 
-        const aiProvidersNotice = containerEl.createEl("div", {
-            cls: "ai-providers-notice"
-        });
+        const aiProvidersNotice = containerEl.createEl("div");
+        aiProvidersNotice.addClass("ai-providers-notice");
 
         aiProvidersNotice.appendChild(sanitizeHTMLToDom(`
             <p>⚠️ This plugin requires <a href="obsidian://show-plugin?id=ai-providers">AI Providers</a> plugin to be installed.</p>

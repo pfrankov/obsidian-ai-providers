@@ -1,33 +1,44 @@
 {
-  "compilerOptions": {
-    "baseUrl": "./src",
-    "outDir": "./dist",
-    "inlineSourceMap": true,
-    "inlineSources": true,
-    "module": "ESNext",
-    "target": "ES6",
-    "allowJs": true,
-    "noImplicitAny": true,
-    "moduleResolution": "node",
-    "importHelpers": true,
-    "isolatedModules": true,
-    "strictNullChecks": true,
-    "lib": [
-      "DOM",
-      "ES5",
-      "ES6",
-      "ES7",
-      "ES2017",
-      "ES2018",
-      "ES2018.AsyncIterable"
-    ],
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "noEmit": true,
-    "types": ["jest", "@testing-library/jest-dom", "node", "electron"],
-    "resolveJsonModule": true
-  },
-  "include": [
-    "src/**/*.ts"
-, "__mocks__/electron.ts", "__mocks__/obsidian.ts"  ]
+	"compilerOptions": {
+		"baseUrl": "./src",
+		"outDir": "./dist",
+		"inlineSourceMap": true,
+		"inlineSources": true,
+		"module": "ESNext",
+		"target": "ES6",
+		"allowJs": true,
+		"noImplicitAny": true,
+		"moduleResolution": "node",
+		"importHelpers": true,
+		"isolatedModules": true,
+		"strictNullChecks": true,
+		"lib": [
+			"DOM",
+			"ES5",
+			"ES6",
+			"ES7",
+			"ES2017",
+			"ES2018",
+			"ES2018.AsyncIterable"
+		],
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"noEmit": true,
+		"types": [
+			"jest",
+			"@testing-library/jest-dom",
+			"node",
+			"electron"
+		],
+		"resolveJsonModule": true
+	},
+	"include": [
+		"src/**/*.ts",
+		"__mocks__/electron.ts",
+		"__mocks__/obsidian.ts"
+	],
+	"exclude": [
+		"node_modules",
+		"packages"
+	]
 }
