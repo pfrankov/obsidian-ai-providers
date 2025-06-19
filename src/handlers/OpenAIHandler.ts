@@ -3,29 +3,51 @@ import { electronFetch } from '../utils/electronFetch';
 import OpenAI from 'openai';
 import { obsidianFetch } from '../utils/obsidianFetch';
 import { logger } from '../utils/logger';
+import { corsRetryManager, withCorsRetry } from '../utils/corsRetryManager';
 
 export class OpenAIHandler implements IAIHandler {
     constructor(private settings: IAIProvidersPluginSettings) {}
 
-    private getClient(provider: IAIProvider, fetch: typeof electronFetch | typeof obsidianFetch): OpenAI {
+    private getClient(provider: IAIProvider, fetch?: typeof electronFetch | typeof obsidianFetch): OpenAI {
+        // Determine which fetch to use based on CORS status and settings
+        let actualFetch: typeof electronFetch | typeof obsidianFetch;
+        
+        if (corsRetryManager.shouldUseFallback(provider)) {
+            // Force obsidianFetch for CORS-blocked providers (highest priority)
+            actualFetch = obsidianFetch;
+            logger.debug('Using obsidianFetch for CORS-blocked provider:', provider.name);
+        } else if (fetch) {
+            // Use provided fetch function
+            actualFetch = fetch;
+        } else {
+            // Use default based on settings - electronFetch if not using native
+            actualFetch = this.settings.useNativeFetch ? globalThis.fetch : electronFetch;
+        }
+        
         return new OpenAI({
             apiKey: provider.apiKey,
             baseURL: provider.url,
             dangerouslyAllowBrowser: true,
-            fetch
+            fetch: actualFetch
         });
     }
 
     async fetchModels(provider: IAIProvider): Promise<string[]> {
-        const openai = this.getClient(provider, this.settings.useNativeFetch ? fetch : obsidianFetch);
-        const response = await openai.models.list();
-        
-        return response.data.map(model => model.id);
+        const operation = async (fetchImpl: typeof electronFetch | typeof obsidianFetch) => {
+            const openai = this.getClient(provider, fetchImpl);
+            const response = await openai.models.list();
+            return response.data.map(model => model.id);
+        };
+
+        return withCorsRetry(
+            provider,
+            operation,
+            this.settings.useNativeFetch ? fetch : electronFetch,
+            'fetchModels'
+        );
     }
 
     async embed(params: IAIProvidersEmbedParams): Promise<number[][]> {
-        const openai = this.getClient(params.provider, this.settings.useNativeFetch ? fetch : obsidianFetch);
-        
         // Support for both input and text (for backward compatibility)
         // Using type assertion to bypass type checking
         const inputText = params.input ?? (params as any).text;
@@ -33,23 +55,36 @@ export class OpenAIHandler implements IAIHandler {
         if (!inputText) {
             throw new Error('Either input or text parameter must be provided');
         }
-        
-        const response = await openai.embeddings.create({
-            model: params.provider.model || "",
-            input: inputText
-        });
-        logger.debug('Embed response:', response);
 
-        return response.data.map(item => item.embedding);
+        const operation = async (fetchImpl: typeof electronFetch | typeof obsidianFetch) => {
+            const openai = this.getClient(params.provider, fetchImpl);
+            const response = await openai.embeddings.create({
+                model: params.provider.model || "",
+                input: inputText
+            });
+            logger.debug('Embed response:', response);
+            return response.data.map(item => item.embedding);
+        };
+        
+        return withCorsRetry(
+            params.provider,
+            operation,
+            this.settings.useNativeFetch ? fetch : electronFetch,
+            'embed'
+        );
     }
 
-    async execute(params: IAIProvidersExecuteParams): Promise<IChunkHandler> {
-        const controller = new AbortController();
-        const openai = this.getClient(params.provider, this.settings.useNativeFetch ? fetch : electronFetch.bind({
-            controller
-        }));
-        let isAborted = false;
-
+    private async executeOpenAIGeneration(
+        params: IAIProvidersExecuteParams,
+        openai: OpenAI,
+        handlers: {
+            data: ((chunk: string, accumulatedText: string) => void)[];
+            end: ((fullText: string) => void)[];
+            error: ((error: Error) => void)[];
+        },
+        isAborted: () => boolean,
+        controller: AbortController
+    ): Promise<void> {
         let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
         
         if ('messages' in params && params.messages) {
@@ -111,6 +146,49 @@ export class OpenAIHandler implements IAIHandler {
             throw new Error('Either messages or prompt must be provided');
         }
 
+        logger.debug('Sending chat request to OpenAI');
+        
+        const response = await openai.chat.completions.create({
+            model: params.provider.model || "",
+            messages,
+            stream: true,
+            ...params.options
+        }, { signal: controller.signal });
+
+        let fullText = '';
+        for await (const chunk of response) {
+            if (isAborted()) {
+                logger.debug('Generation aborted');
+                break;
+            }
+            
+            const content = chunk.choices[0]?.delta?.content;
+            if (content) {
+                fullText += content;
+                handlers.data.forEach(handler => handler(content, fullText));
+            }
+        }
+
+        if (!isAborted()) {
+            logger.debug('Generation completed successfully:', {
+                totalLength: fullText.length
+            });
+            handlers.end.forEach(handler => handler(fullText));
+        }
+    }
+
+    async execute(params: IAIProvidersExecuteParams): Promise<IChunkHandler> {
+        logger.debug('Starting execute process with params:', {
+            model: params.provider.model,
+            messagesCount: params.messages?.length || 0,
+            promptLength: params.prompt?.length || 0,
+            systemPromptLength: params.systemPrompt?.length || 0,
+            hasImages: !!params.images?.length
+        });
+
+        const controller = new AbortController();
+        let isAborted = false;
+        
         const handlers = {
             data: [] as ((chunk: string, accumulatedText: string) => void)[],
             end: [] as ((fullText: string) => void)[],
@@ -119,33 +197,27 @@ export class OpenAIHandler implements IAIHandler {
 
         (async () => {
             if (isAborted) return;
-        
+            
             try {
-                const response = await openai.chat.completions.create({
-                    model: params.provider.model || "",
-                    messages,
-                    stream: true,
-                    ...params.options
-                }, { signal: controller.signal });
-    
-                let fullText = '';
+                const operation = async (fetchImpl: typeof electronFetch | typeof obsidianFetch) => {
+                    const openai = this.getClient(
+                        params.provider,
+                        fetchImpl
+                    );
+                    await this.executeOpenAIGeneration(params, openai, handlers, () => isAborted, controller);
+                };
 
-                for await (const chunk of response) {
-                    if (isAborted) break;
-                    const content = chunk.choices[0]?.delta?.content;
-                    if (content) {
-                        fullText += content;
-                        handlers.data.forEach(handler => handler(content, fullText));
-                    }
-                }
-                if (!isAborted) {
-                    handlers.end.forEach(handler => handler(fullText));
-                }
+                await withCorsRetry(
+                    params.provider,
+                    operation,
+                    this.settings.useNativeFetch ? fetch : electronFetch,
+                    'execute'
+                );
             } catch (error) {
                 handlers.error.forEach(handler => handler(error as Error));
             }
         })();
-
+        
         return {
             onData(callback: (chunk: string, accumulatedText: string) => void) {
                 handlers.data.push(callback);

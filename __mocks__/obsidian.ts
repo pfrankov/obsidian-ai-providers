@@ -2,10 +2,10 @@ export class App {
     constructor() {}
 }
 export class Notice {
-    constructor(message: string) {}
+    constructor(_message: string) {}
 }
 
-export function addIcon(name: string, icon: string) {}
+export function addIcon(_name: string, _icon: string) {}
 
 export function setIcon(el: HTMLElement, name: string) {
     el.setAttribute('data-icon', name);
@@ -29,7 +29,7 @@ export class Plugin {
         return Promise.resolve({});
     }
 
-    saveData(data: any): Promise<void> {
+    saveData(_data: any): Promise<void> {
         return Promise.resolve();
     }
 }
@@ -294,7 +294,7 @@ export class ToggleComponent {
         return this;
     }
 
-    setTooltip(tooltip: string, options?: any): this {
+    setTooltip(tooltip: string, _options?: any): this {
         this.toggleEl.setAttribute('aria-label', tooltip);
         return this;
     }

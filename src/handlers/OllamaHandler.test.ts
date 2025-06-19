@@ -67,7 +67,7 @@ const contextOptimizationOptions = {
             model_info: { 'num_ctx': 4096 }
         });
     },
-    verifyContextOptimization: async (handler: any, mockClient: IMockClient) => {
+    verifyContextOptimization: async (_handler: any, mockClient: IMockClient) => {
         // Verify that context optimization was called
         expect((mockClient as any).show).toHaveBeenCalledWith({ model: 'llama2' });
         
@@ -144,7 +144,7 @@ createAIHandlerTests(
         cachingOptions,
         // Add image handling test for Ollama
         imageHandlingOptions: {
-            verifyImageHandling: async (handler, mockClient) => {
+            verifyImageHandling: async (_handler, mockClient) => {
                 // Verify that images are properly formatted for Ollama (base64 prefixes removed)
                 const chatCalls = (mockClient as any).chat.mock.calls;
                 if (chatCalls.length > 0) {
@@ -170,7 +170,7 @@ createAIHandlerTests(
                     systemPrompt: 'You are a helpful assistant',
                     options: {}
                 },
-                verify: (result, mockClient) => {
+                verify: (_result, mockClient) => {
                     const chatCalls = (mockClient as any).chat.mock.calls;
                     expect(chatCalls.length).toBeGreaterThan(0);
                     
@@ -337,5 +337,54 @@ describe('Ollama image handling direct tests', () => {
             // Clean up the mock to avoid affecting other tests
             handlerPrototype.execute = originalChat;
         }
+    });
+});
+
+// CORS retry tests for Ollama
+describe('Ollama CORS Retry Tests', () => {
+    let handler: OllamaHandler;
+    let mockProvider: IAIProvider;
+    
+    beforeEach(() => {
+        handler = createHandler();
+        mockProvider = createMockProvider();
+        
+        // Clear CORS manager state
+        jest.clearAllMocks();
+        const { corsRetryManager } = require('../utils/corsRetryManager');
+        corsRetryManager.clearAll();
+    });
+
+    it('should retry fetchModels with obsidianFetch on CORS error', async () => {
+        const mockClient = createMockClient();
+        const corsError = new Error('Access blocked by CORS policy');
+        
+        // First call fails with CORS, second succeeds
+        mockClient.list!
+            .mockRejectedValueOnce(corsError)
+            .mockResolvedValueOnce({
+                models: [{ name: 'model1' }, { name: 'model2' }]
+            });
+
+        jest.spyOn(handler as any, 'getClient')
+            .mockReturnValueOnce(mockClient)
+            .mockReturnValueOnce(mockClient);
+
+        const result = await handler.fetchModels(mockProvider);
+
+        expect(result).toEqual(['model1', 'model2']);
+        expect(mockClient.list!).toHaveBeenCalledTimes(2);
+    });
+
+    it('should not retry on non-CORS errors', async () => {
+        const mockClient = createMockClient();
+        const networkError = new Error('Network timeout');
+        
+        mockClient.list!.mockRejectedValue(networkError);
+        jest.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+
+        await expect(handler.fetchModels(mockProvider)).rejects.toThrow('Network timeout');
+        
+        expect(mockClient.list!).toHaveBeenCalledTimes(1);
     });
 }); 

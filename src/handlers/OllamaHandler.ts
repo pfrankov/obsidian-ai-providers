@@ -3,14 +3,9 @@ import { Ollama } from 'ollama';
 import { electronFetch } from '../utils/electronFetch';
 import { obsidianFetch } from '../utils/obsidianFetch';
 import { logger } from '../utils/logger';
+import { corsRetryManager, withCorsRetry } from '../utils/corsRetryManager';
 
-// Extend ChatResponse type
-interface ExtendedChatResponse {
-    message?: {
-        content?: string;
-    }
-    total_tokens?: number;
-}
+
 
 // Add interface for model cache
 interface ModelInfo {
@@ -34,10 +29,25 @@ export class OllamaHandler implements IAIHandler {
         this.modelInfoCache.clear();
     }
 
-    private getClient(provider: IAIProvider, fetch: typeof electronFetch | typeof obsidianFetch): Ollama {
+    private getClient(provider: IAIProvider, fetch?: typeof electronFetch | typeof obsidianFetch): Ollama {
+        // Determine which fetch to use based on CORS status and settings
+        let actualFetch: typeof electronFetch | typeof obsidianFetch;
+        
+        if (corsRetryManager.shouldUseFallback(provider)) {
+            // Force obsidianFetch for CORS-blocked providers (highest priority)
+            actualFetch = obsidianFetch;
+            logger.debug('Using obsidianFetch for CORS-blocked provider:', provider.name);
+        } else if (fetch) {
+            // Use provided fetch function
+            actualFetch = fetch;
+        } else {
+            // Use default based on settings - electronFetch if not using native
+            actualFetch = this.settings.useNativeFetch ? globalThis.fetch : electronFetch;
+        }
+        
         return new Ollama({
             host: provider.url || '',
-            fetch
+            fetch: actualFetch
         });
     }
 
@@ -90,9 +100,18 @@ export class OllamaHandler implements IAIHandler {
     }
 
     async fetchModels(provider: IAIProvider): Promise<string[]> {
-        const ollama = this.getClient(provider, this.settings.useNativeFetch ? fetch : obsidianFetch);
-        const models = await ollama.list();
-        return models.models.map(model => model.name);
+        const operation = async (fetchImpl: typeof electronFetch | typeof obsidianFetch) => {
+            const ollama = this.getClient(provider, fetchImpl);
+            const models = await ollama.list();
+            return models.models.map(model => model.name);
+        };
+
+        return withCorsRetry(
+            provider,
+            operation,
+            this.settings.useNativeFetch ? fetch : electronFetch,
+            'fetchModels'
+        );
     }
 
     private optimizeContext(
@@ -128,36 +147,200 @@ export class OllamaHandler implements IAIHandler {
         };
     }
 
-    async embed(params: IAIProvidersEmbedParams): Promise<number[][]> {
-        logger.debug('Starting embed process with params:', {
-            model: params.provider.model,
-            inputLength: Array.isArray(params.input) ? params.input.length : 1
+    private prepareChatMessages(params: IAIProvidersExecuteParams): { chatMessages: any[], extractedImages: string[] } {
+        const chatMessages: { role: string; content: string; images?: string[] }[] = [];
+        const extractedImages: string[] = [];
+        
+        if ('messages' in params && params.messages) {
+            // Process messages with standardized handling for text and images
+            params.messages.forEach(msg => {
+                if (typeof msg.content === 'string') {
+                    // Simple text content
+                    chatMessages.push({
+                        role: msg.role,
+                        content: msg.content
+                    });
+                } else {
+                    // Extract text content from content blocks
+                    const textContent = msg.content
+                        .filter(block => block.type === 'text')
+                        .map(block => block.type === 'text' ? block.text : '')
+                        .join('\n');
+                    
+                    // Extract image URLs from content blocks
+                    msg.content
+                        .filter(block => block.type === 'image_url')
+                        .forEach(block => {
+                            if (block.type === 'image_url' && block.image_url?.url) {
+                                extractedImages.push(block.image_url.url);
+                            }
+                        });
+                    
+                    chatMessages.push({
+                        role: msg.role,
+                        content: textContent
+                    });
+                }
+
+                // Add any images from the images property
+                if (msg.images?.length) {
+                    extractedImages.push(...msg.images);
+                }
+            });
+        } else if ('prompt' in params) {
+            // Handle legacy prompt-based API
+            if (params.systemPrompt) {
+                chatMessages.push({ role: 'system', content: params.systemPrompt });
+            }
+            
+            chatMessages.push({ role: 'user', content: params.prompt });
+            
+            // Add any images from params
+            if (params.images?.length) {
+                extractedImages.push(...params.images);
+            }
+        } else {
+            throw new Error('Either messages or prompt must be provided');
+        }
+
+        return { chatMessages, extractedImages };
+    }
+
+    private async executeOllamaGeneration(
+        params: IAIProvidersExecuteParams,
+        ollama: any,
+        handlers: {
+            data: ((chunk: string, accumulatedText: string) => void)[];
+            end: ((fullText: string) => void)[];
+            error: ((error: Error) => void)[];
+        },
+        isAborted: () => boolean
+    ): Promise<void> {
+        const modelInfo = await this.getCachedModelInfo(
+            params.provider,
+            params.provider.model || ""
+        ).catch(error => {
+            logger.error('Failed to get model info:', error);
+            return null;
+        });
+        
+        const { chatMessages, extractedImages } = this.prepareChatMessages(params);
+
+        // Process images for Ollama format (remove data URL prefix)
+        const processedImages = extractedImages.length > 0 
+            ? extractedImages.map(image => image.replace(/^data:image\/(.*?);base64,/, ""))
+            : undefined;
+
+        // Prepare request options
+        const requestOptions: Record<string, any> = {};
+        
+        // Optimize context for text-based conversations
+        if (!processedImages?.length) {
+            const inputLength = chatMessages.reduce((acc, msg) => acc + msg.content.length, 0);
+            
+            const { num_ctx, shouldUpdate } = this.optimizeContext(
+                inputLength,
+                modelInfo?.lastContextLength || DEFAULT_CONTEXT_LENGTH,
+                DEFAULT_CONTEXT_LENGTH,
+                modelInfo?.contextLength || DEFAULT_CONTEXT_LENGTH
+            );
+
+            if (num_ctx) {
+                requestOptions.num_ctx = num_ctx;
+            }
+            
+            if (shouldUpdate) {
+                this.setModelInfoLastContextLength(
+                    params.provider,
+                    params.provider.model || "",
+                    num_ctx
+                );
+            }
+        }
+
+        // Add any additional options from params
+        if (params.options) {
+            Object.assign(requestOptions, params.options);
+        }
+
+        // Add images to the last user message if present
+        if (processedImages?.length) {
+            const lastUserMessageIndex = chatMessages.map(msg => msg.role).lastIndexOf('user');
+            
+            if (lastUserMessageIndex !== -1) {
+                chatMessages[lastUserMessageIndex] = {
+                    ...chatMessages[lastUserMessageIndex],
+                    images: processedImages
+                };
+            } else if (chatMessages.length > 0) {
+                chatMessages[chatMessages.length - 1] = {
+                    ...chatMessages[chatMessages.length - 1],
+                    images: processedImages
+                };
+            } else {
+                chatMessages.push({
+                    role: 'user',
+                    content: '',
+                    images: processedImages
+                });
+            }
+        }
+
+        logger.debug('Sending chat request to Ollama');
+        
+        // Using Ollama chat API instead of generate
+        const response = await ollama.chat({
+            model: params.provider.model || "",
+            messages: chatMessages,
+            stream: true,
+            options: {
+                ...requestOptions,
+                ...params.options
+            }
         });
 
-        const ollama = this.getClient(
-            params.provider, 
-            this.settings.useNativeFetch ? fetch : obsidianFetch
-        );
+        let fullText = '';
+        for await (const chunk of response) {
+            if (isAborted()) {
+                break;
+            }
+            
+            const content = chunk.message?.content;
+            if (content) {
+                fullText += content;
+                handlers.data.forEach(handler => handler(content, fullText));
+            }
+            
+            // Update context length from response
+            if (chunk.done && chunk.total_duration > 0) {
+                this.setModelInfoLastContextLength(
+                    params.provider,
+                    params.provider.model || "",
+                    chunk.context?.length
+                );
+            }
+        }
         
-        // Support for both input and text (for backward compatibility)
-        // Using type assertion to bypass type checking
+        if (!isAborted()) {
+            handlers.end.forEach(handler => handler(fullText));
+        }
+    }
+
+    async embed(params: IAIProvidersEmbedParams): Promise<number[][]> {
         const inputText = params.input ?? (params as any).text;
-        
+
         if (!inputText) {
             throw new Error('Either input or text parameter must be provided');
         }
-        
+
         const modelInfo = await this.getCachedModelInfo(
             params.provider,
             params.provider.model || ""
         );
-        logger.debug('Retrieved model info:', modelInfo);
 
         const maxInputLength = Array.isArray(inputText) 
             ? Math.max(...inputText.map(text => text.length))
             : inputText.length;
-        
-        logger.debug('Max input length:', maxInputLength);
 
         const { num_ctx, shouldUpdate } = this.optimizeContext(
             maxInputLength,
@@ -166,10 +349,7 @@ export class OllamaHandler implements IAIHandler {
             modelInfo.contextLength
         );
         
-        logger.debug('Optimized context:', { num_ctx, shouldUpdate });
-
         if (shouldUpdate) {
-            logger.debug('Updating model info last context length:', num_ctx);
             this.setModelInfoLastContextLength(
                 params.provider,
                 params.provider.model || "",
@@ -177,48 +357,35 @@ export class OllamaHandler implements IAIHandler {
             );
         }
 
-        try {
-            logger.debug('Sending embed request to Ollama');
-            const response = await ollama.embed({
-                model: params.provider.model || "",
-                input: inputText,
-                options: { num_ctx }
-            });
+        const operation = async (fetchImpl: typeof electronFetch | typeof obsidianFetch) => {
+            const ollama = this.getClient(params.provider, fetchImpl);
+            
+            const inputs = Array.isArray(inputText) ? inputText : [inputText];
+            const embeddings: number[][] = [];
 
-            if (!response?.embeddings) {
-                throw new Error('No embeddings in response');
+            for (const input of inputs) {
+                const response = await ollama.embed({
+                    model: params.provider.model || '',
+                    input: input,
+                    options: { num_ctx }
+                });
+                embeddings.push(response.embeddings[0]);
             }
 
-            logger.debug('Successfully received embeddings:', {
-                count: response.embeddings.length,
-                dimensions: response.embeddings[0]?.length
-            });
+            return embeddings;
+        };
 
-            return response.embeddings;
-        } catch (error) {
-            logger.error('Failed to get embeddings:', error);
-            throw error;
-        }
+        return withCorsRetry(
+            params.provider,
+            operation,
+            this.settings.useNativeFetch ? fetch : electronFetch,
+            'embed'
+        );
     }
 
     async execute(params: IAIProvidersExecuteParams): Promise<IChunkHandler> {
-        logger.debug('Starting execute process with params:', {
-            model: params.provider.model,
-            messagesCount: params.messages?.length || 0,
-            promptLength: params.prompt?.length || 0,
-            systemPromptLength: params.systemPrompt?.length || 0,
-            hasImages: !!params.images?.length
-        });
-
         const controller = new AbortController();
-        const ollama = this.getClient(
-            params.provider, 
-            this.settings.useNativeFetch ? fetch : electronFetch.bind({
-                controller
-            })
-        );
         let isAborted = false;
-        let response: AsyncIterable<ExtendedChatResponse> | null = null;
         
         const handlers = {
             data: [] as ((chunk: string, accumulatedText: string) => void)[],
@@ -229,181 +396,22 @@ export class OllamaHandler implements IAIHandler {
         (async () => {
             if (isAborted) return;
             
-            let fullText = '';
-
             try {
-                const modelInfo = await this.getCachedModelInfo(
-                    params.provider,
-                    params.provider.model || ""
-                ).catch(error => {
-                    logger.error('Failed to get model info:', error);
-                    return null;
-                });
-                
-                logger.debug('Retrieved model info:', modelInfo);
-
-                // Prepare messages in a standardized format
-                const chatMessages: { role: string; content: string; images?: string[] }[] = [];
-                const extractedImages: string[] = [];
-                
-                if ('messages' in params && params.messages) {
-                    // Process messages with standardized handling for text and images
-                    params.messages.forEach(msg => {
-                        if (typeof msg.content === 'string') {
-                            // Simple text content
-                            chatMessages.push({
-                                role: msg.role,
-                                content: msg.content
-                            });
-                        } else {
-                            // Extract text content from content blocks
-                            const textContent = msg.content
-                                .filter(block => block.type === 'text')
-                                .map(block => block.type === 'text' ? block.text : '')
-                                .join('\n');
-                            
-                            // Extract image URLs from content blocks
-                            msg.content
-                                .filter(block => block.type === 'image_url')
-                                .forEach(block => {
-                                    if (block.type === 'image_url' && block.image_url?.url) {
-                                        extractedImages.push(block.image_url.url);
-                                    }
-                                });
-                            
-                            chatMessages.push({
-                                role: msg.role,
-                                content: textContent
-                            });
-                        }
-
-                        // Add any images from the images property
-                        if (msg.images?.length) {
-                            extractedImages.push(...msg.images);
-                        }
-                    });
-                } else if ('prompt' in params) {
-                    // Handle legacy prompt-based API
-                    if (params.systemPrompt) {
-                        chatMessages.push({ role: 'system', content: params.systemPrompt });
-                    }
-                    
-                    chatMessages.push({ role: 'user', content: params.prompt });
-                    
-                    // Add any images from params
-                    if (params.images?.length) {
-                        extractedImages.push(...params.images);
-                    }
-                } else {
-                    throw new Error('Either messages or prompt must be provided');
-                }
-
-                // Process images for Ollama format (remove data URL prefix)
-                const processedImages = extractedImages.length > 0 
-                    ? extractedImages.map(image => image.replace(/^data:image\/(.*?);base64,/, ""))
-                    : undefined;
-
-                logger.debug('Processing request with images:', { imageCount: processedImages?.length || 0 });
-
-                // Prepare request options
-                const requestOptions: Record<string, any> = {};
-                
-                // Optimize context for text-based conversations
-                if (!processedImages?.length) {
-                    const inputLength = chatMessages.reduce((acc, msg) => acc + msg.content.length, 0);
-                    
-                    logger.debug('Calculating context for text input:', { inputLength });
-
-                    const { num_ctx, shouldUpdate } = this.optimizeContext(
-                        inputLength,
-                        modelInfo?.lastContextLength || DEFAULT_CONTEXT_LENGTH,
-                        DEFAULT_CONTEXT_LENGTH,
-                        modelInfo?.contextLength || DEFAULT_CONTEXT_LENGTH
+                const operation = async (fetchImpl: typeof electronFetch | typeof obsidianFetch) => {
+                    const ollama = this.getClient(
+                        params.provider,
+                        fetchImpl
                     );
+                    await this.executeOllamaGeneration(params, ollama, handlers, () => isAborted);
+                };
 
-                    if (num_ctx) {
-                        requestOptions.num_ctx = num_ctx;
-                    }
-                    
-                    logger.debug('Optimized context:', { num_ctx, shouldUpdate });
-
-                    if (shouldUpdate) {
-                        this.setModelInfoLastContextLength(
-                            params.provider,
-                            params.provider.model || "",
-                            num_ctx
-                        );
-                        logger.debug('Updated context length:', num_ctx);
-                    }
-                }
-
-                // Add any additional options from params
-                if (params.options) {
-                    Object.assign(requestOptions, params.options);
-                }
-
-                // Add images to the last user message if present
-                if (processedImages?.length) {
-                    // Find the last user message in the chat
-                    const lastUserMessageIndex = chatMessages.map(msg => msg.role).lastIndexOf('user');
-                    
-                    if (lastUserMessageIndex !== -1) {
-                        // Add images to the last user message
-                        chatMessages[lastUserMessageIndex] = {
-                            ...chatMessages[lastUserMessageIndex],
-                            images: processedImages
-                        };
-                        logger.debug('Added images to last user message at index:', lastUserMessageIndex);
-                    } else if (chatMessages.length > 0) {
-                        // If no user message, add to the last message regardless of role
-                        chatMessages[chatMessages.length - 1] = {
-                            ...chatMessages[chatMessages.length - 1],
-                            images: processedImages
-                        };
-                        logger.debug('Added images to last message (non-user)');
-                    } else {
-                        // If no messages at all, create a user message with empty content
-                        chatMessages.push({
-                            role: 'user',
-                            content: '',
-                            images: processedImages
-                        });
-                        logger.debug('Created new user message with images');
-                    }
-                }
-
-                logger.debug('Sending chat request to Ollama');
-                
-                // Using Ollama chat API instead of generate
-                response = await ollama.chat({
-                    model: params.provider.model || "",
-                    messages: chatMessages,
-                    stream: true,
-                    options: Object.keys(requestOptions).length > 0 ? requestOptions : undefined
-                } as any); // Type assertion for compatibility
-
-                for await (const part of response) {
-                    if (isAborted) {
-                        logger.debug('Generation aborted');
-                        break;
-                    }
-                    
-                    // Extract content from message for chat API
-                    const responseText = part.message?.content || '';
-                    if (responseText) {
-                        fullText += responseText;
-                        handlers.data.forEach(handler => handler(responseText, fullText));
-                    }
-                }
-
-                if (!isAborted) {
-                    logger.debug('Generation completed successfully:', {
-                        totalLength: fullText.length
-                    });
-                    handlers.end.forEach(handler => handler(fullText));
-                }
+                await withCorsRetry(
+                    params.provider,
+                    operation,
+                    this.settings.useNativeFetch ? fetch : electronFetch,
+                    'execute'
+                );
             } catch (error) {
-                logger.error('Generation failed:', error);
                 handlers.error.forEach(handler => handler(error as Error));
             }
         })();

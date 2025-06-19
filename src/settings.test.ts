@@ -80,7 +80,7 @@ jest.mock('./handlers/OllamaHandler', () => ({
 // Mock AIProvidersService
 jest.mock('./AIProvidersService', () => {
     return {
-        AIProvidersService: jest.fn().mockImplementation((app, settings) => ({
+        AIProvidersService: jest.fn().mockImplementation((_app, settings) => ({
             providers: settings?.providers || [],
             version: 1,
             handlers: {
@@ -300,7 +300,7 @@ describe('AIProvidersSettingTab', () => {
             
             for (const [type, url] of Object.entries(validUrls)) {
                 const provider = createTestProvider({ type: type as any, url });
-                const result = await settingTab.saveProvider(provider);
+                await settingTab.saveProvider(provider);
                 expect(plugin.saveSettings).toHaveBeenCalled();
                 expect(plugin.settings.providers).toContainEqual(provider);
             }

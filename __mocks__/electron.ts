@@ -7,7 +7,7 @@ interface MockResponse {
 }
 
 class MockRequest extends EventEmitter {
-    write(data: any) {}
+    write(_data: any) {}
     end() {
         // Simulate successful response
         const mockResponse: MockResponse = {
