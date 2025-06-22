@@ -1,9 +1,11 @@
 export class App {
     workspace: Workspace;
+    vault: Vault;
     appId = 'test-vault-id';
     
     constructor() {
         this.workspace = new Workspace();
+        this.vault = new Vault();
     }
 }
 
@@ -11,6 +13,36 @@ export class Workspace {
     onLayoutReady(callback: () => void): void {
         // In tests, execute callback immediately
         callback();
+    }
+}
+
+export class TFile {
+    path: string;
+    name: string;
+
+    constructor(path: string, name: string) {
+        this.path = path;
+        this.name = name;
+    }
+}
+
+export class Vault {
+    getMarkdownFiles(): TFile[] {
+        // Return mock markdown files for testing
+        return [
+            new TFile('note1.md', 'Note 1'),
+            new TFile('note2.md', 'Note 2'),
+            new TFile('folder/note3.md', 'Note 3'),
+        ];
+    }
+
+    getAbstractFileByPath(path: string): TFile | null {
+        const files = this.getMarkdownFiles();
+        return files.find(file => file.path === path) || null;
+    }
+
+    async read(file: TFile): Promise<string> {
+        return `Mock content for ${file.name}`;
     }
 }
 export class Notice {
