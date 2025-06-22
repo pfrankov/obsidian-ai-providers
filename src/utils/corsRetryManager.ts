@@ -40,7 +40,10 @@ export class CorsRetryManager {
     markProviderAsCorsBlocked(provider: IAIProvider): void {
         const key = this.getProviderKey(provider);
         this.corsProviders.add(key);
-        logger.debug('Provider marked as CORS blocked:', { key, provider: provider.name });
+        logger.debug('Provider marked as CORS blocked:', {
+            key,
+            provider: provider.name,
+        });
     }
 
     /**
@@ -49,12 +52,12 @@ export class CorsRetryManager {
     isCorsError(error: Error): boolean {
         const errorMessage = error.message.toLowerCase();
         const errorName = error.name?.toLowerCase() || '';
-        
+
         logger.debug('Checking CORS error:', {
             message: error.message,
-            name: error.name
+            name: error.name,
         });
-        
+
         // CORS-related patterns
         const corsPatterns = [
             'cors policy',
@@ -71,13 +74,14 @@ export class CorsRetryManager {
             'typeerror: failed to fetch',
             'net::err_failed',
             'fetch error',
-            'cors'
+            'cors',
         ];
-        
-        const isCors = corsPatterns.some(pattern => 
-            errorMessage.includes(pattern) || errorName.includes(pattern)
+
+        const isCors = corsPatterns.some(
+            pattern =>
+                errorMessage.includes(pattern) || errorName.includes(pattern)
         );
-        
+
         logger.debug('CORS error detection result:', { isCors });
         return isCors;
     }
@@ -103,32 +107,45 @@ export class CorsRetryManager {
  */
 export async function withCorsRetry<T>(
     provider: IAIProvider,
-    operation: (fetchImpl: typeof electronFetch | typeof obsidianFetch) => Promise<T>,
+    operation: (
+        fetchImpl: typeof electronFetch | typeof obsidianFetch
+    ) => Promise<T>,
     defaultFetch: typeof electronFetch | typeof obsidianFetch,
     operationName: string
 ): Promise<T> {
     logger.debug(`Starting ${operationName} for provider:`, provider.name);
-    
+
     if (corsRetryManager.shouldUseFallback(provider)) {
-        logger.debug(`${operationName}: Provider already marked for CORS, using obsidianFetch directly.`);
+        logger.debug(
+            `${operationName}: Provider already marked for CORS, using obsidianFetch directly.`
+        );
         return operation(obsidianFetch);
     }
-    
+
     try {
         const result = await operation(defaultFetch);
-        logger.debug(`${operationName} completed successfully with default fetch.`);
+        logger.debug(
+            `${operationName} completed successfully with default fetch.`
+        );
         return result;
     } catch (error) {
         if (corsRetryManager.isCorsError(error as Error)) {
-            logger.debug(`CORS error detected in ${operationName}, retrying with obsidianFetch`);
+            logger.debug(
+                `CORS error detected in ${operationName}, retrying with obsidianFetch`
+            );
             corsRetryManager.markProviderAsCorsBlocked(provider);
-            
+
             try {
                 const result = await operation(obsidianFetch);
-                logger.debug(`${operationName} succeeded on retry with obsidianFetch.`);
+                logger.debug(
+                    `${operationName} succeeded on retry with obsidianFetch.`
+                );
                 return result;
             } catch (retryError) {
-                logger.error(`${operationName} failed on retry with obsidianFetch:`, retryError);
+                logger.error(
+                    `${operationName} failed on retry with obsidianFetch:`,
+                    retryError
+                );
                 throw retryError;
             }
         }
@@ -139,4 +156,4 @@ export async function withCorsRetry<T>(
 /**
  * Global instance for convenience
  */
-export const corsRetryManager = CorsRetryManager.getInstance(); 
+export const corsRetryManager = CorsRetryManager.getInstance();

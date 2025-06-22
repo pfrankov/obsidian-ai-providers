@@ -1,4 +1,8 @@
-import { CorsRetryManager, corsRetryManager, withCorsRetry } from './corsRetryManager';
+import {
+    CorsRetryManager,
+    corsRetryManager,
+    withCorsRetry,
+} from './corsRetryManager';
 import { IAIProvider } from '@obsidian-ai-providers/sdk';
 
 describe('CorsRetryManager', () => {
@@ -9,14 +13,14 @@ describe('CorsRetryManager', () => {
         // Get a fresh instance and clear it
         manager = CorsRetryManager.getInstance();
         manager.clearAll();
-        
+
         mockProvider = {
             id: 'test-provider',
             name: 'Test Provider',
             type: 'openai' as const,
             url: 'https://api.example.com',
             apiKey: 'test-key',
-            model: 'test-model'
+            model: 'test-model',
         };
     });
 
@@ -49,11 +53,17 @@ describe('CorsRetryManager', () => {
         });
 
         it('should handle different providers separately', () => {
-            const provider1 = { ...mockProvider, url: 'https://api1.example.com' };
-            const provider2 = { ...mockProvider, url: 'https://api2.example.com' };
+            const provider1 = {
+                ...mockProvider,
+                url: 'https://api1.example.com',
+            };
+            const provider2 = {
+                ...mockProvider,
+                url: 'https://api2.example.com',
+            };
 
             manager.markProviderAsCorsBlocked(provider1);
-            
+
             expect(manager.shouldUseFallback(provider1)).toBe(true);
             expect(manager.shouldUseFallback(provider2)).toBe(false);
             expect(manager.getBlockedProviderCount()).toBe(1);
@@ -62,7 +72,7 @@ describe('CorsRetryManager', () => {
         it('should handle same provider marked multiple times', () => {
             manager.markProviderAsCorsBlocked(mockProvider);
             manager.markProviderAsCorsBlocked(mockProvider);
-            
+
             expect(manager.shouldUseFallback(mockProvider)).toBe(true);
             expect(manager.getBlockedProviderCount()).toBe(1);
         });
@@ -72,7 +82,7 @@ describe('CorsRetryManager', () => {
             const provider2 = { ...mockProvider, type: 'ollama' as const };
 
             manager.markProviderAsCorsBlocked(provider1);
-            
+
             expect(manager.shouldUseFallback(provider1)).toBe(true);
             expect(manager.shouldUseFallback(provider2)).toBe(false);
         });
@@ -89,7 +99,7 @@ describe('CorsRetryManager', () => {
                 new Error('Connection error.'), // Common Electron/browser CORS error
                 new Error('Network error'),
                 new Error('Failed to fetch'),
-                new Error('TypeError: Failed to fetch')
+                new Error('TypeError: Failed to fetch'),
             ];
 
             corsErrors.forEach(error => {
@@ -104,7 +114,7 @@ describe('CorsRetryManager', () => {
                 new Error('Server error 500'),
                 new Error('Not found'),
                 new Error('Authentication failed'),
-                new Error('Rate limit exceeded')
+                new Error('Rate limit exceeded'),
             ];
 
             nonCorsErrors.forEach(error => {
@@ -116,7 +126,7 @@ describe('CorsRetryManager', () => {
             const mixedCaseErrors = [
                 new Error('CORS Policy Blocked'),
                 new Error('Cross-origin request blocked'),
-                new Error('ACCESS-CONTROL-ALLOW-ORIGIN not set')
+                new Error('ACCESS-CONTROL-ALLOW-ORIGIN not set'),
             ];
 
             mixedCaseErrors.forEach(error => {
@@ -133,8 +143,14 @@ describe('CorsRetryManager', () => {
 
     describe('Clear Operations', () => {
         it('should clear all blocked providers', () => {
-            const provider1 = { ...mockProvider, url: 'https://api1.example.com' };
-            const provider2 = { ...mockProvider, url: 'https://api2.example.com' };
+            const provider1 = {
+                ...mockProvider,
+                url: 'https://api1.example.com',
+            };
+            const provider2 = {
+                ...mockProvider,
+                url: 'https://api2.example.com',
+            };
 
             manager.markProviderAsCorsBlocked(provider1);
             manager.markProviderAsCorsBlocked(provider2);
@@ -150,14 +166,14 @@ describe('CorsRetryManager', () => {
     describe('Edge Cases', () => {
         it('should handle provider with undefined URL', () => {
             const providerWithoutUrl = { ...mockProvider, url: undefined };
-            
+
             manager.markProviderAsCorsBlocked(providerWithoutUrl);
             expect(manager.shouldUseFallback(providerWithoutUrl)).toBe(true);
         });
 
         it('should handle provider with empty URL', () => {
             const providerWithEmptyUrl = { ...mockProvider, url: '' };
-            
+
             manager.markProviderAsCorsBlocked(providerWithEmptyUrl);
             expect(manager.shouldUseFallback(providerWithEmptyUrl)).toBe(true);
         });
@@ -176,7 +192,7 @@ describe('withCorsRetry', () => {
             type: 'openai' as const,
             url: 'https://api.test.com',
             apiKey: 'test-key',
-            model: 'test-model'
+            model: 'test-model',
         };
         corsRetryManager.clearAll();
         mockDefaultFetch.mockClear();
@@ -184,7 +200,7 @@ describe('withCorsRetry', () => {
     });
 
     it('should return operation result on success', async () => {
-        const mockOperation = jest.fn().mockImplementation(async (fetch) => {
+        const mockOperation = jest.fn().mockImplementation(async fetch => {
             if (fetch === mockDefaultFetch) {
                 return 'success';
             }
@@ -205,7 +221,8 @@ describe('withCorsRetry', () => {
 
     it('should retry on CORS error', async () => {
         const corsError = new Error('Access blocked by CORS policy');
-        const mockOperation = jest.fn()
+        const mockOperation = jest
+            .fn()
             .mockRejectedValueOnce(corsError)
             .mockResolvedValueOnce('retry-success');
 
@@ -226,12 +243,14 @@ describe('withCorsRetry', () => {
         const networkError = new Error('Network timeout');
         const mockOperation = jest.fn().mockRejectedValue(networkError);
 
-        await expect(withCorsRetry(
-            mockProvider,
-            mockOperation,
-            mockDefaultFetch,
-            'test-operation'
-        )).rejects.toThrow('Network timeout');
+        await expect(
+            withCorsRetry(
+                mockProvider,
+                mockOperation,
+                mockDefaultFetch,
+                'test-operation'
+            )
+        ).rejects.toThrow('Network timeout');
 
         expect(mockOperation).toHaveBeenCalledWith(mockDefaultFetch);
         expect(mockOperation).toHaveBeenCalledTimes(1);
@@ -241,7 +260,8 @@ describe('withCorsRetry', () => {
     // Тест для реальной ошибки из логов пользователя
     it('should retry on "Connection error." (real-world CORS case)', async () => {
         const realWorldCorsError = new Error('Connection error.');
-        const mockOperation = jest.fn()
+        const mockOperation = jest
+            .fn()
             .mockRejectedValueOnce(realWorldCorsError)
             .mockResolvedValueOnce('retry-success');
 
@@ -256,4 +276,4 @@ describe('withCorsRetry', () => {
         expect(mockOperation).toHaveBeenCalledTimes(2);
         expect(corsRetryManager.shouldUseFallback(mockProvider)).toBe(true);
     });
-}); 
+});

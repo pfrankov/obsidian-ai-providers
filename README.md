@@ -93,14 +93,14 @@ There are several options to run local OpenAI-like server:
 ## Roadmap
 - [x] Docs for devs
 - [x] Ollama context optimizations
-- [x] Image processing support
-- [x] OpenRouter Provider support
-- [x] Gemini Provider support
-- [x] LM Studio Provider support
+- [x] German translations
+- [x] Chinese translations
+- [x] Update to latest OpenAI version and embedding models
+- [x] Russian translations
 - [x] Groq Provider support
 - [x] Passing messages instead of one prompt
 - [ ] Anthropic Provider support
-- [ ] Shared embeddings to avoid re-embedding the same documents multiple times
+- [x] Shared embeddings to avoid re-embedding the same documents multiple times
 - [ ] Spanish, Italian, French, Dutch, Portuguese, Japanese, Korean translations
 - [ ] Incapsulated basic RAG search with optional BM25 search
 

@@ -1,5 +1,17 @@
 export class App {
-    constructor() {}
+    workspace: Workspace;
+    appId = 'test-vault-id';
+    
+    constructor() {
+        this.workspace = new Workspace();
+    }
+}
+
+export class Workspace {
+    onLayoutReady(callback: () => void): void {
+        // In tests, execute callback immediately
+        callback();
+    }
 }
 export class Notice {
     constructor(_message: string) {}
@@ -48,20 +60,25 @@ export class PluginSettingTab {
                 this.removeChild(this.firstChild);
             }
         };
-        this.containerEl.createEl = function(tag: string, attrs?: { text?: string }): HTMLElement {
+        this.containerEl.createEl = function(
+            tag: string,
+            attrs?: { text?: string }
+        ): HTMLElement {
             const el = document.createElement(tag);
             if (attrs?.text) {
                 el.textContent = attrs.text;
             }
-            this.appendChild(el);
+            this.appendChild(el as unknown as Node);
             return el;
         };
-        this.containerEl.createDiv = function(className?: string): HTMLElement {
+        this.containerEl.createDiv = function(
+            className?: string
+        ): HTMLElement {
             const div = document.createElement('div');
             if (className) {
                 div.className = className;
             }
-            this.appendChild(div);
+            this.appendChild(div as unknown as Node);
             return div;
         };
     }
@@ -316,15 +333,30 @@ export class Modal {
     constructor(app: App) {
         this.app = app;
         this.contentEl = document.createElement('div');
+        // Apply Obsidian methods to contentEl
+        (this.contentEl as any).empty = HTMLElement.prototype.empty;
+        (this.contentEl as any).createEl = HTMLElement.prototype.createEl;
+        (this.contentEl as any).createDiv = HTMLElement.prototype.createDiv;
+        (this.contentEl as any).createSpan = HTMLElement.prototype.createSpan;
+        (this.contentEl as any).addClass = HTMLElement.prototype.addClass;
     }
 
     open(): void {
         // Mock for opening modal window
+        this.onOpen();
     }
 
     close(): void {
         // Clear content when closing
-        this.contentEl.empty();
+        this.onClose();
+    }
+
+    onOpen(): void {
+        // To be overridden in subclasses
+    }
+
+    onClose(): void {
+        // To be overridden in subclasses
     }
 }
 
@@ -353,7 +385,7 @@ HTMLElement.prototype.createDiv = function(className?: string): HTMLElement {
     if (className) {
         div.className = className;
     }
-    this.appendChild(div);
+    this.appendChild(div as unknown as Node);
     return div;
 };
 
@@ -363,21 +395,24 @@ HTMLElement.prototype.empty = function(): void {
     }
 };
 
-HTMLElement.prototype.createEl = function(tag: string, attrs?: { text?: string }): HTMLElement {
+HTMLElement.prototype.createEl = function(tag: string, attrs?: {text?: string}, cls?: string) {
     const el = document.createElement(tag);
     if (attrs?.text) {
         el.textContent = attrs.text;
     }
-    this.appendChild(el);
+    if (cls) {
+        el.className = cls;
+    }
+    this.appendChild(el as unknown as Node);
     return el;
 };
 
-HTMLElement.prototype.createSpan = function(className?: string): HTMLElement {
+HTMLElement.prototype.createSpan = function(cls?: string) {
     const span = document.createElement('span');
-    if (className) {
-        span.className = className;
+    if (cls) {
+        span.className = cls;
     }
-    this.appendChild(span);
+    this.appendChild(span as unknown as Node);
     return span;
 };
 

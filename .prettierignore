@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+main.js
+*.min.js
+*.d.ts
+package-lock.json
+*.md
+LICENSE
+.git/
+.vscode/
+*.log 

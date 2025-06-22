@@ -1,22 +1,22 @@
 {
-  "name": "@obsidian-ai-providers/example-plugin",
-  "version": "1.0.0",
-  "description": "Example plugin that demonstrates AI Providers integration",
-  "main": "main.ts",
-  "scripts": {
-    "dev": "node esbuild.config.mjs",
-    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
-  },
-  "author": "Pavel Frankov",
-  "license": "MIT",
-  "dependencies": {
-    "@obsidian-ai-providers/sdk": "^1.1.1"
-  },
-  "peerDependencies": {
-    "obsidian": "latest"
-  },
-  "devDependencies": {
-    "builtin-modules": "3.3.0",
-    "esbuild": "0.17.3"
-  }
+    "name": "@obsidian-ai-providers/example-plugin",
+    "version": "1.0.0",
+    "description": "Example plugin that demonstrates AI Providers integration",
+    "main": "main.ts",
+    "scripts": {
+        "dev": "node esbuild.config.mjs",
+        "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+    },
+    "author": "Pavel Frankov",
+    "license": "MIT",
+    "dependencies": {
+        "@obsidian-ai-providers/sdk": "^1.1.1"
+    },
+    "peerDependencies": {
+        "obsidian": "latest"
+    },
+    "devDependencies": {
+        "builtin-modules": "3.3.0",
+        "esbuild": "0.17.3"
+    }
 }

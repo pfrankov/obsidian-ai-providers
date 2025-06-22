@@ -1,9 +1,9 @@
-import { RequestUrlResponse } from "obsidian";
+import { RequestUrlResponse } from 'obsidian';
 import { obsidianFetch } from './obsidianFetch';
 
 jest.mock('obsidian', () => {
     return {
-        requestUrl: jest.fn()
+        requestUrl: jest.fn(),
     };
 });
 
@@ -19,7 +19,7 @@ if (typeof Response === 'undefined') {
             this.status = init.status || 200;
             this.headers = init.headers as Record<string, string>;
         }
-        
+
         async text() {
             return this.body;
         }
@@ -42,7 +42,7 @@ describe('obsidianFetch', () => {
                 text: mockResponseData,
                 headers: { 'content-type': 'text/plain' },
             };
-            
+
             requestUrlMock.mockResolvedValue(mockResponse);
 
             const url = 'https://api.example.com';
@@ -66,7 +66,7 @@ describe('obsidianFetch', () => {
                 text: mockResponseData,
                 headers: { 'content-type': 'application/json' },
             };
-            
+
             requestUrlMock.mockResolvedValue(mockResponse);
 
             const url = 'https://api.example.com';
@@ -98,7 +98,7 @@ describe('obsidianFetch', () => {
                 text: mockResponseData,
                 headers: { 'content-type': 'text/plain' },
             };
-            
+
             requestUrlMock.mockResolvedValue(mockResponse);
 
             const url = 'https://api.example.com';
@@ -130,7 +130,7 @@ describe('obsidianFetch', () => {
                 text: mockResponseData,
                 headers: { 'content-type': 'application/octet-stream' },
             };
-            
+
             requestUrlMock.mockResolvedValue(mockResponse);
 
             const url = 'https://api.example.com';
@@ -162,7 +162,9 @@ describe('obsidianFetch', () => {
             requestUrlMock.mockRejectedValue(new Error(errorMessage));
 
             const url = 'https://api.example.com';
-            await expect(obsidianFetch(url, { headers: {} })).rejects.toThrow(errorMessage);
+            await expect(obsidianFetch(url, { headers: {} })).rejects.toThrow(
+                errorMessage
+            );
         });
 
         it('should handle non-200 status codes', async () => {
@@ -171,7 +173,7 @@ describe('obsidianFetch', () => {
                 text: 'Not Found',
                 headers: { 'content-type': 'text/plain' },
             };
-            
+
             requestUrlMock.mockResolvedValue(mockResponse);
 
             const url = 'https://api.example.com';
@@ -190,13 +192,13 @@ describe('obsidianFetch', () => {
                 text: 'mock response',
                 headers: { 'content-type': 'application/json' },
             };
-            
+
             requestUrlMock.mockResolvedValue(mockResponse);
 
             const url = 'https://api.example.com';
             const headers = {
-                'Authorization': 'Bearer token',
-                'Custom-Header': 'custom value'
+                Authorization: 'Bearer token',
+                'Custom-Header': 'custom value',
             };
 
             await obsidianFetch(url, { headers });
@@ -214,10 +216,10 @@ describe('obsidianFetch', () => {
                 text: 'mock response',
                 headers: {
                     'content-type': 'application/json',
-                    'x-custom-header': 'custom value'
+                    'x-custom-header': 'custom value',
                 },
             };
-            
+
             requestUrlMock.mockResolvedValue(mockResponse);
 
             const url = 'https://api.example.com';
@@ -226,4 +228,4 @@ describe('obsidianFetch', () => {
             expect(response.headers).toEqual(mockResponse.headers);
         });
     });
-}); 
+});

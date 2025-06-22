@@ -1,4 +1,4 @@
-import { Plugin, PluginSettingTab, App, sanitizeHTMLToDom } from "obsidian";
+import { Plugin, PluginSettingTab, App, sanitizeHTMLToDom } from 'obsidian';
 import { ExtendedApp, IAIProvidersService } from './types';
 
 const FALLBACK_TIMEOUT = 100;
@@ -38,22 +38,25 @@ async function waitForAIProviders(app: ExtendedApp, plugin: Plugin) {
                 app.workspace.off(AI_PROVIDERS_READY_EVENT, aiProvidersReady);
                 aiProvidersReadyAiResolver = null;
                 resolve(app.aiProviders as IAIProvidersService);
-            }
-            
+            };
+
             if (app.aiProviders) {
                 aiProvidersReady();
             } else {
-                const eventRef = app.workspace.on(AI_PROVIDERS_READY_EVENT, aiProvidersReady);
+                const eventRef = app.workspace.on(
+                    AI_PROVIDERS_READY_EVENT,
+                    aiProvidersReady
+                );
                 plugin.registerEvent(eventRef);
             }
-    
+
             abortController.signal.addEventListener('abort', () => {
                 app.workspace.off(AI_PROVIDERS_READY_EVENT, aiProvidersReady);
                 aiProvidersReadyAiResolver = null;
-                reject(new Error("Waiting for AI Providers was cancelled"));
+                reject(new Error('Waiting for AI Providers was cancelled'));
             });
         }),
-        cancel: () => abortController.abort()
+        cancel: () => abortController.abort(),
     };
 
     if (!app.aiProviders) {
@@ -72,7 +75,9 @@ class AIProvidersManager {
     static getInstance(app?: ExtendedApp, plugin?: Plugin): AIProvidersManager {
         if (!this.instance) {
             if (!app || !plugin) {
-                throw new Error("AIProvidersManager not initialized. Call initialize() first");
+                throw new Error(
+                    'AIProvidersManager not initialized. Call initialize() first'
+                );
             }
             this.instance = new AIProvidersManager(app, plugin);
         }
@@ -106,13 +111,19 @@ class AIProvidersManager {
  * });
  * ```
  */
-export async function initAI(app: ExtendedApp, plugin: Plugin, onDone: () => Promise<void>) {
+export async function initAI(
+    app: ExtendedApp,
+    plugin: Plugin,
+    onDone: () => Promise<void>
+) {
     AIProvidersManager.getInstance(app, plugin);
     let isFallbackShown = false;
-    
+
     try {
         const timeout = setTimeout(async () => {
-            plugin.addSettingTab(new AIProvidersFallbackSettingsTab(app, plugin));
+            plugin.addSettingTab(
+                new AIProvidersFallbackSettingsTab(app, plugin)
+            );
             isFallbackShown = true;
         }, FALLBACK_TIMEOUT);
 
@@ -125,8 +136,12 @@ export async function initAI(app: ExtendedApp, plugin: Plugin, onDone: () => Pro
         } catch (error) {
             console.error(`AI Providers compatibility check failed: ${error}`);
             if (error.code === 'version_mismatch') {
-                plugin.addSettingTab(new AIProvidersFallbackSettingsTab(app, plugin));
-                throw new Error(`AI Providers version ${REQUIRED_AI_PROVIDERS_VERSION} is required`);
+                plugin.addSettingTab(
+                    new AIProvidersFallbackSettingsTab(app, plugin)
+                );
+                throw new Error(
+                    `AI Providers version ${REQUIRED_AI_PROVIDERS_VERSION} is required`
+                );
             }
             throw error;
         }
@@ -152,7 +167,7 @@ export async function initAI(app: ExtendedApp, plugin: Plugin, onDone: () => Pro
  * } catch (error) {
  *     console.error('Failed to get AI providers:', error);
  * }
- * 
+ *
  * // If you need to cancel waiting:
  * aiResolver.cancel();
  * ```
@@ -171,28 +186,29 @@ class AIProvidersFallbackSettingsTab extends PluginSettingTab {
     }
 
     async display(): Promise<void> {
-        const {containerEl} = this;
+        const { containerEl } = this;
 
         containerEl.empty();
 
-        const aiProvidersNotice = containerEl.createEl("div");
-        aiProvidersNotice.addClass("ai-providers-notice");
+        const aiProvidersNotice = containerEl.createEl('div');
+        aiProvidersNotice.addClass('ai-providers-notice');
 
-        aiProvidersNotice.appendChild(sanitizeHTMLToDom(`
+        aiProvidersNotice.appendChild(
+            sanitizeHTMLToDom(`
             <p>⚠️ This plugin requires <a href="obsidian://show-plugin?id=ai-providers">AI Providers</a> plugin to be installed.</p>
             <p>Please install and configure AI Providers plugin first.</p>
-        `));
+        `)
+        );
     }
 }
 
 export type {
-    ObsidianEvents,
     IAIProvider,
-    IChunkHandler,
     IAIProvidersService,
     IAIProvidersExecuteParams,
+    IChunkHandler,
     IAIProvidersEmbedParams,
     IAIHandler,
     IAIProvidersPluginSettings,
-    AIProviderType
+    AIProviderType,
 } from './types';

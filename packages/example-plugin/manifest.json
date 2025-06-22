@@ -1,10 +1,10 @@
 {
-	"id": "example-plugin",
-	"name": "AI Providers Example",
-	"version": "1.0.0",
-	"minAppVersion": "0.15.0",
-	"description": "Example plugin that demonstrates AI Providers integration",
-	"author": "Pavel Frankov",
-	"isDesktopOnly": false,
-	"main": "dist/main.js"
-} 
+    "id": "example-plugin",
+    "name": "AI Providers Example",
+    "version": "1.0.0",
+    "minAppVersion": "0.15.0",
+    "description": "Example plugin that demonstrates AI Providers integration",
+    "author": "Pavel Frankov",
+    "isDesktopOnly": false,
+    "main": "dist/main.js"
+}

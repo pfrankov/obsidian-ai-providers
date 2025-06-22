@@ -3,8 +3,8 @@ import { ConfirmationModal } from './ConfirmationModal';
 
 jest.mock('../i18n', () => ({
     I18n: {
-        t: (key: string) => key
-    }
+        t: (key: string) => key,
+    },
 }));
 
 describe('ConfirmationModal', () => {
@@ -50,4 +50,4 @@ describe('ConfirmationModal', () => {
         expect(onConfirmMock).not.toHaveBeenCalled();
         expect(modal.contentEl.childNodes.length).toBe(0);
     });
-}); 
+});
