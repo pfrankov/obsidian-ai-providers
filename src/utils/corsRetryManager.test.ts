@@ -134,7 +134,7 @@ describe('CorsRetryManager', () => {
             });
         });
 
-        // Специальный тест для ошибки из логов пользователя
+        // Special test for error from user logs
         it('should detect "Connection error." as CORS error (real-world case)', () => {
             const realWorldError = new Error('Connection error.');
             expect(manager.isCorsError(realWorldError)).toBe(true);
@@ -257,7 +257,7 @@ describe('withCorsRetry', () => {
         expect(corsRetryManager.shouldUseFallback(mockProvider)).toBe(false);
     });
 
-    // Тест для реальной ошибки из логов пользователя
+    // Test for real error from user logs
     it('should retry on "Connection error." (real-world CORS case)', async () => {
         const realWorldCorsError = new Error('Connection error.');
         const mockOperation = jest
