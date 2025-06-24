@@ -369,6 +369,53 @@ describe('AIProvidersService', () => {
         });
     });
 
+    describe('generateCacheKey', () => {
+        it('should generate consistent cache keys for same input', async () => {
+            const mockHashBuffer = new ArrayBuffer(32);
+            new Uint8Array(mockHashBuffer).fill(42);
+
+            global.crypto = {
+                subtle: {
+                    digest: jest.fn().mockResolvedValue(mockHashBuffer),
+                },
+            } as any;
+
+            const params: IAIProvidersEmbedParams = {
+                provider: mockProvider,
+                input: 'test content',
+            };
+
+            const key1 = await (service as any).generateCacheKey(params, ['test content']);
+            const key2 = await (service as any).generateCacheKey(params, ['test content']);
+
+            expect(key1).toBe(key2);
+            expect(key1).toBe('embed:test-provider:gpt-3.5-turbo:2a2a2a2a2a2a2a2a2a2a');
+        });
+
+        it('should include provider info in cache key', async () => {
+            const mockHashBuffer = new ArrayBuffer(32);
+            new Uint8Array(mockHashBuffer).fill(255);
+
+            global.crypto = {
+                subtle: {
+                    digest: jest.fn().mockResolvedValue(mockHashBuffer),
+                },
+            } as any;
+
+            const params: IAIProvidersEmbedParams = {
+                provider: {
+                    ...mockProvider,
+                    id: 'different-provider',
+                    model: 'different-model',
+                },
+                input: 'test content',
+            };
+
+            const key = await (service as any).generateCacheKey(params, ['test content']);
+            expect(key).toBe('embed:different-provider:different-model:ffffffffffffffffffff');
+        });
+    });
+
     describe('cleanup', () => {
         it('should cleanup embeddings cache', async () => {
             const { embeddingsCache } = jest.requireMock(

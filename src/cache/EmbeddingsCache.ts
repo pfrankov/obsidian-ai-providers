@@ -1,4 +1,5 @@
 import { openDB, IDBPDatabase } from 'idb';
+import { createDatabaseHash } from '../utils/hashUtils';
 
 interface EmbeddingsCacheItem {
     providerId: string; // ID of the provider used
@@ -39,7 +40,7 @@ export class EmbeddingsCache {
             this.vaultId = vaultId;
             // Use a unique database name with plugin-specific prefix
             // Hash the plugin ID to make it less predictable
-            const pluginHash = this.simpleHash('ai-providers-plugin');
+            const pluginHash = await createDatabaseHash('ai-providers-plugin');
             this.dbName = `aiProviders_${pluginHash}_${this.vaultId}`;
 
             this.db = await openDB(this.dbName, 1, {
@@ -55,16 +56,6 @@ export class EmbeddingsCache {
             // Don't throw, allow the app to continue without cache
             this.db = null;
         }
-    }
-
-    private simpleHash(str: string): string {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = (hash << 5) - hash + char;
-            hash = hash & hash;
-        }
-        return Math.abs(hash).toString(36);
     }
 
     async getEmbeddings(key: string): Promise<EmbeddingsCacheItem | undefined> {

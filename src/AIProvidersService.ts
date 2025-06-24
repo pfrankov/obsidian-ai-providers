@@ -16,6 +16,7 @@ import { ConfirmationModal } from './modals/ConfirmationModal';
 import { CachedEmbeddingsService } from './cache/CachedEmbeddingsService';
 import { embeddingsCache } from './cache/EmbeddingsCache';
 import { logger } from './utils/logger';
+import { createCacheKeyHash } from './utils/hashUtils';
 
 export class AIProvidersService implements IAIProvidersService {
     providers: IAIProvider[] = [];
@@ -89,7 +90,7 @@ export class AIProvidersService implements IAIProvidersService {
                 : [params.input];
 
             // Create automatic cache key based on input content and provider
-            const cacheKey = this.generateCacheKey(params, inputArray);
+            const cacheKey = await this.generateCacheKey(params, inputArray);
 
             // Use cached embeddings service with automatic caching
             const cachedParams = {
@@ -110,23 +111,13 @@ export class AIProvidersService implements IAIProvidersService {
         }
     }
 
-    private generateCacheKey(
+    private async generateCacheKey(
         params: IAIProvidersEmbedParams,
         inputArray: string[]
-    ): string {
+    ): Promise<string> {
         // Generate cache key based on provider and input content
-        const contentHash = this.simpleHash(inputArray.join('|'));
+        const contentHash = await createCacheKeyHash(inputArray.join('|'));
         return `embed:${params.provider.id}:${params.provider.model}:${contentHash}`;
-    }
-
-    private simpleHash(str: string): string {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = (hash << 5) - hash + char;
-            hash = hash & hash; // Convert to 32bit integer
-        }
-        return hash.toString(36);
     }
 
     async fetchModels(provider: IAIProvider): Promise<string[]> {

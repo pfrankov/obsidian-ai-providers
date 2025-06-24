@@ -76,3 +76,25 @@ if (typeof global.Response === 'undefined') {
         }
     };
 }
+
+// Mock crypto.subtle for hashUtils tests - global fallback for all tests
+const { TextEncoder } = require('util');
+
+Object.defineProperty(global, 'TextEncoder', {
+    value: TextEncoder,
+    writable: true,
+});
+
+// Minimal crypto mock - can be overridden by individual tests
+Object.defineProperty(global, 'crypto', {
+    value: {
+        subtle: {
+            digest: jest.fn(() => {
+                const buffer = new ArrayBuffer(32);
+                new Uint8Array(buffer).fill(42);
+                return Promise.resolve(buffer);
+            }),
+        },
+    },
+    writable: true,
+});
