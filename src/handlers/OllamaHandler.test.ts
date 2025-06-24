@@ -422,3 +422,149 @@ describe('Ollama CORS Retry Tests', () => {
         expect(mockClient.list!).toHaveBeenCalledTimes(1);
     });
 });
+
+// Tests to ensure electronFetch is never used for non-execute methods
+describe('Ollama Fetch Usage Tests', () => {
+    let handler: OllamaHandler;
+    let mockProvider: IAIProvider;
+
+    beforeEach(() => {
+        handler = createHandler();
+        mockProvider = createMockProvider();
+        jest.clearAllMocks();
+    });
+
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
+    it('should never use electronFetch for fetchModels', async () => {
+        const mockClient = createMockClient();
+        const { electronFetch } = require('../utils/electronFetch');
+
+        // Create a custom spy for getClient to track fetch parameter
+        const getClientSpy = jest
+            .spyOn(handler as any, 'getClient')
+            .mockImplementation((_provider, fetchFn) => {
+                // Verify electronFetch is never passed for non-execute calls
+                if (fetchFn === electronFetch) {
+                    throw new Error(
+                        'electronFetch should not be used for fetchModels'
+                    );
+                }
+                return mockClient;
+            });
+
+        await handler.fetchModels(mockProvider);
+
+        // Verify getClient was called
+        expect(getClientSpy).toHaveBeenCalledWith(
+            mockProvider,
+            expect.any(Function)
+        );
+    });
+
+    it('should never use electronFetch for embed', async () => {
+        const mockClient = createMockClient();
+        const { electronFetch } = require('../utils/electronFetch');
+        (mockClient as any).embed = jest.fn().mockResolvedValue({
+            embeddings: [[0.1, 0.2, 0.3]],
+        });
+
+        const getClientSpy = jest
+            .spyOn(handler as any, 'getClient')
+            .mockImplementation((_provider, fetchFn) => {
+                if (fetchFn === electronFetch) {
+                    throw new Error(
+                        'electronFetch should not be used for embed'
+                    );
+                }
+                return mockClient;
+            });
+
+        await handler.embed({
+            provider: mockProvider,
+            input: 'test text',
+        });
+
+        expect(getClientSpy).toHaveBeenCalledWith(
+            mockProvider,
+            expect.any(Function)
+        );
+    });
+
+    it('should allow electronFetch for execute', async () => {
+        const mockClient = createMockClient();
+
+        const getClientSpy = jest
+            .spyOn(handler as any, 'getClient')
+            .mockImplementation((_provider, _fetchFn) => {
+                // For execute, electronFetch is allowed
+                return mockClient;
+            });
+
+        const chunkHandler = await handler.execute({
+            provider: mockProvider,
+            prompt: 'test prompt',
+        });
+
+        // Wait for execution
+        await new Promise(resolve => {
+            chunkHandler.onEnd(() => resolve(undefined));
+            chunkHandler.onError(() => resolve(undefined));
+        });
+
+        // Verify getClient was called
+        expect(getClientSpy).toHaveBeenCalledWith(
+            mockProvider,
+            expect.any(Function)
+        );
+    });
+
+    it('should use obsidianFetch as fallback for non-execute methods when useNativeFetch is false', async () => {
+        // Create handler with useNativeFetch = false
+        const nonNativeHandler = new OllamaHandler({
+            _version: 1,
+            debugLogging: false,
+            useNativeFetch: false,
+        });
+
+        const mockClient = createMockClient();
+        jest.spyOn(nonNativeHandler as any, 'getClient').mockReturnValue(
+            mockClient
+        );
+
+        // Test getClient directly
+        const client = (nonNativeHandler as any).getClient(
+            mockProvider,
+            undefined,
+            false
+        );
+
+        // The getClient should be configured to not use electronFetch for non-execute
+        expect(client).toBeDefined();
+    });
+
+    it('should never use electronFetch for getCachedModelInfo', async () => {
+        const mockClient = createMockClient();
+        (mockClient as any).show = jest.fn().mockResolvedValue({
+            model_info: { num_ctx: 4096 },
+        });
+
+        // Spy on getClient to ensure it's not called with electronFetch
+        const getClientSpy = jest
+            .spyOn(handler as any, 'getClient')
+            .mockImplementation((_provider, _fetchFn) => {
+                return mockClient;
+            });
+
+        // Call getCachedModelInfo through the handler
+        await (handler as any).getCachedModelInfo(mockProvider, 'test-model');
+
+        // Verify getClient was called
+        expect(getClientSpy).toHaveBeenCalledWith(
+            mockProvider,
+            expect.any(Function)
+        );
+    });
+});

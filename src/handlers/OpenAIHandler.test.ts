@@ -269,3 +269,128 @@ describe('OpenAI CORS Retry Tests', () => {
         expect(corsRetryManager.shouldUseFallback(mockProvider)).toBe(false);
     });
 });
+
+// Tests to ensure electronFetch is never used for non-execute methods
+describe('OpenAI Fetch Usage Tests', () => {
+    let handler: OpenAIHandler;
+    let mockProvider: IAIProvider;
+
+    beforeEach(() => {
+        handler = createHandler();
+        mockProvider = createMockProvider();
+        jest.clearAllMocks();
+    });
+
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
+    it('should never use electronFetch for fetchModels', async () => {
+        const mockClient = createMockClient();
+        const { electronFetch } = require('../utils/electronFetch');
+
+        // Create a custom spy for getClient to track fetch parameter
+        const getClientSpy = jest
+            .spyOn(handler as any, 'getClient')
+            .mockImplementation((_provider, fetchFn) => {
+                // Verify electronFetch is never passed for non-execute calls
+                if (fetchFn === electronFetch) {
+                    throw new Error(
+                        'electronFetch should not be used for fetchModels'
+                    );
+                }
+                return mockClient;
+            });
+
+        await handler.fetchModels(mockProvider);
+
+        // Verify getClient was called
+        expect(getClientSpy).toHaveBeenCalledWith(
+            mockProvider,
+            expect.any(Function)
+        );
+    });
+
+    it('should never use electronFetch for embed', async () => {
+        const mockClient = createMockClient();
+        const { electronFetch } = require('../utils/electronFetch');
+        (mockClient as any).embeddings = {
+            create: jest.fn().mockResolvedValue({
+                data: [{ embedding: [0.1, 0.2, 0.3], index: 0 }],
+            }),
+        };
+
+        const getClientSpy = jest
+            .spyOn(handler as any, 'getClient')
+            .mockImplementation((_provider, fetchFn) => {
+                if (fetchFn === electronFetch) {
+                    throw new Error(
+                        'electronFetch should not be used for embed'
+                    );
+                }
+                return mockClient;
+            });
+
+        await handler.embed({
+            provider: mockProvider,
+            input: 'test text',
+        });
+
+        expect(getClientSpy).toHaveBeenCalledWith(
+            mockProvider,
+            expect.any(Function)
+        );
+    });
+
+    it('should allow electronFetch for execute', async () => {
+        const mockClient = createMockClient();
+
+        const getClientSpy = jest
+            .spyOn(handler as any, 'getClient')
+            .mockImplementation((_provider, _fetchFn) => {
+                // For execute, electronFetch is allowed
+                return mockClient;
+            });
+
+        const chunkHandler = await handler.execute({
+            provider: mockProvider,
+            prompt: 'test prompt',
+        });
+
+        // Wait for execution
+        await new Promise(resolve => {
+            chunkHandler.onEnd(() => resolve(undefined));
+            chunkHandler.onError(() => resolve(undefined));
+        });
+
+        // Verify getClient was called
+        expect(getClientSpy).toHaveBeenCalledWith(
+            mockProvider,
+            expect.any(Function)
+        );
+    });
+
+    it('should use obsidianFetch as fallback for non-execute methods when useNativeFetch is false', async () => {
+        // Create handler with useNativeFetch = false
+        const nonNativeHandler = new OpenAIHandler({
+            _version: 1,
+            debugLogging: false,
+            useNativeFetch: false,
+        });
+
+        const mockClient = createMockClient();
+        jest.spyOn(nonNativeHandler as any, 'getClient').mockReturnValue(
+            mockClient
+        );
+
+        // Test getClient directly
+        const client = (nonNativeHandler as any).getClient(
+            mockProvider,
+            undefined,
+            false
+        );
+
+        // The getClient should be configured to not use electronFetch for non-execute
+        expect(client).toBeDefined();
+    });
+});

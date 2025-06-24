@@ -1,7 +1,10 @@
 import { AIProvidersService } from './AIProvidersService';
 import { App } from 'obsidian';
 import AIProvidersPlugin from './main';
-import { IAIProvider, IAIProvidersEmbedParams } from '@obsidian-ai-providers/sdk';
+import {
+    IAIProvider,
+    IAIProvidersEmbedParams,
+} from '@obsidian-ai-providers/sdk';
 
 // Mock the handlers
 jest.mock('./handlers/OpenAIHandler');
@@ -59,7 +62,9 @@ describe('AIProvidersService', () => {
     describe('embed method', () => {
         it('should always return a promise', async () => {
             // Mock the CachedEmbeddingsService to return a promise
-            const mockEmbedWithCache = jest.fn().mockResolvedValue([[0.1, 0.2, 0.3]]);
+            const mockEmbedWithCache = jest
+                .fn()
+                .mockResolvedValue([[0.1, 0.2, 0.3]]);
             (service as any).cachedEmbeddingsService = {
                 embedWithCache: mockEmbedWithCache,
             };
@@ -93,7 +98,9 @@ describe('AIProvidersService', () => {
             expect(result).toBeInstanceOf(Promise);
 
             // Verify the promise rejects with an error
-            await expect(result).rejects.toThrow('Input is required for embedding');
+            await expect(result).rejects.toThrow(
+                'Input is required for embedding'
+            );
         });
 
         it('should return a promise even when provider is invalid', async () => {
@@ -108,15 +115,21 @@ describe('AIProvidersService', () => {
             };
 
             // Mock the embedForce method to reject
-            const mockEmbedForce = jest.fn().mockRejectedValue(
-                new Error('Handler not found for provider type: invalid-type')
-            );
+            const mockEmbedForce = jest
+                .fn()
+                .mockRejectedValue(
+                    new Error(
+                        'Handler not found for provider type: invalid-type'
+                    )
+                );
             (service as any).embedForce = mockEmbedForce;
 
             // Mock the CachedEmbeddingsService to call embedForce
-            const mockEmbedWithCache = jest.fn().mockImplementation(async () => {
-                return mockEmbedForce();
-            });
+            const mockEmbedWithCache = jest
+                .fn()
+                .mockImplementation(async () => {
+                    return mockEmbedForce();
+                });
             (service as any).cachedEmbeddingsService = {
                 embedWithCache: mockEmbedWithCache,
             };
@@ -128,7 +141,9 @@ describe('AIProvidersService', () => {
             expect(result).toBeInstanceOf(Promise);
 
             // Verify the promise rejects with an error
-            await expect(result).rejects.toThrow('Handler not found for provider type: invalid-type');
+            await expect(result).rejects.toThrow(
+                'Handler not found for provider type: invalid-type'
+            );
         });
 
         it('should return a promise with array input', async () => {
@@ -160,11 +175,10 @@ describe('AIProvidersService', () => {
             ]);
         });
 
-
-
         describe('multiple calls', () => {
             it('should handle multiple sequential calls correctly', async () => {
-                const mockEmbedWithCache = jest.fn()
+                const mockEmbedWithCache = jest
+                    .fn()
                     .mockResolvedValueOnce([[0.1, 0.2, 0.3]])
                     .mockResolvedValueOnce([[0.4, 0.5, 0.6]])
                     .mockResolvedValueOnce([[0.7, 0.8, 0.9]]);
@@ -203,7 +217,8 @@ describe('AIProvidersService', () => {
             });
 
             it('should handle multiple concurrent calls correctly', async () => {
-                const mockEmbedWithCache = jest.fn()
+                const mockEmbedWithCache = jest
+                    .fn()
                     .mockResolvedValueOnce([[0.1, 0.2, 0.3]])
                     .mockResolvedValueOnce([[0.4, 0.5, 0.6]])
                     .mockResolvedValueOnce([[0.7, 0.8, 0.9]]);
@@ -244,7 +259,8 @@ describe('AIProvidersService', () => {
             });
 
             it('should handle repeated calls with same input', async () => {
-                const mockEmbedWithCache = jest.fn()
+                const mockEmbedWithCache = jest
+                    .fn()
                     .mockResolvedValue([[0.1, 0.2, 0.3]]);
 
                 (service as any).cachedEmbeddingsService = {
@@ -267,7 +283,8 @@ describe('AIProvidersService', () => {
             });
 
             it('should handle mixed success and failure calls', async () => {
-                const mockEmbedWithCache = jest.fn()
+                const mockEmbedWithCache = jest
+                    .fn()
                     .mockResolvedValueOnce([[0.1, 0.2, 0.3]])
                     .mockRejectedValueOnce(new Error('Embedding failed'))
                     .mockResolvedValueOnce([[0.7, 0.8, 0.9]]);
@@ -293,7 +310,9 @@ describe('AIProvidersService', () => {
 
                 // Make calls with mixed results
                 const result1 = await service.embed(params1);
-                await expect(service.embed(params2)).rejects.toThrow('Embedding failed');
+                await expect(service.embed(params2)).rejects.toThrow(
+                    'Embedding failed'
+                );
                 const result3 = await service.embed(params3);
 
                 // Verify successful calls work correctly
@@ -303,10 +322,6 @@ describe('AIProvidersService', () => {
                 // Verify all calls were attempted
                 expect(mockEmbedWithCache).toHaveBeenCalledTimes(3);
             });
-
-
-
-
         });
     });
 
@@ -322,42 +337,59 @@ describe('AIProvidersService', () => {
                 settings: { ...mockPlugin.settings, providers },
             } as AIProvidersPlugin;
 
-            const serviceWithProviders = new AIProvidersService(mockApp, pluginWithProviders);
+            const serviceWithProviders = new AIProvidersService(
+                mockApp,
+                pluginWithProviders
+            );
             expect(serviceWithProviders.providers).toEqual(providers);
         });
 
         it('should initialize embeddings cache', async () => {
-            const { embeddingsCache } = jest.requireMock('./cache/EmbeddingsCache');
-            
+            const { embeddingsCache } = jest.requireMock(
+                './cache/EmbeddingsCache'
+            );
+
             await service.initEmbeddingsCache();
-            
+
             expect(embeddingsCache.init).toHaveBeenCalledWith('test-app-id');
         });
 
         it('should handle cache initialization errors gracefully', async () => {
-            const { embeddingsCache } = jest.requireMock('./cache/EmbeddingsCache');
-            embeddingsCache.init.mockRejectedValue(new Error('Cache init failed'));
+            const { embeddingsCache } = jest.requireMock(
+                './cache/EmbeddingsCache'
+            );
+            embeddingsCache.init.mockRejectedValue(
+                new Error('Cache init failed')
+            );
 
             // Should not throw
-            await expect(service.initEmbeddingsCache()).resolves.toBeUndefined();
+            await expect(
+                service.initEmbeddingsCache()
+            ).resolves.toBeUndefined();
         });
     });
 
     describe('cleanup', () => {
         it('should cleanup embeddings cache', async () => {
-            const { embeddingsCache } = jest.requireMock('./cache/EmbeddingsCache');
-            
+            const { embeddingsCache } = jest.requireMock(
+                './cache/EmbeddingsCache'
+            );
+
             await service.cleanup();
-            
+
             expect(embeddingsCache.close).toHaveBeenCalled();
         });
 
         it('should handle cleanup errors gracefully', async () => {
-            const { embeddingsCache } = jest.requireMock('./cache/EmbeddingsCache');
-            embeddingsCache.close.mockRejectedValue(new Error('Cleanup failed'));
+            const { embeddingsCache } = jest.requireMock(
+                './cache/EmbeddingsCache'
+            );
+            embeddingsCache.close.mockRejectedValue(
+                new Error('Cleanup failed')
+            );
 
             // Should not throw
             await expect(service.cleanup()).resolves.toBeUndefined();
         });
     });
-}); 
+});

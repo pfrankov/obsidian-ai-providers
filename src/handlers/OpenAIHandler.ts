@@ -65,7 +65,7 @@ export class OpenAIHandler implements IAIHandler {
         return withCorsRetry(
             provider,
             operation,
-            this.settings.useNativeFetch ? fetch : electronFetch,
+            this.settings.useNativeFetch ? fetch : obsidianFetch,
             'fetchModels'
         );
     }
@@ -94,7 +94,7 @@ export class OpenAIHandler implements IAIHandler {
         return withCorsRetry(
             params.provider,
             operation,
-            this.settings.useNativeFetch ? fetch : electronFetch,
+            this.settings.useNativeFetch ? fetch : obsidianFetch,
             'embed'
         );
     }

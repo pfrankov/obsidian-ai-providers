@@ -138,54 +138,65 @@ class SampleSettingTab extends PluginSettingTab {
                 new Setting(containerEl)
                     .setName('Embed selected file')
                     .addButton(button =>
-                        button.setButtonText('Generate Embeddings').onClick(async () => {
-                            button.setDisabled(true);
-                            const resultEl = containerEl.createEl('div');
-                            
-                            try {
-                                // Get file content
-                                const file = this.app.vault.getAbstractFileByPath(this.selectedFile);
-                                if (!(file instanceof TFile)) {
-                                    throw new Error('File not found');
+                        button
+                            .setButtonText('Generate Embeddings')
+                            .onClick(async () => {
+                                button.setDisabled(true);
+                                const resultEl = containerEl.createEl('div');
+
+                                try {
+                                    // Get file content
+                                    const file =
+                                        this.app.vault.getAbstractFileByPath(
+                                            this.selectedFile
+                                        );
+                                    if (!(file instanceof TFile)) {
+                                        throw new Error('File not found');
+                                    }
+
+                                    const content =
+                                        await this.app.vault.read(file);
+
+                                    // Show file info
+                                    resultEl.createEl('p', {
+                                        text: `File: ${file.name} (${content.length} characters)`,
+                                    });
+
+                                    // Generate embeddings
+                                    const embeddings = await aiProviders.embed({
+                                        provider,
+                                        input: content,
+                                    });
+
+                                    // Show embedding result
+                                    const embeddingInfo =
+                                        containerEl.createEl('div');
+                                    embeddingInfo.createEl('p', {
+                                        text: `Generated ${embeddings.length} embedding vector(s)`,
+                                    });
+                                    embeddingInfo.createEl('p', {
+                                        text: `Vector dimension: ${embeddings[0]?.length || 0}`,
+                                    });
+                                    embeddingInfo.createEl('p', {
+                                        text: `First 5 values: [${embeddings[0]
+                                            ?.slice(0, 5)
+                                            .map(v => v.toFixed(4))
+                                            .join(', ')}...]`,
+                                    });
+
+                                    console.log(
+                                        'Generated embeddings:',
+                                        embeddings
+                                    );
+                                } catch (error) {
+                                    const errorEl = resultEl.createEl('p', {
+                                        text: `Error: ${error.message}`,
+                                    });
+                                    errorEl.addClass('mod-warning');
+                                } finally {
+                                    button.setDisabled(false);
                                 }
-                                
-                                
-                                const content = await this.app.vault.read(file);
-                                
-                                // Show file info
-                                resultEl.createEl('p', { 
-                                    text: `File: ${file.name} (${content.length} characters)` 
-                                });
-                                
-                                // Generate embeddings
-                                const embeddings = await aiProviders.embed({
-                                    provider,
-                                    input: content,
-                                });
-                                
-                                // Show embedding result
-                                const embeddingInfo = containerEl.createEl('div');
-                                embeddingInfo.createEl('p', { 
-                                    text: `Generated ${embeddings.length} embedding vector(s)` 
-                                });
-                                embeddingInfo.createEl('p', { 
-                                    text: `Vector dimension: ${embeddings[0]?.length || 0}` 
-                                });
-                                embeddingInfo.createEl('p', { 
-                                    text: `First 5 values: [${embeddings[0]?.slice(0, 5).map(v => v.toFixed(4)).join(', ')}...]`
-                                });
-                                
-                                console.log('Generated embeddings:', embeddings);
-                                
-                            } catch (error) {
-                                const errorEl = resultEl.createEl('p', { 
-                                    text: `Error: ${error.message}`
-                                });
-                                errorEl.addClass('mod-warning');
-                            } finally {
-                                button.setDisabled(false);
-                            }
-                        })
+                            })
                     );
             }
         }

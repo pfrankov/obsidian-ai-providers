@@ -22,7 +22,11 @@ const createMockChunkHandler = () => ({
     onError: jest.fn(),
 });
 
-const createMockAIResolver = (providers: any[] = [], execute = jest.fn(), embed = jest.fn()) => ({
+const createMockAIResolver = (
+    providers: any[] = [],
+    execute = jest.fn(),
+    embed = jest.fn()
+) => ({
     promise: Promise.resolve({
         providers,
         execute,
@@ -188,12 +192,14 @@ describe('AIProvidersExamplePlugin', () => {
             await settingsTab.display();
 
             // Check for embeddings heading
-            const embeddingsHeading = settingsTab.containerEl.querySelector('h3');
+            const embeddingsHeading =
+                settingsTab.containerEl.querySelector('h3');
             expect(embeddingsHeading).toBeTruthy();
             expect(embeddingsHeading?.textContent).toBe('Embeddings');
 
             // Check for file selection dropdown
-            const fileDropdown = settingsTab.containerEl.querySelectorAll('select')[1]; // Second dropdown
+            const fileDropdown =
+                settingsTab.containerEl.querySelectorAll('select')[1]; // Second dropdown
             expect(fileDropdown).toBeTruthy();
 
             // Check dropdown options (should have empty option + 3 mock files)
@@ -219,17 +225,17 @@ describe('AIProvidersExamplePlugin', () => {
 
             // Check for generate embeddings button
             const buttons = settingsTab.containerEl.querySelectorAll('button');
-            const generateButton = Array.from(buttons).find(btn => 
-                btn.textContent === 'Generate Embeddings'
+            const generateButton = Array.from(buttons).find(
+                btn => btn.textContent === 'Generate Embeddings'
             );
             expect(generateButton).toBeTruthy();
         });
 
         it('should handle embeddings generation correctly', async () => {
             const mockProvider = createMockProvider('provider1', 'Provider 1');
-            const mockEmbed = jest.fn().mockResolvedValue([
-                [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
-            ]);
+            const mockEmbed = jest
+                .fn()
+                .mockResolvedValue([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]]);
 
             (waitForAI as jest.Mock).mockResolvedValueOnce(
                 createMockAIResolver([mockProvider], jest.fn(), mockEmbed)
@@ -242,8 +248,8 @@ describe('AIProvidersExamplePlugin', () => {
 
             // Click generate embeddings button
             const buttons = settingsTab.containerEl.querySelectorAll('button');
-            const generateButton = Array.from(buttons).find(btn => 
-                btn.textContent === 'Generate Embeddings'
+            const generateButton = Array.from(buttons).find(
+                btn => btn.textContent === 'Generate Embeddings'
             ) as HTMLButtonElement;
 
             expect(generateButton).toBeTruthy();
@@ -260,9 +266,7 @@ describe('AIProvidersExamplePlugin', () => {
 
         it('should display embedding results correctly', async () => {
             const mockProvider = createMockProvider('provider1', 'Provider 1');
-            const mockEmbeddings = [
-                [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
-            ];
+            const mockEmbeddings = [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]];
             const mockEmbed = jest.fn().mockResolvedValue(mockEmbeddings);
 
             (waitForAI as jest.Mock).mockResolvedValueOnce(
@@ -276,8 +280,8 @@ describe('AIProvidersExamplePlugin', () => {
 
             // Click generate embeddings button
             const buttons = settingsTab.containerEl.querySelectorAll('button');
-            const generateButton = Array.from(buttons).find(btn => 
-                btn.textContent === 'Generate Embeddings'
+            const generateButton = Array.from(buttons).find(
+                btn => btn.textContent === 'Generate Embeddings'
             ) as HTMLButtonElement;
 
             generateButton?.click();
@@ -287,33 +291,37 @@ describe('AIProvidersExamplePlugin', () => {
 
             // Check for file info
             const paragraphs = settingsTab.containerEl.querySelectorAll('p');
-            const fileInfoP = Array.from(paragraphs).find(p => 
+            const fileInfoP = Array.from(paragraphs).find(p =>
                 p.textContent?.includes('File: Note 1')
             );
             expect(fileInfoP).toBeTruthy();
             expect(fileInfoP?.textContent).toContain('(23 characters)');
 
             // Check for embedding info
-            const vectorsP = Array.from(paragraphs).find(p => 
+            const vectorsP = Array.from(paragraphs).find(p =>
                 p.textContent?.includes('Generated 1 embedding vector(s)')
             );
             expect(vectorsP).toBeTruthy();
 
-            const dimensionP = Array.from(paragraphs).find(p => 
+            const dimensionP = Array.from(paragraphs).find(p =>
                 p.textContent?.includes('Vector dimension: 8')
             );
             expect(dimensionP).toBeTruthy();
 
-            const valuesP = Array.from(paragraphs).find(p => 
+            const valuesP = Array.from(paragraphs).find(p =>
                 p.textContent?.includes('First 5 values:')
             );
             expect(valuesP).toBeTruthy();
-            expect(valuesP?.textContent).toContain('[0.1000, 0.2000, 0.3000, 0.4000, 0.5000...]');
+            expect(valuesP?.textContent).toContain(
+                '[0.1000, 0.2000, 0.3000, 0.4000, 0.5000...]'
+            );
         });
 
         it('should handle embedding errors correctly', async () => {
             const mockProvider = createMockProvider('provider1', 'Provider 1');
-            const mockEmbed = jest.fn().mockRejectedValue(new Error('Embedding failed'));
+            const mockEmbed = jest
+                .fn()
+                .mockRejectedValue(new Error('Embedding failed'));
 
             (waitForAI as jest.Mock).mockResolvedValueOnce(
                 createMockAIResolver([mockProvider], jest.fn(), mockEmbed)
@@ -326,8 +334,8 @@ describe('AIProvidersExamplePlugin', () => {
 
             // Click generate embeddings button
             const buttons = settingsTab.containerEl.querySelectorAll('button');
-            const generateButton = Array.from(buttons).find(btn => 
-                btn.textContent === 'Generate Embeddings'
+            const generateButton = Array.from(buttons).find(
+                btn => btn.textContent === 'Generate Embeddings'
             ) as HTMLButtonElement;
 
             generateButton?.click();
@@ -337,7 +345,7 @@ describe('AIProvidersExamplePlugin', () => {
 
             // Check for error message
             const paragraphs = settingsTab.containerEl.querySelectorAll('p');
-            const errorP = Array.from(paragraphs).find(p => 
+            const errorP = Array.from(paragraphs).find(p =>
                 p.textContent?.includes('Error: Embedding failed')
             );
             expect(errorP).toBeTruthy();
@@ -358,8 +366,8 @@ describe('AIProvidersExamplePlugin', () => {
 
             // Click generate embeddings button
             const buttons = settingsTab.containerEl.querySelectorAll('button');
-            const generateButton = Array.from(buttons).find(btn => 
-                btn.textContent === 'Generate Embeddings'
+            const generateButton = Array.from(buttons).find(
+                btn => btn.textContent === 'Generate Embeddings'
             ) as HTMLButtonElement;
 
             generateButton?.click();
@@ -369,7 +377,7 @@ describe('AIProvidersExamplePlugin', () => {
 
             // Check for error message
             const paragraphs = settingsTab.containerEl.querySelectorAll('p');
-            const errorP = Array.from(paragraphs).find(p => 
+            const errorP = Array.from(paragraphs).find(p =>
                 p.textContent?.includes('Error: File not found')
             );
             expect(errorP).toBeTruthy();
