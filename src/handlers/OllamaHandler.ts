@@ -51,9 +51,31 @@ export class OllamaHandler implements IAIHandler {
             actualFetch = this.fetchSelector.getFetchFunction(provider);
         }
 
+        // --- Added: If apiKey exists, wrap fetch to add Authorization header ---
+        let wrappedFetch = actualFetch;
+        if (provider.apiKey) {
+            const originalFetch = actualFetch;
+            wrappedFetch = (input: RequestInfo, init: RequestInit = {}) => {
+                // Clone headers to avoid mutating external objects
+                const headers = new Headers(init.headers || {});
+                headers.set('Authorization', `Bearer ${provider.apiKey}`);
+                // electronFetch/obsidianFetch only accept string as url
+                let url: string;
+                if (typeof input === 'string') {
+                    url = input;
+                } else if (input instanceof Request) {
+                    url = input.url;
+                } else {
+                    url = String(input);
+                }
+                return originalFetch(url, { ...init, headers });
+            };
+        }
+        // --- end ---
+
         const client = new Ollama({
             host: provider.url,
-            fetch: actualFetch as any,
+            fetch: wrappedFetch as any,
         });
 
         return client;
