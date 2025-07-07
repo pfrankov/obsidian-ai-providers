@@ -201,6 +201,18 @@ export class ProviderFormModal extends Modal {
                     .onChange(value => (this.provider.name = value))
             );
 
+        // Add OpenWebUI flag for Ollama providers
+        if (this.provider.type === 'ollama') {
+            new Setting(contentEl)
+                .setName('OpenWebUI compatibility')
+                .setDesc('Enable this if your Ollama endpoint is hosted by OpenWebUI (for model listing and compatibility).')
+                .addToggle(toggle =>
+                    toggle
+                        .setValue(!!this.provider.isOpenWebUI)
+                        .onChange(value => (this.provider.isOpenWebUI = value))
+                );
+        }
+
         new Setting(contentEl)
             .setName(I18n.t('settings.providerUrl'))
             .setDesc(I18n.t('settings.providerUrlDesc'))
