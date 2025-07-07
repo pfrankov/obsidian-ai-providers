@@ -13,6 +13,7 @@ export interface IAIProvider {
     type: AIProviderType;
     model?: string;
     availableModels?: string[];
+    isOpenWebUI?: boolean;
 }
 
 export interface IChunkHandler {
@@ -99,7 +100,7 @@ export interface IAIProvidersPluginSettings {
     useNativeFetch?: boolean;
 }
 
-export interface ExtendedApp extends App { 
+export interface ExtendedApp extends App {
     aiProviders?: IAIProvidersService;
     plugins?: {
         enablePlugin: (id: string) => Promise<void>;
@@ -121,4 +122,4 @@ export declare function initAI(app: ExtendedApp, plugin: Plugin, onDone: () => P
 export declare function waitForAI(): Promise<{
     promise: Promise<IAIProvidersService>;
     cancel: () => void;
-}>; 
+}>;

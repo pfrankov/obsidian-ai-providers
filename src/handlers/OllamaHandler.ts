@@ -88,6 +88,11 @@ export class OllamaHandler implements IAIHandler {
         };
     }
 
+    private isOpenWebUIProvider(provider: IAIProvider): boolean {
+        // Prefer explicit flag, fallback to URL heuristic for backward compatibility
+        return provider.isOpenWebUI === true || provider.url?.toLowerCase().includes('openwebui') === true;
+    }
+
     private async getCachedModelInfo(
         provider: IAIProvider,
         modelName: string
@@ -103,7 +108,11 @@ export class OllamaHandler implements IAIHandler {
             this.settings.useNativeFetch ? fetch : obsidianFetch
         );
         try {
-            const response = await ollama.show({ model: modelName });
+            // Use 'name' for OpenWebUI, 'model' otherwise
+            const showArg = this.isOpenWebUIProvider(provider)
+                ? ({ name: modelName } as any)
+                : { model: modelName };
+            const response = await ollama.show(showArg);
             const modelInfo = this.getDefaultModelInfo();
 
             const contextLengthEntry = Object.entries(response.model_info).find(
