@@ -9,6 +9,7 @@ export async function electronFetch(
 ): Promise<Response> {
     delete (options.headers as Record<string, string>)['content-length'];
     const params: { controller?: AbortController } = {};
+    
     if (this && 'controller' in this) {
         params.controller = this.controller;
     }

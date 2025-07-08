@@ -117,10 +117,9 @@ describe('OpenAI CORS Retry Tests', () => {
         handler = createHandler();
         mockProvider = createMockProvider();
 
-        // Clear CORS manager state
+        // Clear FetchSelector state
         jest.clearAllMocks();
-        const { corsRetryManager } = require('../utils/corsRetryManager');
-        corsRetryManager.clearAll();
+        (handler as any).fetchSelector.clearAll();
     });
 
     it('should retry fetchModels with obsidianFetch on CORS error', async () => {
@@ -216,12 +215,11 @@ describe('OpenAI CORS Retry Tests', () => {
     });
 
     it('should not retry if provider is already marked as CORS-blocked', async () => {
-        const { corsRetryManager } = require('../utils/corsRetryManager');
         const mockClient = createMockClient();
         const corsError = new Error('CORS policy blocked');
 
-        // Mark provider as CORS-blocked first
-        corsRetryManager.markProviderAsCorsBlocked(mockProvider);
+        // Mark provider as CORS-blocked first through FetchSelector
+        (handler as any).fetchSelector.markProviderAsCorsBlocked(mockProvider);
 
         mockClient.models!.list.mockRejectedValue(corsError);
         jest.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
@@ -252,21 +250,21 @@ describe('OpenAI CORS Retry Tests', () => {
     });
 
     it('should use correct fetch based on settings and CORS status', () => {
-        const { corsRetryManager } = require('../utils/corsRetryManager');
+        const fetchSelector = (handler as any).fetchSelector;
 
         // Clear any existing CORS state
-        corsRetryManager.clearAll();
+        fetchSelector.clearAll();
 
-        // Test that CORS manager properly tracks provider state
-        expect(corsRetryManager.shouldUseFallback(mockProvider)).toBe(false);
+        // Test that FetchSelector properly tracks provider state
+        expect(fetchSelector.shouldUseFallback(mockProvider)).toBe(false);
 
         // Mark provider as CORS-blocked
-        corsRetryManager.markProviderAsCorsBlocked(mockProvider);
-        expect(corsRetryManager.shouldUseFallback(mockProvider)).toBe(true);
+        fetchSelector.markProviderAsCorsBlocked(mockProvider);
+        expect(fetchSelector.shouldUseFallback(mockProvider)).toBe(true);
 
         // Clear state for other tests
-        corsRetryManager.clearAll();
-        expect(corsRetryManager.shouldUseFallback(mockProvider)).toBe(false);
+        fetchSelector.clearAll();
+        expect(fetchSelector.shouldUseFallback(mockProvider)).toBe(false);
     });
 });
 
@@ -287,7 +285,7 @@ describe('OpenAI Fetch Usage Tests', () => {
 
     it('should never use electronFetch for fetchModels', async () => {
         const mockClient = createMockClient();
-        const { electronFetch } = require('../utils/electronFetch');
+        const { electronFetch } = await import('../utils/electronFetch');
 
         // Create a custom spy for getClient to track fetch parameter
         const getClientSpy = jest
@@ -313,7 +311,7 @@ describe('OpenAI Fetch Usage Tests', () => {
 
     it('should never use electronFetch for embed', async () => {
         const mockClient = createMockClient();
-        const { electronFetch } = require('../utils/electronFetch');
+        const { electronFetch } = await import('../utils/electronFetch');
         (mockClient as any).embeddings = {
             create: jest.fn().mockResolvedValue({
                 data: [{ embedding: [0.1, 0.2, 0.3], index: 0 }],

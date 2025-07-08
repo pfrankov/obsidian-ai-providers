@@ -23,11 +23,13 @@ Obsidian plugin hub (v1.4.0) for configuring AI providers in one centralized pla
 - Modules → monorepo: main plugin, SDK package (v1.1.1), example plugin
 - Data flow → Plugin → AIProvidersService → Handlers → AI APIs + cache
 - Integrations → OpenAI, Ollama, Gemini, OpenRouter, LM Studio, Groq APIs
+- Fetch logic → FetchSelector: unified platform-aware fetch selection with integrated CORS retry
 
 ## ➤ Environment
 - Runtime → TypeScript 4.7.4, Node 16+, Obsidian API, desktop/mobile
 - Services → IndexedDB embeddings cache, i18n (en/de/ru/zh)
 - Build/CI → esbuild, jest+jsdom tests, npm workspaces, prettier
+- Fetch strategies → FetchSelector manages: electronFetch (desktop-only), obsidianFetch (fallback), native fetch
 
 ## ➤ Interfaces
 - REST → Provider-specific APIs (OpenAI/Ollama format compatibility)
@@ -39,6 +41,10 @@ Obsidian plugin hub (v1.4.0) for configuring AI providers in one centralized pla
 - Provider configs validated before save (URL format, unique names)
 - Embeddings cache scoped per vault with unique database names
 - API keys stored securely in Obsidian settings, not in cache
+- Mobile platform MUST NOT use electronFetch (remote.net.request unavailable)
+- FetchSelector enforces correct fetch implementation per platform/operation
+- Desktop uses electronFetch by default; mobile uses obsidianFetch/native fetch
+- CORS errors trigger automatic fallback to obsidianFetch for future requests via FetchSelector
 
 ## ➤ Open Issues / TODO
 - Add Anthropic provider support

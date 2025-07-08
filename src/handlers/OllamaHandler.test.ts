@@ -381,10 +381,9 @@ describe('Ollama CORS Retry Tests', () => {
         handler = createHandler();
         mockProvider = createMockProvider();
 
-        // Clear CORS manager state
+        // Clear FetchSelector state
         jest.clearAllMocks();
-        const { corsRetryManager } = require('../utils/corsRetryManager');
-        corsRetryManager.clearAll();
+        (handler as any).fetchSelector.clearAll();
     });
 
     it('should retry fetchModels with obsidianFetch on CORS error', async () => {
@@ -440,7 +439,7 @@ describe('Ollama Fetch Usage Tests', () => {
 
     it('should never use electronFetch for fetchModels', async () => {
         const mockClient = createMockClient();
-        const { electronFetch } = require('../utils/electronFetch');
+        const { electronFetch } = await import('../utils/electronFetch');
 
         // Create a custom spy for getClient to track fetch parameter
         const getClientSpy = jest
@@ -466,7 +465,7 @@ describe('Ollama Fetch Usage Tests', () => {
 
     it('should never use electronFetch for embed', async () => {
         const mockClient = createMockClient();
-        const { electronFetch } = require('../utils/electronFetch');
+        const { electronFetch } = await import('../utils/electronFetch');
         (mockClient as any).embed = jest.fn().mockResolvedValue({
             embeddings: [[0.1, 0.2, 0.3]],
         });

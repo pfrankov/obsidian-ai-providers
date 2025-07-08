@@ -10,7 +10,7 @@ import { Ollama } from 'ollama';
 import { electronFetch } from '../utils/electronFetch';
 import { obsidianFetch } from '../utils/obsidianFetch';
 import { logger } from '../utils/logger';
-import { corsRetryManager, withCorsRetry } from '../utils/corsRetryManager';
+import { FetchSelector } from '../utils/FetchSelector';
 
 // Add interface for model cache
 interface ModelInfo {
@@ -25,9 +25,11 @@ const CONTEXT_BUFFER_MULTIPLIER = 1.2; // 20% buffer
 
 export class OllamaHandler implements IAIHandler {
     private modelInfoCache: Map<string, ModelInfo>;
+    private fetchSelector: FetchSelector;
 
     constructor(private settings: IAIProvidersPluginSettings) {
         this.modelInfoCache = new Map();
+        this.fetchSelector = new FetchSelector(settings);
     }
 
     dispose() {
@@ -41,21 +43,12 @@ export class OllamaHandler implements IAIHandler {
         // Determine which fetch to use based on CORS status and settings
         let actualFetch: typeof electronFetch | typeof obsidianFetch;
 
-        if (corsRetryManager.shouldUseFallback(provider)) {
-            // Force obsidianFetch for CORS-blocked providers (highest priority)
-            actualFetch = obsidianFetch;
-            logger.debug(
-                'Using obsidianFetch for CORS-blocked provider:',
-                provider.name
-            );
-        } else if (fetch) {
+        if (fetch) {
             // Use provided fetch function
             actualFetch = fetch;
         } else {
-            // Use default based on settings - electronFetch if not using native
-            actualFetch = this.settings.useNativeFetch
-                ? globalThis.fetch
-                : electronFetch;
+            // Use FetchSelector to determine the appropriate fetch function
+            actualFetch = this.fetchSelector.getFetchFunction(provider);
         }
 
         const client = new Ollama({
@@ -137,10 +130,9 @@ export class OllamaHandler implements IAIHandler {
             return models.models.map(model => model.name);
         };
 
-        return withCorsRetry(
+        return this.fetchSelector.executeWithCorsRetry(
             provider,
             operation,
-            this.settings.useNativeFetch ? fetch : obsidianFetch,
             'fetchModels'
         );
     }
@@ -434,10 +426,9 @@ export class OllamaHandler implements IAIHandler {
             return embeddings;
         };
 
-        return withCorsRetry(
+        return this.fetchSelector.executeWithCorsRetry(
             params.provider,
             operation,
-            this.settings.useNativeFetch ? fetch : obsidianFetch,
             'embed'
         );
     }
@@ -468,10 +459,9 @@ export class OllamaHandler implements IAIHandler {
                     );
                 };
 
-                await withCorsRetry(
+                await this.fetchSelector.executeWithCorsRetry(
                     params.provider,
                     operation,
-                    this.settings.useNativeFetch ? fetch : electronFetch,
                     'execute'
                 );
             } catch (error) {

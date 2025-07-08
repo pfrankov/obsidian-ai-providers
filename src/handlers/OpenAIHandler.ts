@@ -10,10 +10,14 @@ import { electronFetch } from '../utils/electronFetch';
 import OpenAI from 'openai';
 import { obsidianFetch } from '../utils/obsidianFetch';
 import { logger } from '../utils/logger';
-import { corsRetryManager, withCorsRetry } from '../utils/corsRetryManager';
+import { FetchSelector } from '../utils/FetchSelector';
 
 export class OpenAIHandler implements IAIHandler {
-    constructor(private settings: IAIProvidersPluginSettings) {}
+    private fetchSelector: FetchSelector;
+
+    constructor(private settings: IAIProvidersPluginSettings) {
+        this.fetchSelector = new FetchSelector(settings);
+    }
 
     private getClient(
         provider: IAIProvider,
@@ -22,21 +26,12 @@ export class OpenAIHandler implements IAIHandler {
         // Determine which fetch to use based on CORS status and settings
         let actualFetch: typeof electronFetch | typeof obsidianFetch;
 
-        if (corsRetryManager.shouldUseFallback(provider)) {
-            // Force obsidianFetch for CORS-blocked providers (highest priority)
-            actualFetch = obsidianFetch;
-            logger.debug(
-                'Using obsidianFetch for CORS-blocked provider:',
-                provider.name
-            );
-        } else if (fetch) {
+        if (fetch) {
             // Use provided fetch function
             actualFetch = fetch;
         } else {
-            // Use default based on settings - electronFetch if not using native
-            actualFetch = this.settings.useNativeFetch
-                ? globalThis.fetch
-                : electronFetch;
+            // Use FetchSelector to determine the appropriate fetch function
+            actualFetch = this.fetchSelector.getFetchFunction(provider);
         }
 
         const openai = new OpenAI({
@@ -62,10 +57,9 @@ export class OpenAIHandler implements IAIHandler {
             return response.data.map(model => model.id);
         };
 
-        return withCorsRetry(
+        return this.fetchSelector.executeWithCorsRetry(
             provider,
             operation,
-            this.settings.useNativeFetch ? fetch : obsidianFetch,
             'fetchModels'
         );
     }
@@ -91,10 +85,9 @@ export class OpenAIHandler implements IAIHandler {
             return response.data.map(item => item.embedding);
         };
 
-        return withCorsRetry(
+        return this.fetchSelector.executeWithCorsRetry(
             params.provider,
             operation,
-            this.settings.useNativeFetch ? fetch : obsidianFetch,
             'embed'
         );
     }
@@ -240,10 +233,9 @@ export class OpenAIHandler implements IAIHandler {
                     );
                 };
 
-                await withCorsRetry(
+                await this.fetchSelector.executeWithCorsRetry(
                     params.provider,
                     operation,
-                    this.settings.useNativeFetch ? fetch : electronFetch,
                     'execute'
                 );
             } catch (error) {
