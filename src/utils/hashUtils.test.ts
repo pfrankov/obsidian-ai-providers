@@ -1,4 +1,8 @@
-import { createSecureHash, createDatabaseHash, createCacheKeyHash } from './hashUtils';
+import {
+    createSecureHash,
+    createDatabaseHash,
+    createCacheKeyHash,
+} from './hashUtils';
 
 // Mock crypto globally for these tests
 const mockCrypto = {
@@ -62,15 +66,21 @@ describe('hashUtils', () => {
             const originalCrypto = global.crypto;
             (global as any).crypto = undefined;
 
-            await expect(createSecureHash('test')).rejects.toThrow('crypto.subtle is not available');
+            await expect(createSecureHash('test')).rejects.toThrow(
+                'crypto.subtle is not available'
+            );
 
             global.crypto = originalCrypto;
         });
 
         it('should handle digest errors', async () => {
-            mockCrypto.subtle.digest.mockRejectedValue(new Error('Digest failed'));
-            
-            await expect(createSecureHash('test')).rejects.toThrow('Failed to generate secure hash: Digest failed');
+            mockCrypto.subtle.digest.mockRejectedValue(
+                new Error('Digest failed')
+            );
+
+            await expect(createSecureHash('test')).rejects.toThrow(
+                'Failed to generate secure hash: Digest failed'
+            );
         });
     });
 
@@ -81,6 +91,6 @@ describe('hashUtils', () => {
 
             expect(dbHash).toHaveLength(16);
             expect(cacheHash).toHaveLength(20);
-                 });
-     });
-}); 
+        });
+    });
+});

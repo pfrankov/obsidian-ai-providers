@@ -385,11 +385,17 @@ describe('AIProvidersService', () => {
                 input: 'test content',
             };
 
-            const key1 = await (service as any).generateCacheKey(params, ['test content']);
-            const key2 = await (service as any).generateCacheKey(params, ['test content']);
+            const key1 = await (service as any).generateCacheKey(params, [
+                'test content',
+            ]);
+            const key2 = await (service as any).generateCacheKey(params, [
+                'test content',
+            ]);
 
             expect(key1).toBe(key2);
-            expect(key1).toBe('embed:test-provider:gpt-3.5-turbo:2a2a2a2a2a2a2a2a2a2a');
+            expect(key1).toBe(
+                'embed:test-provider:gpt-3.5-turbo:2a2a2a2a2a2a2a2a2a2a'
+            );
         });
 
         it('should include provider info in cache key', async () => {
@@ -411,8 +417,12 @@ describe('AIProvidersService', () => {
                 input: 'test content',
             };
 
-            const key = await (service as any).generateCacheKey(params, ['test content']);
-            expect(key).toBe('embed:different-provider:different-model:ffffffffffffffffffff');
+            const key = await (service as any).generateCacheKey(params, [
+                'test content',
+            ]);
+            expect(key).toBe(
+                'embed:different-provider:different-model:ffffffffffffffffffff'
+            );
         });
     });
 

@@ -1,10 +1,10 @@
 {
-	"id": "ai-providers",
-	"name": "AI Providers",
-	"version": "1.4.0",
-	"minAppVersion": "0.15.0",
-	"description": "A hub for setting AI providers (OpenAI-like, Ollama and more) in one place.",
-	"author": "Pavel Frankov",
-	"authorUrl": "https://github.com/pfrankov",
-	"isDesktopOnly": false
+    "id": "ai-providers",
+    "name": "AI Providers",
+    "version": "1.4.0",
+    "minAppVersion": "0.15.0",
+    "description": "A hub for setting AI providers (OpenAI-like, Ollama and more) in one place.",
+    "author": "Pavel Frankov",
+    "authorUrl": "https://github.com/pfrankov",
+    "isDesktopOnly": false
 }

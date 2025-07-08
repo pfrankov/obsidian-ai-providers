@@ -1,10 +1,16 @@
-import { IAIProvider, IAIProvidersPluginSettings } from '@obsidian-ai-providers/sdk';
+import {
+    IAIProvider,
+    IAIProvidersPluginSettings,
+} from '@obsidian-ai-providers/sdk';
 import { electronFetch } from './electronFetch';
 import { obsidianFetch } from './obsidianFetch';
 import { Platform } from 'obsidian';
 import { logger } from './logger';
 
-export type FetchFunction = typeof electronFetch | typeof obsidianFetch | typeof fetch;
+export type FetchFunction =
+    | typeof electronFetch
+    | typeof obsidianFetch
+    | typeof fetch;
 
 /**
  * CORS error patterns for detection
@@ -65,13 +71,19 @@ export class FetchSelector {
 
         // Priority 1: Use obsidianFetch for CORS-blocked providers
         if (this.shouldUseFallback(provider)) {
-            logger.debug('Using obsidianFetch for CORS-blocked provider:', providerName);
+            logger.debug(
+                'Using obsidianFetch for CORS-blocked provider:',
+                providerName
+            );
             return obsidianFetch;
         }
 
         // Priority 2: Use obsidianFetch on mobile platform (electronFetch not available)
         if (this.isMobilePlatform()) {
-            logger.debug('Using obsidianFetch for mobile platform:', providerName);
+            logger.debug(
+                'Using obsidianFetch for mobile platform:',
+                providerName
+            );
             return obsidianFetch;
         }
 
@@ -113,7 +125,9 @@ export class FetchSelector {
         operation: (fetchImpl: FetchFunction) => Promise<T>,
         operationName: string
     ): Promise<T> {
-        logger.debug(`${operationName}: Provider already marked for CORS, using obsidianFetch directly.`);
+        logger.debug(
+            `${operationName}: Provider already marked for CORS, using obsidianFetch directly.`
+        );
         return operation(obsidianFetch);
     }
 
@@ -125,15 +139,24 @@ export class FetchSelector {
         operation: (fetchImpl: FetchFunction) => Promise<T>,
         operationName: string
     ): Promise<T> {
-        const defaultFetch = this.getDefaultFetchForRetry(provider, operationName);
+        const defaultFetch = this.getDefaultFetchForRetry(
+            provider,
+            operationName
+        );
 
         try {
             const result = await operation(defaultFetch);
-            logger.debug(`${operationName} completed successfully with default fetch.`);
+            logger.debug(
+                `${operationName} completed successfully with default fetch.`
+            );
             return result;
         } catch (error) {
             if (this.isCorsError(error as Error)) {
-                return this.retryWithObsidianFetch(provider, operation, operationName);
+                return this.retryWithObsidianFetch(
+                    provider,
+                    operation,
+                    operationName
+                );
             }
             throw error;
         }
@@ -147,15 +170,22 @@ export class FetchSelector {
         operation: (fetchImpl: FetchFunction) => Promise<T>,
         operationName: string
     ): Promise<T> {
-        logger.debug(`CORS error detected in ${operationName}, retrying with obsidianFetch`);
+        logger.debug(
+            `CORS error detected in ${operationName}, retrying with obsidianFetch`
+        );
         this.markProviderAsCorsBlocked(provider);
 
         try {
             const result = await operation(obsidianFetch);
-            logger.debug(`${operationName} succeeded on retry with obsidianFetch.`);
+            logger.debug(
+                `${operationName} succeeded on retry with obsidianFetch.`
+            );
             return result;
         } catch (retryError) {
-            logger.error(`${operationName} failed on retry with obsidianFetch:`, retryError);
+            logger.error(
+                `${operationName} failed on retry with obsidianFetch:`,
+                retryError
+            );
             throw retryError;
         }
     }
@@ -163,23 +193,35 @@ export class FetchSelector {
     /**
      * Get the default fetch function for retry logic (ignores CORS blocking and mobile platform)
      */
-    private getDefaultFetchForRetry(provider: IAIProvider, operationName: string): FetchFunction {
+    private getDefaultFetchForRetry(
+        provider: IAIProvider,
+        operationName: string
+    ): FetchFunction {
         const providerName = provider.name;
 
         // Use native fetch if enabled in settings
         if (this.shouldUseNativeFetch()) {
-            logger.debug(`Using native fetch for retry logic (${operationName}):`, providerName);
+            logger.debug(
+                `Using native fetch for retry logic (${operationName}):`,
+                providerName
+            );
             return globalThis.fetch;
         }
 
         // For non-execute operations, use obsidianFetch to avoid CORS issues
         if (operationName !== 'execute') {
-            logger.debug(`Using obsidianFetch for retry logic (${operationName}):`, providerName);
+            logger.debug(
+                `Using obsidianFetch for retry logic (${operationName}):`,
+                providerName
+            );
             return obsidianFetch;
         }
 
         // Default to electronFetch for execute operations
-        logger.debug(`Using electronFetch for retry logic (${operationName}):`, providerName);
+        logger.debug(
+            `Using electronFetch for retry logic (${operationName}):`,
+            providerName
+        );
         return electronFetch;
     }
 
@@ -223,9 +265,13 @@ export class FetchSelector {
     /**
      * Check if error message or name matches CORS patterns
      */
-    private matchesCorsPattern(errorMessage: string, errorName: string): boolean {
-        return CORS_ERROR_PATTERNS.some(pattern =>
-            errorMessage.includes(pattern) || errorName.includes(pattern)
+    private matchesCorsPattern(
+        errorMessage: string,
+        errorName: string
+    ): boolean {
+        return CORS_ERROR_PATTERNS.some(
+            pattern =>
+                errorMessage.includes(pattern) || errorName.includes(pattern)
         );
     }
 
@@ -243,4 +289,4 @@ export class FetchSelector {
     getBlockedProviderCount(): number {
         return this.corsBlockedProviders.size;
     }
-} 
+}

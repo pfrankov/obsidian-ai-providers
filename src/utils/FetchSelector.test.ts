@@ -1,5 +1,8 @@
 import { FetchSelector } from './FetchSelector';
-import { IAIProvider, IAIProvidersPluginSettings } from '@obsidian-ai-providers/sdk';
+import {
+    IAIProvider,
+    IAIProvidersPluginSettings,
+} from '@obsidian-ai-providers/sdk';
 import { electronFetch } from './electronFetch';
 import { obsidianFetch } from './obsidianFetch';
 import { Platform } from 'obsidian';
@@ -37,11 +40,15 @@ describe('FetchSelector', () => {
             _version: 1,
         } as IAIProvidersPluginSettings;
 
-        mockElectronFetch = electronFetch as jest.MockedFunction<typeof electronFetch>;
-        mockObsidianFetch = obsidianFetch as jest.MockedFunction<typeof obsidianFetch>;
+        mockElectronFetch = electronFetch as jest.MockedFunction<
+            typeof electronFetch
+        >;
+        mockObsidianFetch = obsidianFetch as jest.MockedFunction<
+            typeof obsidianFetch
+        >;
 
         fetchSelector = new FetchSelector(mockSettings);
-        
+
         // Clear mocks
         mockElectronFetch.mockClear();
         mockObsidianFetch.mockClear();
@@ -62,7 +69,7 @@ describe('FetchSelector', () => {
         it('should return obsidianFetch for CORS-blocked providers', () => {
             // Mark provider as CORS blocked
             fetchSelector.markProviderAsCorsBlocked(mockProvider);
-            
+
             const fetchFn = fetchSelector.getFetchFunction(mockProvider);
             expect(fetchFn).toBe(obsidianFetch);
         });
@@ -70,7 +77,7 @@ describe('FetchSelector', () => {
         it('should return obsidianFetch on mobile platform regardless of settings', () => {
             (Platform as any).isMobileApp = true;
             mockSettings.useNativeFetch = false;
-            
+
             const fetchFn = fetchSelector.getFetchFunction(mockProvider);
             expect(fetchFn).toBe(obsidianFetch);
         });
@@ -78,7 +85,7 @@ describe('FetchSelector', () => {
         it('should return obsidianFetch on mobile even when useNativeFetch is true', () => {
             (Platform as any).isMobileApp = true;
             mockSettings.useNativeFetch = true;
-            
+
             const fetchFn = fetchSelector.getFetchFunction(mockProvider);
             expect(fetchFn).toBe(obsidianFetch);
         });
@@ -87,13 +94,13 @@ describe('FetchSelector', () => {
     describe('executeWithCorsRetry', () => {
         it('should execute operation successfully with default fetch', async () => {
             const mockOperation = jest.fn().mockResolvedValue('success');
-            
+
             const result = await fetchSelector.executeWithCorsRetry(
                 mockProvider,
                 mockOperation,
                 'test-operation'
             );
-            
+
             expect(result).toBe('success');
             expect(mockOperation).toHaveBeenCalledWith(obsidianFetch);
             expect(mockOperation).toHaveBeenCalledTimes(1);
@@ -105,13 +112,13 @@ describe('FetchSelector', () => {
                 .fn()
                 .mockRejectedValueOnce(corsError)
                 .mockResolvedValueOnce('retry-success');
-            
+
             const result = await fetchSelector.executeWithCorsRetry(
                 mockProvider,
                 mockOperation,
                 'test-operation'
             );
-            
+
             expect(result).toBe('retry-success');
             expect(mockOperation).toHaveBeenCalledTimes(2);
             expect(mockOperation).toHaveBeenNthCalledWith(1, obsidianFetch);
@@ -122,7 +129,7 @@ describe('FetchSelector', () => {
         it('should not retry on non-CORS error', async () => {
             const networkError = new Error('Network timeout');
             const mockOperation = jest.fn().mockRejectedValue(networkError);
-            
+
             await expect(
                 fetchSelector.executeWithCorsRetry(
                     mockProvider,
@@ -130,7 +137,7 @@ describe('FetchSelector', () => {
                     'test-operation'
                 )
             ).rejects.toThrow('Network timeout');
-            
+
             expect(mockOperation).toHaveBeenCalledWith(obsidianFetch);
             expect(mockOperation).toHaveBeenCalledTimes(1);
             expect(fetchSelector.shouldUseFallback(mockProvider)).toBe(false);
@@ -139,13 +146,13 @@ describe('FetchSelector', () => {
         it('should use obsidianFetch directly for already blocked providers', async () => {
             fetchSelector.markProviderAsCorsBlocked(mockProvider);
             const mockOperation = jest.fn().mockResolvedValue('success');
-            
+
             const result = await fetchSelector.executeWithCorsRetry(
                 mockProvider,
                 mockOperation,
                 'test-operation'
             );
-            
+
             expect(result).toBe('success');
             expect(mockOperation).toHaveBeenCalledWith(obsidianFetch);
             expect(mockOperation).toHaveBeenCalledTimes(1);
@@ -158,7 +165,7 @@ describe('FetchSelector', () => {
                 .fn()
                 .mockRejectedValueOnce(corsError)
                 .mockRejectedValueOnce(retryError);
-            
+
             await expect(
                 fetchSelector.executeWithCorsRetry(
                     mockProvider,
@@ -166,7 +173,7 @@ describe('FetchSelector', () => {
                     'test-operation'
                 )
             ).rejects.toThrow('Retry failed');
-            
+
             expect(mockOperation).toHaveBeenCalledTimes(2);
             expect(fetchSelector.shouldUseFallback(mockProvider)).toBe(true);
         });
@@ -174,13 +181,13 @@ describe('FetchSelector', () => {
         it('should use native fetch when useNativeFetch is true', async () => {
             mockSettings.useNativeFetch = true;
             const mockOperation = jest.fn().mockResolvedValue('success');
-            
+
             const result = await fetchSelector.executeWithCorsRetry(
                 mockProvider,
                 mockOperation,
                 'test-operation'
             );
-            
+
             expect(result).toBe('success');
             expect(mockOperation).toHaveBeenCalledWith(globalThis.fetch);
             expect(mockOperation).toHaveBeenCalledTimes(1);
@@ -188,13 +195,13 @@ describe('FetchSelector', () => {
 
         it('should use electronFetch for execute operations', async () => {
             const mockOperation = jest.fn().mockResolvedValue('success');
-            
+
             const result = await fetchSelector.executeWithCorsRetry(
                 mockProvider,
                 mockOperation,
                 'execute'
             );
-            
+
             expect(result).toBe('success');
             expect(mockOperation).toHaveBeenCalledWith(electronFetch);
             expect(mockOperation).toHaveBeenCalledTimes(1);
@@ -202,13 +209,13 @@ describe('FetchSelector', () => {
 
         it('should use obsidianFetch for fetchModels operations', async () => {
             const mockOperation = jest.fn().mockResolvedValue('success');
-            
+
             const result = await fetchSelector.executeWithCorsRetry(
                 mockProvider,
                 mockOperation,
                 'fetchModels'
             );
-            
+
             expect(result).toBe('success');
             expect(mockOperation).toHaveBeenCalledWith(obsidianFetch);
             expect(mockOperation).toHaveBeenCalledTimes(1);
@@ -216,13 +223,13 @@ describe('FetchSelector', () => {
 
         it('should use obsidianFetch for embed operations', async () => {
             const mockOperation = jest.fn().mockResolvedValue('success');
-            
+
             const result = await fetchSelector.executeWithCorsRetry(
                 mockProvider,
                 mockOperation,
                 'embed'
             );
-            
+
             expect(result).toBe('success');
             expect(mockOperation).toHaveBeenCalledWith(obsidianFetch);
             expect(mockOperation).toHaveBeenCalledTimes(1);
@@ -289,8 +296,14 @@ describe('FetchSelector', () => {
         });
 
         it('should handle different providers separately', () => {
-            const provider1 = { ...mockProvider, url: 'https://api1.example.com' };
-            const provider2 = { ...mockProvider, url: 'https://api2.example.com' };
+            const provider1 = {
+                ...mockProvider,
+                url: 'https://api1.example.com',
+            };
+            const provider2 = {
+                ...mockProvider,
+                url: 'https://api2.example.com',
+            };
 
             fetchSelector.markProviderAsCorsBlocked(provider1);
 
@@ -318,8 +331,14 @@ describe('FetchSelector', () => {
         });
 
         it('should clear all blocked providers', () => {
-            const provider1 = { ...mockProvider, url: 'https://api1.example.com' };
-            const provider2 = { ...mockProvider, url: 'https://api2.example.com' };
+            const provider1 = {
+                ...mockProvider,
+                url: 'https://api1.example.com',
+            };
+            const provider2 = {
+                ...mockProvider,
+                url: 'https://api2.example.com',
+            };
 
             fetchSelector.markProviderAsCorsBlocked(provider1);
             fetchSelector.markProviderAsCorsBlocked(provider2);
@@ -337,22 +356,26 @@ describe('FetchSelector', () => {
             const providerWithoutUrl = { ...mockProvider, url: undefined };
 
             fetchSelector.markProviderAsCorsBlocked(providerWithoutUrl);
-            expect(fetchSelector.shouldUseFallback(providerWithoutUrl)).toBe(true);
+            expect(fetchSelector.shouldUseFallback(providerWithoutUrl)).toBe(
+                true
+            );
         });
 
         it('should handle provider with empty URL', () => {
             const providerWithEmptyUrl = { ...mockProvider, url: '' };
 
             fetchSelector.markProviderAsCorsBlocked(providerWithEmptyUrl);
-            expect(fetchSelector.shouldUseFallback(providerWithEmptyUrl)).toBe(true);
+            expect(fetchSelector.shouldUseFallback(providerWithEmptyUrl)).toBe(
+                true
+            );
         });
 
         it('should handle mobile platform with CORS blocked provider', () => {
             (Platform as any).isMobileApp = true;
             fetchSelector.markProviderAsCorsBlocked(mockProvider);
-            
+
             const fetchFn = fetchSelector.getFetchFunction(mockProvider);
             expect(fetchFn).toBe(obsidianFetch);
         });
     });
-}); 
+});
