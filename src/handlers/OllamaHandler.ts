@@ -51,9 +51,31 @@ export class OllamaHandler implements IAIHandler {
             actualFetch = this.fetchSelector.getFetchFunction(provider);
         }
 
+        // --- Added: If apiKey exists, wrap fetch to add Authorization header ---
+        let wrappedFetch = actualFetch;
+        if (provider.apiKey) {
+            const originalFetch = actualFetch;
+            wrappedFetch = (input: RequestInfo, init: RequestInit = {}) => {
+                // Clone headers to avoid mutating external objects
+                const headers = new Headers(init.headers || {});
+                headers.set('Authorization', `Bearer ${provider.apiKey}`);
+                // electronFetch/obsidianFetch only accept string as url
+                let url: string;
+                if (typeof input === 'string') {
+                    url = input;
+                } else if (input instanceof Request) {
+                    url = input.url;
+                } else {
+                    url = String(input);
+                }
+                return originalFetch(url, { ...init, headers });
+            };
+        }
+        // --- end ---
+
         const client = new Ollama({
             host: provider.url,
-            fetch: actualFetch as any,
+            fetch: wrappedFetch as any,
         });
 
         return client;
@@ -64,6 +86,11 @@ export class OllamaHandler implements IAIHandler {
             contextLength: 0,
             lastContextLength: DEFAULT_CONTEXT_LENGTH,
         };
+    }
+
+    private isOpenWebUIProvider(provider: IAIProvider): boolean {
+        // Prefer explicit flag, fallback to URL heuristic for backward compatibility
+        return provider.isOpenWebUI === true || provider.url?.toLowerCase().includes('openwebui') === true;
     }
 
     private async getCachedModelInfo(
@@ -81,7 +108,11 @@ export class OllamaHandler implements IAIHandler {
             this.settings.useNativeFetch ? fetch : obsidianFetch
         );
         try {
-            const response = await ollama.show({ model: modelName });
+            // Use 'name' for OpenWebUI, 'model' otherwise
+            const showArg = this.isOpenWebUIProvider(provider)
+                ? ({ name: modelName } as any)
+                : { model: modelName };
+            const response = await ollama.show(showArg);
             const modelInfo = this.getDefaultModelInfo();
 
             const contextLengthEntry = Object.entries(response.model_info).find(

@@ -6,6 +6,9 @@ import {
     IMockClient,
 } from '../../test-utils/createAIHandlerTests';
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const NodeFetchHeaders = typeof global.Headers !== 'undefined' ? global.Headers : require('node-fetch').Headers;
+
 jest.mock('ollama');
 jest.setTimeout(3000);
 
@@ -565,5 +568,64 @@ describe('Ollama Fetch Usage Tests', () => {
             mockProvider,
             expect.any(Function)
         );
+    });
+});
+
+describe('OllamaHandler API key header', () => {
+    function getWrappedFetch(apiKey: string | undefined, baseFetch: any, isOpenWebUI?: boolean) {
+        if (apiKey && !isOpenWebUI) {
+            return (input: RequestInfo, init: RequestInit = {}) => {
+                const headers = new NodeFetchHeaders(init.headers || {});
+                headers.set('Authorization', `Bearer ${apiKey}`);
+                let url: string;
+                if (typeof input === 'string') {
+                    url = input;
+                } else if (input instanceof Request) {
+                    url = input.url;
+                } else {
+                    url = String(input);
+                }
+                return baseFetch(url, { ...init, headers });
+            };
+        }
+        return baseFetch;
+    }
+
+    it('should add Authorization header if apiKey is set', async () => {
+        const apiKey = 'test-api-key-123';
+        const mockFetch = jest.fn((url, options) => {
+            const headers = options?.headers || {};
+            const h = new NodeFetchHeaders(headers);
+            expect(h.get('Authorization')).toBe(`Bearer ${apiKey}`);
+            return Promise.resolve({ ok: true, status: 200 });
+        });
+        const wrappedFetch = getWrappedFetch(apiKey, mockFetch);
+        await wrappedFetch('http://fake-url', { headers: { 'X-Test': '1' } });
+        expect(mockFetch).toHaveBeenCalled();
+    });
+
+    it('should NOT add Authorization header if apiKey is empty', async () => {
+        const mockFetch = jest.fn((url, options) => {
+            const headers = options?.headers || {};
+            const h = new NodeFetchHeaders(headers);
+            expect(h.get('Authorization')).toBeFalsy();
+            return Promise.resolve({ ok: true, status: 200 });
+        });
+        const wrappedFetch = getWrappedFetch('', mockFetch);
+        await wrappedFetch('http://fake-url', { headers: { 'X-Test': '1' } });
+        expect(mockFetch).toHaveBeenCalled();
+    });
+
+    it('should NOT add Authorization header if isOpenWebUI is true, even if apiKey is set', async () => {
+        const apiKey = 'test-api-key-123';
+        const mockFetch = jest.fn((url, options) => {
+            const headers = options?.headers || {};
+            const h = new NodeFetchHeaders(headers);
+            expect(h.get('Authorization')).toBeFalsy();
+            return Promise.resolve({ ok: true, status: 200 });
+        });
+        const wrappedFetch = getWrappedFetch(apiKey, mockFetch, true);
+        await wrappedFetch('http://fake-url', { headers: { 'X-Test': '1' } });
+        expect(mockFetch).toHaveBeenCalled();
     });
 });
