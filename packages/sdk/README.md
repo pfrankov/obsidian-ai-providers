@@ -60,6 +60,16 @@ export default class SamplePlugin extends Plugin {
 }
 ```
 
+#### Disable fallback settings tab
+If you want to disable the fallback settings tab (for example, if your plugin has its own fallback UI), you can use the `disableFallback` option:
+
+```typescript
+// Initialize without showing fallback settings tab
+initAI(this.app, this, async ()=>{
+    this.addSettingTab(new SampleSettingTab(this.app, this));
+}, { disableFallback: true });
+```
+
 ### 3. Import SDK styles
 Don't forget to import the SDK styles for fallback settings tab in your plugin.
 ```css

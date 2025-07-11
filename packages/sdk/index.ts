@@ -114,10 +114,17 @@ class AIProvidersManager {
 export async function initAI(
     app: ExtendedApp,
     plugin: Plugin,
-    onDone: () => Promise<void>
+    onDone: () => Promise<void>,
+    options?: { disableFallback?: boolean }
 ) {
     AIProvidersManager.getInstance(app, plugin);
     let isFallbackShown = false;
+
+    // If the fallback is disabled, we don't need to wait for AI Providers to be ready
+    if (options?.disableFallback) {
+        await onDone();
+        return;
+    }
 
     try {
         const timeout = setTimeout(async () => {

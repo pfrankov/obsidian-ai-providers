@@ -18,6 +18,7 @@ Obsidian plugin hub (v1.4.0) for configuring AI providers in one centralized pla
 - Embed text with automatic IndexedDB caching per vault
 - Migrate providers from other plugins with confirmation
 - Fetch/refresh models from provider APIs
+- initAI() with optional disableFallback for custom fallback UIs
 
 ## ➤ Architecture
 - Modules → monorepo: main plugin, SDK package (v1.1.1), example plugin
@@ -33,7 +34,7 @@ Obsidian plugin hub (v1.4.0) for configuring AI providers in one centralized pla
 
 ## ➤ Interfaces
 - REST → Provider-specific APIs (OpenAI/Ollama format compatibility)
-- SDK → execute(), embed(), fetchModels(), migrateProvider(), waitForAI()
+- SDK → execute(), embed(), fetchModels(), migrateProvider(), waitForAI(), initAI()
 - UI → Settings tab, provider forms, model selection, confirmation modals
 
 ## ➤ Invariants
