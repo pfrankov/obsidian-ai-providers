@@ -4,7 +4,7 @@ export type ObsidianEvents = {
     'ai-providers-ready': () => void;
 };
 
-export type AIProviderType = 'openai' | 'ollama' | 'gemini' | 'openrouter' | 'lmstudio';
+export type AIProviderType = 'openai' | 'ollama' | 'ollama-openwebui' | 'gemini' | 'openrouter' | 'lmstudio' | 'groq';
 export interface IAIProvider {
     id: string;
     name: string;
@@ -121,4 +121,4 @@ export declare function initAI(app: ExtendedApp, plugin: Plugin, onDone: () => P
 export declare function waitForAI(): Promise<{
     promise: Promise<IAIProvidersService>;
     cancel: () => void;
-}>; 
+}>;

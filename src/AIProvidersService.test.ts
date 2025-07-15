@@ -449,4 +449,44 @@ describe('AIProvidersService', () => {
             await expect(service.cleanup()).resolves.toBeUndefined();
         });
     });
+
+    describe('provider type support', () => {
+        it('should support ollama-openwebui provider type', () => {
+            const handlers = (service as any).handlers;
+            expect(handlers['ollama-openwebui']).toBeDefined();
+            expect(handlers['ollama-openwebui']).toHaveProperty('execute');
+            expect(handlers['ollama-openwebui']).toHaveProperty('fetchModels');
+            expect(handlers['ollama-openwebui']).toHaveProperty('embed');
+        });
+
+        it('should support all expected provider types', () => {
+            const handlers = (service as any).handlers;
+            const expectedTypes = [
+                'openai',
+                'openrouter', 
+                'ollama',
+                'ollama-openwebui',
+                'gemini',
+                'lmstudio',
+                'groq'
+            ];
+
+            expectedTypes.forEach(type => {
+                expect(handlers[type]).toBeDefined();
+                expect(typeof handlers[type]).toBe('object');
+                expect(handlers[type]).toHaveProperty('execute');
+                expect(handlers[type]).toHaveProperty('fetchModels');
+                expect(handlers[type]).toHaveProperty('embed');
+            });
+        });
+
+        it('should use OllamaHandler for ollama-openwebui provider', () => {
+            const handlers = (service as any).handlers;
+            const ollamaHandler = handlers['ollama'];
+            const ollamaOpenWebUIHandler = handlers['ollama-openwebui'];
+            
+            // Both should be instances of OllamaHandler (same constructor)
+            expect(ollamaHandler.constructor).toBe(ollamaOpenWebUIHandler.constructor);
+        });
+    });
 });

@@ -32,31 +32,21 @@ export class OllamaHandler implements IAIHandler {
         this.fetchSelector = new FetchSelector(settings);
     }
 
-    dispose() {
-        this.modelInfoCache.clear();
-    }
-
     private getClient(
         provider: IAIProvider,
-        fetch?: typeof electronFetch | typeof obsidianFetch
+        fetch: typeof electronFetch | typeof obsidianFetch
     ): Ollama {
-        // Determine which fetch to use based on CORS status and settings
-        let actualFetch: typeof electronFetch | typeof obsidianFetch;
+		const clientConfig: any = {
+			host: provider.url,
+			fetch,
+		};
 
-        if (fetch) {
-            // Use provided fetch function
-            actualFetch = fetch;
-        } else {
-            // Use FetchSelector to determine the appropriate fetch function
-            actualFetch = this.fetchSelector.getFetchFunction(provider);
-        }
+		if (provider.apiKey) {
+			clientConfig.headers = clientConfig.headers || {};
+			clientConfig.headers.Authorization = `Bearer ${provider.apiKey}`;
+		}
 
-        const client = new Ollama({
-            host: provider.url,
-            fetch: actualFetch as any,
-        });
-
-        return client;
+        return new Ollama(clientConfig);
     }
 
     private getDefaultModelInfo(): ModelInfo {
@@ -81,7 +71,11 @@ export class OllamaHandler implements IAIHandler {
             this.settings.useNativeFetch ? fetch : obsidianFetch
         );
         try {
-            const response = await ollama.show({ model: modelName });
+			let config: any = { model: modelName };
+			if (provider.type === 'ollama-openwebui') {
+				config = { name: modelName };
+			}
+            const response = await ollama.show(config);
             const modelInfo = this.getDefaultModelInfo();
 
             const contextLengthEntry = Object.entries(response.model_info).find(

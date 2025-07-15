@@ -6,6 +6,7 @@ import { logger } from './utils/logger';
 import {
     openAIIcon,
     ollamaIcon,
+    ollamaOpenWebUIIcon,
     geminiIcon,
     openRouterIcon,
     lmstudioIcon,
@@ -20,6 +21,7 @@ export default class AIProvidersPlugin extends Plugin {
         await this.loadSettings();
         addIcon('ai-providers-openai', openAIIcon);
         addIcon('ai-providers-ollama', ollamaIcon);
+        addIcon('ai-providers-ollama-openwebui', ollamaOpenWebUIIcon);
         addIcon('ai-providers-gemini', geminiIcon);
         addIcon('ai-providers-openrouter', openRouterIcon);
         addIcon('ai-providers-lmstudio', lmstudioIcon);

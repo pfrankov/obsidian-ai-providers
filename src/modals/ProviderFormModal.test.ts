@@ -118,6 +118,49 @@ describe('ProviderFormModal', () => {
             );
             expect(title?.textContent).toBe('settings.editProvider');
         });
+
+        it('should include ollama-openwebui in provider type options', () => {
+            modal.onOpen();
+
+            const dropdown = getElement<HTMLSelectElement>(
+                modal.contentEl,
+                '[data-testid="provider-type-dropdown"]'
+            );
+
+            const options = Array.from(dropdown.querySelectorAll('option'));
+            const ollamaOpenWebUIOption = options.find(
+                option => option.value === 'ollama-openwebui'
+            );
+
+            expect(ollamaOpenWebUIOption).toBeTruthy();
+            expect(ollamaOpenWebUIOption?.textContent).toBe('Ollama (Open WebUI)');
+        });
+
+        it('should include all expected provider types', () => {
+            modal.onOpen();
+
+            const dropdown = getElement<HTMLSelectElement>(
+                modal.contentEl,
+                '[data-testid="provider-type-dropdown"]'
+            );
+
+            const options = Array.from(dropdown.querySelectorAll('option'));
+            const optionValues = options.map(option => option.value);
+
+            const expectedTypes = [
+                'openai',
+                'ollama',
+                'ollama-openwebui',
+                'openrouter',
+                'gemini',
+                'lmstudio',
+                'groq'
+            ];
+
+            expectedTypes.forEach(type => {
+                expect(optionValues).toContain(type);
+            });
+        });
     });
 
     describe('Models List Management', () => {
@@ -269,32 +312,21 @@ describe('ProviderFormModal', () => {
                 '[data-testid="provider-type-dropdown"]'
             );
 
-            // Test OpenAI
-            dropdown.value = 'openai';
-            dropdown.dispatchEvent(new Event('change'));
-            expect(provider.url).toBe('https://api.openai.com/v1');
+            const urlTestCases = [
+                { type: 'openai', expectedUrl: 'https://api.openai.com/v1' },
+                { type: 'ollama', expectedUrl: 'http://localhost:11434' },
+                { type: 'ollama-openwebui', expectedUrl: 'http://localhost:3000/ollama' },
+                { type: 'gemini', expectedUrl: 'https://generativelanguage.googleapis.com/v1beta/openai' },
+                { type: 'openrouter', expectedUrl: 'https://openrouter.ai/api/v1' },
+                { type: 'lmstudio', expectedUrl: 'http://localhost:1234/v1' },
+                { type: 'groq', expectedUrl: 'https://api.groq.com/openai/v1' },
+            ];
 
-            // Test Ollama
-            dropdown.value = 'ollama';
-            dropdown.dispatchEvent(new Event('change'));
-            expect(provider.url).toBe('http://localhost:11434');
-
-            // Test Gemini
-            dropdown.value = 'gemini';
-            dropdown.dispatchEvent(new Event('change'));
-            expect(provider.url).toBe(
-                'https://generativelanguage.googleapis.com/v1beta/openai'
-            );
-
-            // Test OpenRouter
-            dropdown.value = 'openrouter';
-            dropdown.dispatchEvent(new Event('change'));
-            expect(provider.url).toBe('https://openrouter.ai/api/v1');
-
-            // Test LM Studio
-            dropdown.value = 'lmstudio';
-            dropdown.dispatchEvent(new Event('change'));
-            expect(provider.url).toBe('http://localhost:1234/v1');
+            urlTestCases.forEach(({ type, expectedUrl }) => {
+                dropdown.value = type;
+                dropdown.dispatchEvent(new Event('change'));
+                expect(provider.url).toBe(expectedUrl);
+            });
         });
 
         it('should reset model and availableModels when changing provider type', () => {

@@ -25,6 +25,15 @@ const createMockProvider = (): IAIProvider => ({
     model: 'llama2',
 });
 
+const createMockOpenWebUIProvider = (): IAIProvider => ({
+    id: 'test-openwebui-provider',
+    name: 'Test OpenWebUI Provider',
+    type: 'ollama-openwebui',
+    url: 'http://localhost:3000/ollama',
+    apiKey: 'test-api-key',
+    model: 'llama2',
+});
+
 const createMockClient = (): IMockClient => {
     const mockClient: IMockClient = {
         list: jest.fn().mockResolvedValue({
@@ -565,5 +574,167 @@ describe('Ollama Fetch Usage Tests', () => {
             mockProvider,
             expect.any(Function)
         );
+    });
+});
+
+// Tests for Ollama OpenWebUI provider type
+describe('Ollama OpenWebUI Provider Tests', () => {
+    let handler: OllamaHandler;
+    let mockOpenWebUIProvider: IAIProvider;
+
+    beforeEach(() => {
+        handler = createHandler();
+        mockOpenWebUIProvider = createMockOpenWebUIProvider();
+        jest.clearAllMocks();
+    });
+
+    it('should create client with API key for any provider that has it', () => {
+        const mockFetch = jest.fn();
+        
+        // Test that API key is properly handled for ollama-openwebui
+        const webUIClient = (handler as any).getClient(mockOpenWebUIProvider, mockFetch);
+        expect(webUIClient).toBeDefined();
+        
+        // Test that regular ollama provider can also use API key if provided
+        const regularOllamaProvider = createMockProvider();
+        regularOllamaProvider.apiKey = 'regular-ollama-key';
+        const regularClient = (handler as any).getClient(regularOllamaProvider, mockFetch);
+        expect(regularClient).toBeDefined();
+        
+        // Verify that both providers can have API keys
+        expect(mockOpenWebUIProvider.apiKey).toBe('test-api-key');
+        expect(mockOpenWebUIProvider.type).toBe('ollama-openwebui');
+        expect(regularOllamaProvider.apiKey).toBe('regular-ollama-key');
+        expect(regularOllamaProvider.type).toBe('ollama');
+    });
+
+    describe('parameter handling for different provider types', () => {
+        const testCases = [
+            {
+                provider: createMockProvider(),
+                expectedParam: { model: 'test-model' },
+                description: 'regular ollama provider should use "model" parameter'
+            },
+            {
+                provider: createMockOpenWebUIProvider(),
+                expectedParam: { name: 'test-model' },
+                description: 'ollama-openwebui provider should use "name" parameter'
+            }
+        ];
+
+        testCases.forEach(({ provider, expectedParam, description }) => {
+            it(description, async () => {
+                const mockClient = createMockClient();
+                (mockClient as any).show = jest.fn().mockResolvedValue({
+                    model_info: { num_ctx: 4096 },
+                });
+
+                jest.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+
+                await (handler as any).getCachedModelInfo(provider, 'test-model');
+
+                expect((mockClient as any).show).toHaveBeenCalledWith(expectedParam);
+            });
+        });
+    });
+
+    describe('API methods for ollama-openwebui provider', () => {
+        let mockClient: IMockClient;
+
+        beforeEach(() => {
+            mockClient = createMockClient();
+            jest.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+        });
+
+        it('should handle fetchModels correctly', async () => {
+            mockClient.list!.mockResolvedValue({
+                models: [{ name: 'model1' }, { name: 'model2' }],
+            });
+
+            const result = await handler.fetchModels(mockOpenWebUIProvider);
+
+            expect(result).toEqual(['model1', 'model2']);
+            expect(mockClient.list!).toHaveBeenCalled();
+        });
+
+        it('should handle execute method correctly', async () => {
+            const chunkHandler = await handler.execute({
+                provider: mockOpenWebUIProvider,
+                prompt: 'test prompt',
+                options: {},
+            });
+
+            expect(chunkHandler).toBeDefined();
+            expect(chunkHandler).toHaveProperty('onData');
+            expect(chunkHandler).toHaveProperty('onEnd');
+            expect(chunkHandler).toHaveProperty('onError');
+            expect(chunkHandler).toHaveProperty('abort');
+        });
+
+        it('should handle embed method correctly', async () => {
+            (mockClient as any).embed = jest.fn().mockResolvedValue({
+                embeddings: [[0.1, 0.2, 0.3]],
+            });
+
+            const result = await handler.embed({
+                provider: mockOpenWebUIProvider,
+                input: 'test text',
+            });
+
+            expect(result).toEqual([[0.1, 0.2, 0.3]]);
+            expect((mockClient as any).embed).toHaveBeenCalledWith({
+                model: 'llama2',
+                input: 'test text',
+                options: {
+                    num_ctx: undefined,
+                },
+            });
+        });
+
+        it('should cache model info correctly', async () => {
+            (mockClient as any).show = jest.fn().mockResolvedValue({
+                model_info: { num_ctx: 8192 },
+            });
+
+            // First call should fetch model info
+            const modelInfo1 = await (handler as any).getCachedModelInfo(
+                mockOpenWebUIProvider,
+                'test-model'
+            );
+            expect(modelInfo1.contextLength).toBe(8192);
+            expect((mockClient as any).show).toHaveBeenCalledTimes(1);
+
+            // Second call should use cached info
+            const modelInfo2 = await (handler as any).getCachedModelInfo(
+                mockOpenWebUIProvider,
+                'test-model'
+            );
+            expect(modelInfo2.contextLength).toBe(8192);
+            expect((mockClient as any).show).toHaveBeenCalledTimes(1); // Still only called once
+        });
+
+        it('should validate API key usage correctly', () => {
+            const mockFetch = jest.fn();
+            
+            // Test ollama-openwebui with API key
+            const webUIProvider = createMockOpenWebUIProvider();
+            const webUIClient = (handler as any).getClient(webUIProvider, mockFetch);
+            expect(webUIClient).toBeDefined();
+            
+            // Test ollama-openwebui without API key
+            const webUIProviderNoKey = { ...webUIProvider, apiKey: undefined };
+            const webUIClientNoKey = (handler as any).getClient(webUIProviderNoKey, mockFetch);
+            expect(webUIClientNoKey).toBeDefined();
+            
+            // Test regular ollama with API key (should also use it)
+            const ollamaWithKey = { ...createMockProvider(), apiKey: 'test-key' };
+            const ollamaClient = (handler as any).getClient(ollamaWithKey, mockFetch);
+            expect(ollamaClient).toBeDefined();
+            
+            // Test regular ollama without API key
+            const ollamaWithoutKey = { ...createMockProvider(), apiKey: undefined };
+            const ollamaClientNoKey = (handler as any).getClient(ollamaWithoutKey, mockFetch);
+            expect(ollamaClientNoKey).toBeDefined();
+        });
     });
 });

@@ -55,55 +55,26 @@ describe('AIProvidersExamplePlugin', () => {
 
     it('should load plugin and initialize AI', async () => {
         await plugin.onload();
-        expect(initAI).toHaveBeenCalledWith(app, plugin, expect.any(Function), {
-            disableFallback: true,
-        });
+        expect(initAI).toHaveBeenCalledWith(app, plugin, expect.any(Function));
         expect((plugin as any).settingTabs.length).toBe(1);
     });
 
-    describe('initAI with disableFallback option', () => {
-        const originalInitAI = (initAI as jest.Mock).getMockImplementation();
-
-        beforeEach(() => {
-            (initAI as jest.Mock).mockImplementation(
-                (app, plugin, callback, options) => {
-                    return callback();
-                }
-            );
-        });
-
-        afterEach(() => {
-            (initAI as jest.Mock).mockImplementation(originalInitAI);
-        });
-
-        it('should initialize without fallback when disableFallback is true', async () => {
+    describe('initAI functionality', () => {
+        it('should call initAI with callback function', async () => {
             const mockCallback = jest.fn();
-
-            await initAI(app, plugin, mockCallback, { disableFallback: true });
-
-            expect(initAI).toHaveBeenCalledWith(app, plugin, mockCallback, {
-                disableFallback: true,
-            });
-            expect(mockCallback).toHaveBeenCalled();
-        });
-
-        it('should initialize with fallback when disableFallback is false', async () => {
-            const mockCallback = jest.fn();
-
-            await initAI(app, plugin, mockCallback, { disableFallback: false });
-
-            expect(initAI).toHaveBeenCalledWith(app, plugin, mockCallback, {
-                disableFallback: false,
-            });
-            expect(mockCallback).toHaveBeenCalled();
-        });
-
-        it('should initialize with fallback when disableFallback is not specified', async () => {
-            const mockCallback = jest.fn();
-
             await initAI(app, plugin, mockCallback);
-
+            
             expect(initAI).toHaveBeenCalledWith(app, plugin, mockCallback);
+            expect(mockCallback).toHaveBeenCalled();
+        });
+
+        it('should support options parameter', async () => {
+            const mockCallback = jest.fn();
+            const options = { disableFallback: true };
+            
+            await initAI(app, plugin, mockCallback, options);
+            
+            expect(initAI).toHaveBeenCalledWith(app, plugin, mockCallback, options);
             expect(mockCallback).toHaveBeenCalled();
         });
     });

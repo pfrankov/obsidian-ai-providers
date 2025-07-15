@@ -36,6 +36,7 @@ export class AIProvidersService implements IAIProvidersService {
             openai: new OpenAIHandler(plugin.settings),
             openrouter: new OpenAIHandler(plugin.settings),
             ollama: new OllamaHandler(plugin.settings),
+            'ollama-openwebui': new OllamaHandler(plugin.settings),
             gemini: new OpenAIHandler(plugin.settings),
             lmstudio: new OpenAIHandler(plugin.settings),
             groq: new OpenAIHandler(plugin.settings),

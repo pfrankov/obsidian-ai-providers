@@ -10,6 +10,7 @@ export class ProviderFormModal extends Modal {
     private readonly defaultProvidersUrls = {
         openai: 'https://api.openai.com/v1',
         ollama: 'http://localhost:11434',
+        'ollama-openwebui': 'http://localhost:3000/ollama',
         gemini: 'https://generativelanguage.googleapis.com/v1beta/openai',
         openrouter: 'https://openrouter.ai/api/v1',
         lmstudio: 'http://localhost:1234/v1',
@@ -169,6 +170,7 @@ export class ProviderFormModal extends Modal {
                     .addOptions({
                         openai: 'OpenAI',
                         ollama: 'Ollama',
+                        'ollama-openwebui': 'Ollama (Open WebUI)',
                         openrouter: 'OpenRouter',
                         gemini: 'Google Gemini',
                         lmstudio: 'LM Studio',
