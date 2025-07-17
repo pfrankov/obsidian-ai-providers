@@ -63,7 +63,7 @@ describe('AIProvidersExamplePlugin', () => {
         it('should call initAI with callback function', async () => {
             const mockCallback = jest.fn();
             await initAI(app, plugin, mockCallback);
-            
+
             expect(initAI).toHaveBeenCalledWith(app, plugin, mockCallback);
             expect(mockCallback).toHaveBeenCalled();
         });
@@ -71,10 +71,15 @@ describe('AIProvidersExamplePlugin', () => {
         it('should support options parameter', async () => {
             const mockCallback = jest.fn();
             const options = { disableFallback: true };
-            
+
             await initAI(app, plugin, mockCallback, options);
-            
-            expect(initAI).toHaveBeenCalledWith(app, plugin, mockCallback, options);
+
+            expect(initAI).toHaveBeenCalledWith(
+                app,
+                plugin,
+                mockCallback,
+                options
+            );
             expect(mockCallback).toHaveBeenCalled();
         });
     });

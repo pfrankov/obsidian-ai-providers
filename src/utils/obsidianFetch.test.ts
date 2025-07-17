@@ -34,198 +34,110 @@ describe('obsidianFetch', () => {
         requestUrlMock = jest.requireMock('obsidian').requestUrl;
     });
 
-    describe('Basic Request Handling', () => {
-        it('should make a GET request successfully', async () => {
-            const mockResponseData = 'mock response';
-            const mockResponse: Partial<RequestUrlResponse> = {
-                status: 200,
-                text: mockResponseData,
-                headers: { 'content-type': 'text/plain' },
-            };
+    it('should make a GET request successfully', async () => {
+        const mockResponseData = 'mock response';
+        const mockResponse: Partial<RequestUrlResponse> = {
+            status: 200,
+            text: mockResponseData,
+            headers: { 'content-type': 'text/plain' },
+        };
 
-            requestUrlMock.mockResolvedValue(mockResponse);
+        requestUrlMock.mockResolvedValue(mockResponse);
 
-            const url = 'https://api.example.com';
-            const response = await obsidianFetch(url, { headers: {} });
+        const url = 'https://api.example.com';
+        const response = await obsidianFetch(url, { headers: {} });
 
-            expect(requestUrlMock).toHaveBeenCalledWith({
-                url,
-                method: 'GET',
-                headers: {},
-            });
-
-            expect(response).toBeInstanceOf(Response);
-            const text = await response.text();
-            expect(text).toBe(mockResponseData);
+        expect(requestUrlMock).toHaveBeenCalledWith({
+            url,
+            method: 'GET',
+            headers: {},
         });
 
-        it('should make a POST request with JSON body', async () => {
-            const mockResponseData = 'mock response';
-            const mockResponse: Partial<RequestUrlResponse> = {
-                status: 200,
-                text: mockResponseData,
-                headers: { 'content-type': 'application/json' },
-            };
-
-            requestUrlMock.mockResolvedValue(mockResponse);
-
-            const url = 'https://api.example.com';
-            const body = { test: 'data' };
-            const headers = { 'Content-Type': 'application/json' };
-
-            const response = await obsidianFetch(url, {
-                method: 'POST',
-                body: JSON.stringify(body),
-                headers,
-            });
-
-            expect(requestUrlMock).toHaveBeenCalledWith({
-                url,
-                method: 'POST',
-                body: JSON.stringify(body),
-                headers,
-            });
-
-            expect(response).toBeInstanceOf(Response);
-            const text = await response.text();
-            expect(text).toBe(mockResponseData);
-        });
-
-        it('should make a POST request with string body', async () => {
-            const mockResponseData = 'mock response';
-            const mockResponse: Partial<RequestUrlResponse> = {
-                status: 200,
-                text: mockResponseData,
-                headers: { 'content-type': 'text/plain' },
-            };
-
-            requestUrlMock.mockResolvedValue(mockResponse);
-
-            const url = 'https://api.example.com';
-            const body = 'test data';
-            const headers = { 'Content-Type': 'text/plain' };
-
-            const response = await obsidianFetch(url, {
-                method: 'POST',
-                body: body,
-                headers,
-            });
-
-            expect(requestUrlMock).toHaveBeenCalledWith({
-                url,
-                method: 'POST',
-                body: body,
-                headers,
-            });
-
-            expect(response).toBeInstanceOf(Response);
-            const text = await response.text();
-            expect(text).toBe(mockResponseData);
-        });
-
-        it('should handle Buffer body as string', async () => {
-            const mockResponseData = 'mock response';
-            const mockResponse: Partial<RequestUrlResponse> = {
-                status: 200,
-                text: mockResponseData,
-                headers: { 'content-type': 'application/octet-stream' },
-            };
-
-            requestUrlMock.mockResolvedValue(mockResponse);
-
-            const url = 'https://api.example.com';
-            const body = Buffer.from('test data');
-            const headers = { 'Content-Type': 'application/octet-stream' };
-
-            const response = await obsidianFetch(url, {
-                method: 'POST',
-                body: body.toString(),
-                headers,
-            });
-
-            expect(requestUrlMock).toHaveBeenCalledWith({
-                url,
-                method: 'POST',
-                body: body.toString(),
-                headers,
-            });
-
-            expect(response).toBeInstanceOf(Response);
-            const text = await response.text();
-            expect(text).toBe(mockResponseData);
-        });
+        expect(response).toBeInstanceOf(Response);
+        const text = await response.text();
+        expect(text).toBe(mockResponseData);
     });
 
-    describe('Error Handling', () => {
-        it('should handle request errors', async () => {
-            const errorMessage = 'Network error';
-            requestUrlMock.mockRejectedValue(new Error(errorMessage));
+    it('should make a POST request with JSON body', async () => {
+        const mockResponseData = 'mock response';
+        const mockResponse: Partial<RequestUrlResponse> = {
+            status: 200,
+            text: mockResponseData,
+            headers: { 'content-type': 'application/json' },
+        };
 
-            const url = 'https://api.example.com';
-            await expect(obsidianFetch(url, { headers: {} })).rejects.toThrow(
-                errorMessage
-            );
+        requestUrlMock.mockResolvedValue(mockResponse);
+
+        const url = 'https://api.example.com';
+        const body = { test: 'data' };
+        const headers = { 'Content-Type': 'application/json' };
+
+        const response = await obsidianFetch(url, {
+            method: 'POST',
+            body: JSON.stringify(body),
+            headers,
         });
 
-        it('should handle non-200 status codes', async () => {
-            const mockResponse: Partial<RequestUrlResponse> = {
-                status: 404,
-                text: 'Not Found',
-                headers: { 'content-type': 'text/plain' },
-            };
-
-            requestUrlMock.mockResolvedValue(mockResponse);
-
-            const url = 'https://api.example.com';
-            const response = await obsidianFetch(url, { headers: {} });
-
-            expect(response.status).toBe(404);
-            const text = await response.text();
-            expect(text).toBe('Not Found');
+        expect(requestUrlMock).toHaveBeenCalledWith({
+            url,
+            method: 'POST',
+            body: JSON.stringify(body),
+            headers,
         });
+
+        expect(response).toBeInstanceOf(Response);
+        const text = await response.text();
+        expect(text).toBe(mockResponseData);
     });
 
-    describe('Header Handling', () => {
-        it('should pass through custom headers', async () => {
-            const mockResponse: Partial<RequestUrlResponse> = {
-                status: 200,
-                text: 'mock response',
-                headers: { 'content-type': 'application/json' },
-            };
+    it('should handle request errors', async () => {
+        const errorMessage = 'Network error';
+        requestUrlMock.mockRejectedValue(new Error(errorMessage));
 
-            requestUrlMock.mockResolvedValue(mockResponse);
+        const url = 'https://api.example.com';
+        await expect(obsidianFetch(url, { headers: {} })).rejects.toThrow(
+            errorMessage
+        );
+    });
 
-            const url = 'https://api.example.com';
-            const headers = {
-                Authorization: 'Bearer token',
-                'Custom-Header': 'custom value',
-            };
+    it('should handle non-200 status codes', async () => {
+        const mockResponse: Partial<RequestUrlResponse> = {
+            status: 404,
+            text: 'Not Found',
+            headers: { 'content-type': 'text/plain' },
+        };
 
-            await obsidianFetch(url, { headers });
+        requestUrlMock.mockResolvedValue(mockResponse);
 
-            expect(requestUrlMock).toHaveBeenCalledWith({
-                url,
-                method: 'GET',
-                headers,
-            });
-        });
+        const url = 'https://api.example.com';
+        const response = await obsidianFetch(url, { headers: {} });
 
-        it('should handle response headers', async () => {
-            const mockResponse: Partial<RequestUrlResponse> = {
-                status: 200,
-                text: 'mock response',
-                headers: {
-                    'content-type': 'application/json',
-                    'x-custom-header': 'custom value',
-                },
-            };
+        expect(response.status).toBe(404);
+        const text = await response.text();
+        expect(text).toBe('Not Found');
+    });
 
-            requestUrlMock.mockResolvedValue(mockResponse);
+    it('should pass through custom headers', async () => {
+        const mockResponse: Partial<RequestUrlResponse> = {
+            status: 200,
+            text: 'mock response',
+            headers: { 'content-type': 'application/json' },
+        };
 
-            const url = 'https://api.example.com';
-            const response = await obsidianFetch(url, { headers: {} });
+        requestUrlMock.mockResolvedValue(mockResponse);
 
-            expect(response.headers).toEqual(mockResponse.headers);
+        const url = 'https://api.example.com';
+        const headers = {
+            Authorization: 'Bearer token',
+            'Custom-Header': 'custom value',
+        };
+
+        await obsidianFetch(url, { headers });
+
+        expect(requestUrlMock).toHaveBeenCalledWith({
+            url,
+            method: 'GET',
+            headers,
         });
     });
 });

@@ -14,6 +14,9 @@ export async function electronFetch(
         params.controller = this.controller;
     }
 
+    // Use signal from options if available
+    const signal = options.signal || params.controller?.signal;
+
     logger.debug('electronFetch request:', {
         url,
         method: options.method || 'GET',
@@ -26,7 +29,7 @@ export async function electronFetch(
         logger.debug('Using native fetch (mobile platform)');
         return fetch(url, {
             ...options,
-            signal: params.controller?.signal || options.signal,
+            signal: signal,
         });
     }
 
@@ -47,14 +50,14 @@ export async function electronFetch(
             });
         }
 
-        if (params.controller?.signal.aborted) {
+        if (signal?.aborted) {
             logger.debug('Request aborted before start');
             request.abort();
             reject(new Error('Aborted'));
             return;
         }
 
-        params.controller?.signal.addEventListener('abort', () => {
+        signal?.addEventListener('abort', () => {
             logger.debug('Request aborted by controller');
             cleanup();
             request.abort();
@@ -62,7 +65,7 @@ export async function electronFetch(
         });
 
         request.on('response', (response: IncomingMessage) => {
-            if (params.controller?.signal.aborted) {
+            if (signal?.aborted) {
                 logger.debug('Request aborted during response');
                 return;
             }

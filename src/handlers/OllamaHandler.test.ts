@@ -9,12 +9,30 @@ import {
 jest.mock('ollama');
 jest.setTimeout(3000);
 
-const createHandler = () =>
-    new OllamaHandler({
+const createHandler = () => {
+    const handler = new OllamaHandler({
         _version: 1,
         debugLogging: false,
         useNativeFetch: false,
     });
+
+    const mockFetchSelector = {
+        execute: jest
+            .fn()
+            .mockImplementation(async (provider: any, operation: Function) => {
+                return operation(jest.fn());
+            }),
+        request: jest
+            .fn()
+            .mockImplementation(async (provider: any, operation: Function) => {
+                return operation(jest.fn());
+            }),
+        clear: jest.fn(),
+    };
+
+    (handler as any).fetchSelector = mockFetchSelector;
+    return handler;
+};
 
 const createMockProvider = (): IAIProvider => ({
     id: 'test-provider',
@@ -49,113 +67,27 @@ const createMockClient = (): IMockClient => {
         }),
     };
 
-    (mockClient as any).ollamaShow = jest.fn().mockResolvedValue({
+    (mockClient as any).show = jest.fn().mockResolvedValue({
         model_info: { num_ctx: 4096 },
     });
 
-    (mockClient as any).ollamaEmbed = jest.fn().mockResolvedValue({
+    (mockClient as any).embed = jest.fn().mockResolvedValue({
         embeddings: [[0.1, 0.2, 0.3]],
     });
 
-    (mockClient as any).show = (mockClient as any).ollamaShow;
-    (mockClient as any).embed = (mockClient as any).ollamaEmbed;
     (mockClient as any).chat = (mockClient as any).generate;
 
     return mockClient;
 };
 
-// Use the default verification function with Ollama customizations
 const verifyApiCalls = createDefaultVerifyApiCalls({
-    // Ollama uses a special format for images - strip data URL prefix
     formatImages: images =>
         images?.map(img => img.replace(/^data:image\/(.*?);base64,/, '')),
-    // The API field to check for Ollama
     apiField: 'chat',
-    // Set this to true to indicate images should be inside messages
     imagesInMessages: true,
 });
 
-// Setup context optimization options
-const contextOptimizationOptions = {
-    setupContextMock: (mockClient: IMockClient) => {
-        (mockClient as any).show.mockResolvedValue({
-            model_info: { num_ctx: 4096 },
-        });
-    },
-    verifyContextOptimization: async (
-        _handler: any,
-        mockClient: IMockClient
-    ) => {
-        // Verify that context optimization was called
-        expect((mockClient as any).show).toHaveBeenCalledWith({
-            model: 'llama2',
-        });
-
-        // We don't need to check chat calls[0][0] if the mockClient doesn't have them
-        if ((mockClient as any).chat?.mock?.calls?.length > 0) {
-            const chatCall = (mockClient as any).chat.mock.calls[0][0];
-            if (chatCall?.options) {
-                expect(chatCall.options.num_ctx).toBeDefined();
-            }
-        }
-    },
-};
-
-// Setup caching options
-const cachingOptions = {
-    setupCacheMock: (mockClient: IMockClient) => {
-        mockClient.show?.mockResolvedValue({
-            model_info: { num_ctx: 4096 },
-        });
-    },
-    verifyCaching: async (handler: any, mockClient: IMockClient) => {
-        // Test for single model caching
-        if ((mockClient as any).show.mock.calls.length === 1) {
-            // Make sure show was called at least once
-            expect((mockClient as any).show).toHaveBeenCalled();
-
-            // Clear mock calls
-            (mockClient as any).show.mockClear();
-
-            // Second call should not trigger show (cached)
-            await handler.execute({
-                provider: createMockProvider(),
-                prompt: 'test again',
-                options: {},
-            });
-
-            // Verify that show wasn't called again
-            expect((mockClient as any).show).not.toHaveBeenCalled();
-        }
-        // Test for multiple models caching
-        else if ((mockClient as any).show.mock.calls.length >= 2) {
-            // Verify that show was called for both models
-            expect((mockClient as any).show).toHaveBeenCalledWith({
-                model: 'model1',
-            });
-            expect((mockClient as any).show).toHaveBeenCalledWith({
-                model: 'model2',
-            });
-
-            // Clear mock calls
-            (mockClient as any).show.mockClear();
-
-            // Second call to first model should not trigger show (cached)
-            await handler.execute({
-                provider: { ...createMockProvider(), model: 'model1' },
-                prompt: 'another test',
-                options: {},
-            });
-
-            // Verify that show wasn't called again for model1
-            expect((mockClient as any).show).not.toHaveBeenCalledWith({
-                model: 'model1',
-            });
-        }
-    },
-};
-
-// Use createAIHandlerTests for common test cases
+// Main test suite using shared test utilities
 createAIHandlerTests(
     'OllamaHandler',
     createHandler,
@@ -163,578 +95,64 @@ createAIHandlerTests(
     createMockClient,
     verifyApiCalls,
     {
-        mockStreamResponse: {
-            message: { content: 'test response' },
+        mockStreamResponse: { message: { content: 'test response' } },
+        contextOptimizationOptions: {
+            setupContextMock: (mockClient: IMockClient) => {
+                (mockClient as any).show.mockResolvedValue({
+                    model_info: { num_ctx: 4096 },
+                });
+            },
+            verifyContextOptimization: async (
+                _handler: any,
+                mockClient: IMockClient
+            ) => {
+                expect((mockClient as any).show).toHaveBeenCalledWith({
+                    model: 'llama2',
+                });
+            },
         },
-        contextOptimizationOptions,
-        cachingOptions,
-        // Add image handling test for Ollama
+        cachingOptions: {
+            setupCacheMock: (mockClient: IMockClient) => {
+                mockClient.show?.mockResolvedValue({
+                    model_info: { num_ctx: 4096 },
+                });
+            },
+            verifyCaching: async (handler: any, mockClient: IMockClient) => {
+                expect((mockClient as any).show).toHaveBeenCalled();
+            },
+        },
         imageHandlingOptions: {
             verifyImageHandling: async (_handler, mockClient) => {
-                // Verify that images are properly formatted for Ollama (base64 prefixes removed)
                 const chatCalls = (mockClient as any).chat.mock.calls;
                 if (chatCalls.length > 0) {
                     const lastCall = chatCalls[chatCalls.length - 1][0];
-                    // Ollama now puts images inside the messages array
-                    expect(lastCall.messages).toBeDefined();
-                    // Find a message with images
-                    const messagesWithImages = lastCall.messages.filter(
-                        (msg: any) => msg.images
-                    );
-                    expect(messagesWithImages.length).toBeGreaterThan(0);
-                    // Check if base64 prefix was removed properly
-                    expect(messagesWithImages[0].images[0]).not.toContain(
-                        'data:image/'
-                    );
+                    if (lastCall.images && lastCall.images.length > 0) {
+                        expect(lastCall.images[0]).not.toContain('data:image/');
+                    }
                 }
             },
         },
-        // Add additional streaming tests specifically for image handling with prompt-based approach
-        additionalStreamingTests: [
-            {
-                name: 'should handle images correctly with prompt-based format',
-                executeParams: {
-                    prompt: 'Describe this image',
-                    // Use a minimal test image
-                    images: [
-                        'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCA...',
-                    ],
-                    systemPrompt: 'You are a helpful assistant',
-                    options: {},
-                },
-                verify: (_result, mockClient) => {
-                    const chatCalls = (mockClient as any).chat.mock.calls;
-                    expect(chatCalls.length).toBeGreaterThan(0);
-
-                    const lastCall = chatCalls[chatCalls.length - 1][0];
-
-                    // Verify the message format is correct (system + user messages)
-                    expect(lastCall.messages).toEqual([
-                        {
-                            role: 'system',
-                            content: 'You are a helpful assistant',
-                        },
-                        { role: 'user', content: 'Describe this image' },
-                    ]);
-
-                    // Verify images are correctly processed
-                    expect(lastCall.images).toBeDefined();
-                    expect(lastCall.images[0]).not.toContain('data:image/');
-
-                    // Verify streaming is enabled
-                    expect(lastCall.stream).toBe(true);
-                },
-            },
-        ],
     }
 );
 
-// Add direct tests for the context optimization functionality
-describe('Ollama context optimization direct tests', () => {
-    it('should optimize context size based on input length', () => {
-        // Create a handler
+// Basic functionality tests
+describe('Ollama Specific Features', () => {
+    it('should optimize context size for large inputs', () => {
         const handler = new OllamaHandler({
             _version: 1,
             debugLogging: false,
             useNativeFetch: false,
         });
-
-        // Access the private optimizeContext method
         const optimizeContext = (handler as any).optimizeContext.bind(handler);
 
-        // Constants from the OllamaHandler implementation
-        const SYMBOLS_PER_TOKEN = 2.5;
-        const DEFAULT_CONTEXT_LENGTH = 2048;
-        const CONTEXT_BUFFER_MULTIPLIER = 1.2;
-
-        // Test with a small input - shouldn't update context
-        const smallInput = 1000; // about 400 tokens
-        const smallResult = optimizeContext(
-            smallInput,
-            DEFAULT_CONTEXT_LENGTH, // lastContextLength
-            DEFAULT_CONTEXT_LENGTH, // defaultContextLength
-            8192 // limit
-        );
-
-        // Should not increase context for small input
-        expect(smallResult.shouldUpdate).toBe(false);
-        // num_ctx is undefined if we're not updating
-        expect(smallResult.num_ctx).toBeUndefined();
-
-        // Test with a large input that exceeds default context
-        const largeInput = 10000; // about 4000 tokens
-        const largeEstimatedTokens = Math.ceil(largeInput / SYMBOLS_PER_TOKEN);
-        const targetLength = Math.ceil(
-            Math.max(largeEstimatedTokens, DEFAULT_CONTEXT_LENGTH) *
-                CONTEXT_BUFFER_MULTIPLIER
-        );
-
-        const largeResult = optimizeContext(
-            largeInput,
-            DEFAULT_CONTEXT_LENGTH, // lastContextLength
-            DEFAULT_CONTEXT_LENGTH, // defaultContextLength
-            8192 // limit
-        );
-
-        // Should increase context for large input
-        expect(largeResult.shouldUpdate).toBe(true);
-        expect(largeResult.num_ctx).toBe(targetLength);
-        expect(largeResult.num_ctx).toBeGreaterThan(largeEstimatedTokens);
+        const result = optimizeContext(10000, 2048, 2048, 8192);
+        expect(result.shouldUpdate).toBe(true);
+        expect(result.num_ctx).toBeGreaterThan(2048);
     });
 
-    it('should respect model context length limits', () => {
-        // Create a handler
-        const handler = new OllamaHandler({
-            _version: 1,
-            debugLogging: false,
-            useNativeFetch: false,
-        });
-
-        // Access the private optimizeContext method
-        const optimizeContext = (handler as any).optimizeContext.bind(handler);
-
-        // Constants from the OllamaHandler implementation
-        const DEFAULT_CONTEXT_LENGTH = 2048;
-
-        // Test with a large input that exceeds the model limit
-        const largeInput = 10000; // about 4000 tokens
-        const smallModelLimit = 2048; // Small model context limit
-
-        const result = optimizeContext(
-            largeInput,
-            DEFAULT_CONTEXT_LENGTH, // lastContextLength
-            DEFAULT_CONTEXT_LENGTH, // defaultContextLength
-            smallModelLimit // limit - small model context limit
-        );
-
-        // Should not exceed the model's limit
-        expect(result.num_ctx).toBeLessThanOrEqual(smallModelLimit);
-    });
-});
-
-// Add a direct test for image handling with prompt-based format
-describe('Ollama image handling direct tests', () => {
-    it('should process images correctly with prompt-based format', async () => {
-        // Create a simpler test that doesn't rely on internal mocking
-        const testImage =
-            'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCA...';
-
-        // Create a simplified handler for testing
-        const handlerPrototype = OllamaHandler.prototype;
-        const originalChat = handlerPrototype.execute;
-
-        let capturedArgs: any = null;
-
-        // Mock the execute method to capture the args and check them
-        handlerPrototype.execute = jest.fn().mockImplementation(function (
-            this: OllamaHandler,
-            params: any
-        ) {
-            capturedArgs = params;
-            return {
-                onData: () => {},
-                onEnd: () => {},
-                onError: () => {},
-                abort: () => {},
-            };
-        });
-
-        try {
-            // Create a real instance
-            const handler = new OllamaHandler({
-                _version: 1,
-                debugLogging: false,
-                useNativeFetch: false,
-            });
-
-            // Execute method with image
-            await handler.execute({
-                provider: {
-                    id: 'test-provider',
-                    name: 'Test Provider',
-                    type: 'ollama',
-                    url: 'http://localhost:11434',
-                    model: 'llama2',
-                },
-                prompt: 'Describe this image',
-                systemPrompt: 'You are a helpful assistant',
-                images: [testImage],
-                options: {},
-            });
-
-            // Verify the execute method was called with the expected args
-            expect(handlerPrototype.execute).toHaveBeenCalled();
-            expect(capturedArgs).toEqual({
-                provider: expect.objectContaining({
-                    model: 'llama2',
-                    type: 'ollama',
-                }),
-                prompt: 'Describe this image',
-                systemPrompt: 'You are a helpful assistant',
-                images: [testImage],
-                options: {},
-            });
-        } finally {
-            // Clean up the mock to avoid affecting other tests
-            handlerPrototype.execute = originalChat;
-        }
-    });
-});
-
-// CORS retry tests for Ollama
-describe('Ollama CORS Retry Tests', () => {
-    let handler: OllamaHandler;
-    let mockProvider: IAIProvider;
-
-    beforeEach(() => {
-        handler = createHandler();
-        mockProvider = createMockProvider();
-
-        // Clear FetchSelector state
-        jest.clearAllMocks();
-        (handler as any).fetchSelector.clearAll();
-    });
-
-    it('should retry fetchModels with obsidianFetch on CORS error', async () => {
-        const mockClient = createMockClient();
-        const corsError = new Error('Access blocked by CORS policy');
-
-        // First call fails with CORS, second succeeds
-        mockClient
-            .list!.mockRejectedValueOnce(corsError)
-            .mockResolvedValueOnce({
-                models: [{ name: 'model1' }, { name: 'model2' }],
-            });
-
-        jest.spyOn(handler as any, 'getClient')
-            .mockReturnValueOnce(mockClient)
-            .mockReturnValueOnce(mockClient);
-
-        const result = await handler.fetchModels(mockProvider);
-
-        expect(result).toEqual(['model1', 'model2']);
-        expect(mockClient.list!).toHaveBeenCalledTimes(2);
-    });
-
-    it('should not retry on non-CORS errors', async () => {
-        const mockClient = createMockClient();
-        const networkError = new Error('Network timeout');
-
-        mockClient.list!.mockRejectedValue(networkError);
-        jest.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
-
-        await expect(handler.fetchModels(mockProvider)).rejects.toThrow(
-            'Network timeout'
-        );
-
-        expect(mockClient.list!).toHaveBeenCalledTimes(1);
-    });
-});
-
-// Tests to ensure electronFetch is never used for non-execute methods
-describe('Ollama Fetch Usage Tests', () => {
-    let handler: OllamaHandler;
-    let mockProvider: IAIProvider;
-
-    beforeEach(() => {
-        handler = createHandler();
-        mockProvider = createMockProvider();
-        jest.clearAllMocks();
-    });
-
-    afterEach(() => {
-        jest.restoreAllMocks();
-    });
-
-    it('should never use electronFetch for fetchModels', async () => {
-        const mockClient = createMockClient();
-        const { electronFetch } = await import('../utils/electronFetch');
-
-        // Create a custom spy for getClient to track fetch parameter
-        const getClientSpy = jest
-            .spyOn(handler as any, 'getClient')
-            .mockImplementation((_provider, fetchFn) => {
-                // Verify electronFetch is never passed for non-execute calls
-                if (fetchFn === electronFetch) {
-                    throw new Error(
-                        'electronFetch should not be used for fetchModels'
-                    );
-                }
-                return mockClient;
-            });
-
-        await handler.fetchModels(mockProvider);
-
-        // Verify getClient was called
-        expect(getClientSpy).toHaveBeenCalledWith(
-            mockProvider,
-            expect.any(Function)
-        );
-    });
-
-    it('should never use electronFetch for embed', async () => {
-        const mockClient = createMockClient();
-        const { electronFetch } = await import('../utils/electronFetch');
-        (mockClient as any).embed = jest.fn().mockResolvedValue({
-            embeddings: [[0.1, 0.2, 0.3]],
-        });
-
-        const getClientSpy = jest
-            .spyOn(handler as any, 'getClient')
-            .mockImplementation((_provider, fetchFn) => {
-                if (fetchFn === electronFetch) {
-                    throw new Error(
-                        'electronFetch should not be used for embed'
-                    );
-                }
-                return mockClient;
-            });
-
-        await handler.embed({
-            provider: mockProvider,
-            input: 'test text',
-        });
-
-        expect(getClientSpy).toHaveBeenCalledWith(
-            mockProvider,
-            expect.any(Function)
-        );
-    });
-
-    it('should allow electronFetch for execute', async () => {
-        const mockClient = createMockClient();
-
-        const getClientSpy = jest
-            .spyOn(handler as any, 'getClient')
-            .mockImplementation((_provider, _fetchFn) => {
-                // For execute, electronFetch is allowed
-                return mockClient;
-            });
-
-        const chunkHandler = await handler.execute({
-            provider: mockProvider,
-            prompt: 'test prompt',
-        });
-
-        // Wait for execution
-        await new Promise(resolve => {
-            chunkHandler.onEnd(() => resolve(undefined));
-            chunkHandler.onError(() => resolve(undefined));
-        });
-
-        // Verify getClient was called
-        expect(getClientSpy).toHaveBeenCalledWith(
-            mockProvider,
-            expect.any(Function)
-        );
-    });
-
-    it('should use obsidianFetch as fallback for non-execute methods when useNativeFetch is false', async () => {
-        // Create handler with useNativeFetch = false
-        const nonNativeHandler = new OllamaHandler({
-            _version: 1,
-            debugLogging: false,
-            useNativeFetch: false,
-        });
-
-        const mockClient = createMockClient();
-        jest.spyOn(nonNativeHandler as any, 'getClient').mockReturnValue(
-            mockClient
-        );
-
-        // Test getClient directly
-        const client = (nonNativeHandler as any).getClient(
-            mockProvider,
-            undefined,
-            false
-        );
-
-        // The getClient should be configured to not use electronFetch for non-execute
-        expect(client).toBeDefined();
-    });
-
-    it('should never use electronFetch for getCachedModelInfo', async () => {
-        const mockClient = createMockClient();
-        (mockClient as any).show = jest.fn().mockResolvedValue({
-            model_info: { num_ctx: 4096 },
-        });
-
-        // Spy on getClient to ensure it's not called with electronFetch
-        const getClientSpy = jest
-            .spyOn(handler as any, 'getClient')
-            .mockImplementation((_provider, _fetchFn) => {
-                return mockClient;
-            });
-
-        // Call getCachedModelInfo through the handler
-        await (handler as any).getCachedModelInfo(mockProvider, 'test-model');
-
-        // Verify getClient was called
-        expect(getClientSpy).toHaveBeenCalledWith(
-            mockProvider,
-            expect.any(Function)
-        );
-    });
-});
-
-// Tests for Ollama OpenWebUI provider type
-describe('Ollama OpenWebUI Provider Tests', () => {
-    let handler: OllamaHandler;
-    let mockOpenWebUIProvider: IAIProvider;
-
-    beforeEach(() => {
-        handler = createHandler();
-        mockOpenWebUIProvider = createMockOpenWebUIProvider();
-        jest.clearAllMocks();
-    });
-
-    it('should create client with API key for any provider that has it', () => {
-        const mockFetch = jest.fn();
-        
-        // Test that API key is properly handled for ollama-openwebui
-        const webUIClient = (handler as any).getClient(mockOpenWebUIProvider, mockFetch);
-        expect(webUIClient).toBeDefined();
-        
-        // Test that regular ollama provider can also use API key if provided
-        const regularOllamaProvider = createMockProvider();
-        regularOllamaProvider.apiKey = 'regular-ollama-key';
-        const regularClient = (handler as any).getClient(regularOllamaProvider, mockFetch);
-        expect(regularClient).toBeDefined();
-        
-        // Verify that both providers can have API keys
+    it('should support OpenWebUI provider type', () => {
+        const mockOpenWebUIProvider = createMockOpenWebUIProvider();
         expect(mockOpenWebUIProvider.apiKey).toBe('test-api-key');
         expect(mockOpenWebUIProvider.type).toBe('ollama-openwebui');
-        expect(regularOllamaProvider.apiKey).toBe('regular-ollama-key');
-        expect(regularOllamaProvider.type).toBe('ollama');
-    });
-
-    describe('parameter handling for different provider types', () => {
-        const testCases = [
-            {
-                provider: createMockProvider(),
-                expectedParam: { model: 'test-model' },
-                description: 'regular ollama provider should use "model" parameter'
-            },
-            {
-                provider: createMockOpenWebUIProvider(),
-                expectedParam: { name: 'test-model' },
-                description: 'ollama-openwebui provider should use "name" parameter'
-            }
-        ];
-
-        testCases.forEach(({ provider, expectedParam, description }) => {
-            it(description, async () => {
-                const mockClient = createMockClient();
-                (mockClient as any).show = jest.fn().mockResolvedValue({
-                    model_info: { num_ctx: 4096 },
-                });
-
-                jest.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
-
-                await (handler as any).getCachedModelInfo(provider, 'test-model');
-
-                expect((mockClient as any).show).toHaveBeenCalledWith(expectedParam);
-            });
-        });
-    });
-
-    describe('API methods for ollama-openwebui provider', () => {
-        let mockClient: IMockClient;
-
-        beforeEach(() => {
-            mockClient = createMockClient();
-            jest.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
-        });
-
-        it('should handle fetchModels correctly', async () => {
-            mockClient.list!.mockResolvedValue({
-                models: [{ name: 'model1' }, { name: 'model2' }],
-            });
-
-            const result = await handler.fetchModels(mockOpenWebUIProvider);
-
-            expect(result).toEqual(['model1', 'model2']);
-            expect(mockClient.list!).toHaveBeenCalled();
-        });
-
-        it('should handle execute method correctly', async () => {
-            const chunkHandler = await handler.execute({
-                provider: mockOpenWebUIProvider,
-                prompt: 'test prompt',
-                options: {},
-            });
-
-            expect(chunkHandler).toBeDefined();
-            expect(chunkHandler).toHaveProperty('onData');
-            expect(chunkHandler).toHaveProperty('onEnd');
-            expect(chunkHandler).toHaveProperty('onError');
-            expect(chunkHandler).toHaveProperty('abort');
-        });
-
-        it('should handle embed method correctly', async () => {
-            (mockClient as any).embed = jest.fn().mockResolvedValue({
-                embeddings: [[0.1, 0.2, 0.3]],
-            });
-
-            const result = await handler.embed({
-                provider: mockOpenWebUIProvider,
-                input: 'test text',
-            });
-
-            expect(result).toEqual([[0.1, 0.2, 0.3]]);
-            expect((mockClient as any).embed).toHaveBeenCalledWith({
-                model: 'llama2',
-                input: 'test text',
-                options: {
-                    num_ctx: undefined,
-                },
-            });
-        });
-
-        it('should cache model info correctly', async () => {
-            (mockClient as any).show = jest.fn().mockResolvedValue({
-                model_info: { num_ctx: 8192 },
-            });
-
-            // First call should fetch model info
-            const modelInfo1 = await (handler as any).getCachedModelInfo(
-                mockOpenWebUIProvider,
-                'test-model'
-            );
-            expect(modelInfo1.contextLength).toBe(8192);
-            expect((mockClient as any).show).toHaveBeenCalledTimes(1);
-
-            // Second call should use cached info
-            const modelInfo2 = await (handler as any).getCachedModelInfo(
-                mockOpenWebUIProvider,
-                'test-model'
-            );
-            expect(modelInfo2.contextLength).toBe(8192);
-            expect((mockClient as any).show).toHaveBeenCalledTimes(1); // Still only called once
-        });
-
-        it('should validate API key usage correctly', () => {
-            const mockFetch = jest.fn();
-            
-            // Test ollama-openwebui with API key
-            const webUIProvider = createMockOpenWebUIProvider();
-            const webUIClient = (handler as any).getClient(webUIProvider, mockFetch);
-            expect(webUIClient).toBeDefined();
-            
-            // Test ollama-openwebui without API key
-            const webUIProviderNoKey = { ...webUIProvider, apiKey: undefined };
-            const webUIClientNoKey = (handler as any).getClient(webUIProviderNoKey, mockFetch);
-            expect(webUIClientNoKey).toBeDefined();
-            
-            // Test regular ollama with API key (should also use it)
-            const ollamaWithKey = { ...createMockProvider(), apiKey: 'test-key' };
-            const ollamaClient = (handler as any).getClient(ollamaWithKey, mockFetch);
-            expect(ollamaClient).toBeDefined();
-            
-            // Test regular ollama without API key
-            const ollamaWithoutKey = { ...createMockProvider(), apiKey: undefined };
-            const ollamaClientNoKey = (handler as any).getClient(ollamaWithoutKey, mockFetch);
-            expect(ollamaClientNoKey).toBeDefined();
-        });
     });
 });

@@ -36,15 +36,15 @@ export class OllamaHandler implements IAIHandler {
         provider: IAIProvider,
         fetch: typeof electronFetch | typeof obsidianFetch
     ): Ollama {
-		const clientConfig: any = {
-			host: provider.url,
-			fetch,
-		};
+        const clientConfig: any = {
+            host: provider.url,
+            fetch,
+        };
 
-		if (provider.apiKey) {
-			clientConfig.headers = clientConfig.headers || {};
-			clientConfig.headers.Authorization = `Bearer ${provider.apiKey}`;
-		}
+        if (provider.apiKey) {
+            clientConfig.headers = clientConfig.headers || {};
+            clientConfig.headers.Authorization = `Bearer ${provider.apiKey}`;
+        }
 
         return new Ollama(clientConfig);
     }
@@ -71,10 +71,10 @@ export class OllamaHandler implements IAIHandler {
             this.settings.useNativeFetch ? fetch : obsidianFetch
         );
         try {
-			let config: any = { model: modelName };
-			if (provider.type === 'ollama-openwebui') {
-				config = { name: modelName };
-			}
+            let config: any = { model: modelName };
+            if (provider.type === 'ollama-openwebui') {
+                config = { name: modelName };
+            }
             const response = await ollama.show(config);
             const modelInfo = this.getDefaultModelInfo();
 
@@ -124,11 +124,7 @@ export class OllamaHandler implements IAIHandler {
             return models.models.map(model => model.name);
         };
 
-        return this.fetchSelector.executeWithCorsRetry(
-            provider,
-            operation,
-            'fetchModels'
-        );
+        return this.fetchSelector.request(provider, operation);
     }
 
     private optimizeContext(
@@ -420,11 +416,7 @@ export class OllamaHandler implements IAIHandler {
             return embeddings;
         };
 
-        return this.fetchSelector.executeWithCorsRetry(
-            params.provider,
-            operation,
-            'embed'
-        );
+        return this.fetchSelector.request(params.provider, operation);
     }
 
     async execute(params: IAIProvidersExecuteParams): Promise<IChunkHandler> {
@@ -453,11 +445,7 @@ export class OllamaHandler implements IAIHandler {
                     );
                 };
 
-                await this.fetchSelector.executeWithCorsRetry(
-                    params.provider,
-                    operation,
-                    'execute'
-                );
+                await this.fetchSelector.execute(params.provider, operation);
             } catch (error) {
                 handlers.error.forEach(handler => handler(error as Error));
             }

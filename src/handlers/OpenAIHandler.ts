@@ -67,11 +67,7 @@ export class OpenAIHandler implements IAIHandler {
             return response.data.map(model => model.id);
         };
 
-        return this.fetchSelector.executeWithCorsRetry(
-            provider,
-            operation,
-            'fetchModels'
-        );
+        return this.fetchSelector.request(provider, operation);
     }
 
     async embed(params: IAIProvidersEmbedParams): Promise<number[][]> {
@@ -95,11 +91,7 @@ export class OpenAIHandler implements IAIHandler {
             return response.data.map(item => item.embedding);
         };
 
-        return this.fetchSelector.executeWithCorsRetry(
-            params.provider,
-            operation,
-            'embed'
-        );
+        return this.fetchSelector.request(params.provider, operation);
     }
 
     private async executeOpenAIGeneration(
@@ -243,11 +235,7 @@ export class OpenAIHandler implements IAIHandler {
                     );
                 };
 
-                await this.fetchSelector.executeWithCorsRetry(
-                    params.provider,
-                    operation,
-                    'execute'
-                );
+                await this.fetchSelector.execute(params.provider, operation);
             } catch (error) {
                 handlers.error.forEach(handler => handler(error as Error));
             }
