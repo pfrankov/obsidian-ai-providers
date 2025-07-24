@@ -1,6 +1,6 @@
 {
     "name": "obsidian-ai-providers",
-    "version": "1.5.0",
+    "version": "1.5.1",
     "description": "A hub for setting AI providers (OpenAI-like, Ollama and more) in one place.",
     "main": "dist/main.js",
     "workspaces": [
