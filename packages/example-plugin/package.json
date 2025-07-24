@@ -10,7 +10,7 @@
     "author": "Pavel Frankov",
     "license": "MIT",
     "dependencies": {
-        "@obsidian-ai-providers/sdk": "^1.2.0"
+        "@obsidian-ai-providers/sdk": "^1.2.1"
     },
     "peerDependencies": {
         "obsidian": "latest"
