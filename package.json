@@ -11,7 +11,7 @@
         "dev-test": "concurrently \"node esbuild.config.mjs\" \"npm run test:watch\"",
         "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
         "example:build": "cd packages/example-plugin && npm run build",
-        "version": "node version-bump.mjs && npm run build && npm run format",
+        "version": "node version-bump.mjs && npm run build && npm run format && git add manifest.json versions.json",
         "test": "jest",
         "test:watch": "jest --watch",
         "sdk:build": "cd packages/sdk && npm run build",
