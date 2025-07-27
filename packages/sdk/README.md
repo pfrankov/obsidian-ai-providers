@@ -187,6 +187,116 @@ const embeddings = await aiProviders.embed({
 embeddings; // [0.1, 0.2, 0.3, ...]
 ```
 
+### Retrieve relevant documents
+The `retrieve` method performs semantic search to find the most relevant text chunks from a collection of documents based on a query. This is useful for implementing RAG (Retrieval-Augmented Generation) functionality.
+
+```typescript
+// Reading documents from Obsidian vault
+const markdownFiles = this.app.vault.getMarkdownFiles();
+const documents = [];
+
+// Read content from multiple files
+for (const file of markdownFiles.slice(0, 10)) { // Limit for demo
+    try {
+        const content = await this.app.vault.read(file);
+        if (content.trim()) {
+            documents.push({
+                content: content,
+                meta: {
+                    filename: file.name,
+                    path: file.path,
+                    size: content.length,
+                    modified: file.stat.mtime,
+					// Any other meta
+                }
+            });
+        }
+    } catch (error) {
+        console.warn(`Failed to read ${file.path}:`, error);
+    }
+}
+
+// Perform semantic search
+const results = await aiProviders.retrieve({
+    query: "machine learning algorithms",
+    documents: documents,
+    embeddingProvider: aiProviders.providers[0]
+});
+
+// Results are sorted by relevance score (highest first)
+results.forEach(result => {
+    console.log(`Score: ${result.score}`);
+    console.log(`File: ${result.document.meta?.filename}`);
+    console.log(`Content preview: ${result.content.substring(0, 100)}...`);
+    console.log(`Path: ${result.document.meta?.path}`);
+});
+
+/*
+Output example:
+Score: 0.92
+File: ML-Notes.md
+Content preview: Machine learning algorithms can be categorized into supervised, unsupervised, and reinforcement...
+Path: Notes/ML-Notes.md
+
+Score: 0.78
+File: AI-Research.md
+Content preview: Recent advances in neural networks have shown promising results in various applications...
+Path: Research/AI-Research.md
+*/
+```
+
+#### Basic example with static documents
+```typescript
+// Simple example with predefined documents
+const documents = [
+    {
+        content: "London is the capital city of England and the United Kingdom. It is located on the River Thames.",
+        meta: { source: "geography.txt", category: "cities" }
+    },
+    {
+        content: "Paris is the capital and most populous city of France. It is situated on the Seine River.",
+        meta: { source: "geography.txt", category: "cities" }
+    }
+];
+
+const results = await aiProviders.retrieve({
+    query: "What is the capital of England?",
+    documents: documents,
+    embeddingProvider: aiProviders.providers[0]
+});
+```
+
+#### Working with large documents
+The `retrieve` method automatically splits large documents into smaller chunks for better search accuracy:
+
+```typescript
+const largeDocuments = [
+    {
+        content: `
+            Chapter 1: Introduction to Machine Learning
+            Machine learning is a subset of artificial intelligence that focuses on algorithms and statistical models.
+            
+            Chapter 2: Types of Machine Learning
+            There are three main types: supervised learning, unsupervised learning, and reinforcement learning.
+            
+            Chapter 3: Neural Networks
+            Neural networks are computing systems inspired by biological neural networks.
+        `,
+        meta: { title: "ML Textbook", chapter: "1-3" }
+    }
+];
+
+const mlResults = await aiProviders.retrieve({
+    query: "What are the types of machine learning?",
+    documents: largeDocuments,
+    embeddingProvider: aiProviders.providers[0]
+});
+
+// The method will find the most relevant chunk about ML types
+console.log(mlResults[0].content);
+// "There are three main types: supervised learning, unsupervised learning, and reinforcement learning."
+```
+
 ### Fetch models
 There is no need to fetch models manually, but you can do it if you want to.
 You can fetch models for any provider using `fetchModels` method.
@@ -208,13 +318,28 @@ In most cases it shows a Notice in the Obsidian UI.
 try {
     await aiProviders.embed({
         provider: aiProviders.providers[0],
-        text: "What is the capital of Great Britain?",
+        input: "What is the capital of Great Britain?",
     });
 } catch (error) {
     // You should handle errors in your plugin
     console.error(error);
 }
 ```
+
+```typescript
+// Error handling for retrieve method
+try {
+    const results = await aiProviders.retrieve({
+        query: "search query",
+        documents: documents,
+        embeddingProvider: aiProviders.providers[0]
+    });
+} catch (error) {
+    // Handle retrieval errors (e.g., provider issues, invalid documents)
+    console.error("Retrieval failed:", error);
+}
+```
+
 ```typescript
 const chunkHandler = await aiProviders.execute({
     provider: aiProviders.providers[0],
@@ -225,8 +350,6 @@ const chunkHandler = await aiProviders.execute({
 chunkHandler.onError((error) => {
     console.error(error);
 });
-
-
 ```
 
 If you have any questions, please contact me via Telegram [@pavel_frankov](https://t.me/pavel_frankov).

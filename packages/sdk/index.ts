@@ -218,4 +218,7 @@ export type {
     IAIHandler,
     IAIProvidersPluginSettings,
     AIProviderType,
+    IAIDocument,
+    IAIProvidersRetrievalParams,
+    IAIProvidersRetrievalResult,
 } from './types';

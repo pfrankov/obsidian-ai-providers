@@ -7,6 +7,9 @@ import {
     IAIProvidersEmbedParams,
     IAIHandler,
     AIProviderType,
+    IAIProvidersRetrievalParams,
+    IAIProvidersRetrievalResult,
+    IAIDocument,
 } from '@obsidian-ai-providers/sdk';
 import { OpenAIHandler } from './handlers/OpenAIHandler';
 import { OllamaHandler } from './handlers/OllamaHandler';
@@ -17,10 +20,11 @@ import { CachedEmbeddingsService } from './cache/CachedEmbeddingsService';
 import { embeddingsCache } from './cache/EmbeddingsCache';
 import { logger } from './utils/logger';
 import { createCacheKeyHash } from './utils/hashUtils';
+import { preprocessContent, splitContent } from './utils/textProcessing';
 
 export class AIProvidersService implements IAIProvidersService {
     providers: IAIProvider[] = [];
-    version = 1;
+    version = 2;
     private app: App;
     private plugin: AIProvidersPlugin;
     private handlers: Record<string, IAIHandler>;
@@ -198,6 +202,117 @@ export class AIProvidersService implements IAIProvidersService {
             new Notice(I18n.t('errors.pluginMustBeUpdatedFormatted'));
             throw new Error(I18n.t('errors.pluginMustBeUpdated'));
         }
+    }
+
+    async retrieve(
+        params: IAIProvidersRetrievalParams
+    ): Promise<IAIProvidersRetrievalResult[]> {
+        try {
+            // Validate input parameters
+            if (!params.query) {
+                return [];
+            }
+
+            if (!params.documents || params.documents.length === 0) {
+                return [];
+            }
+
+            // Check if handler exists for provider
+            const handler = this.getHandler(params.embeddingProvider.type);
+            if (!handler) {
+                throw new Error(
+                    `Handler not found for provider type: ${params.embeddingProvider.type}`
+                );
+            }
+
+            // Process documents into chunks with references
+            interface ProcessedChunk {
+                content: string;
+                document: IAIDocument;
+            }
+
+            const chunks: ProcessedChunk[] = [];
+
+            for (const document of params.documents) {
+                const preprocessed = preprocessContent(document.content);
+                const documentChunks = splitContent(preprocessed);
+
+                for (const chunk of documentChunks) {
+                    if (chunk.trim().length > 0) {
+                        chunks.push({
+                            content: chunk.trim(),
+                            document: document, // Reference to original document
+                        });
+                    }
+                }
+            }
+
+            if (chunks.length === 0) {
+                return [];
+            }
+
+            // Generate embeddings for query and chunks
+            const queryEmbedding = await this.embed({
+                provider: params.embeddingProvider,
+                input: params.query,
+            });
+
+            const chunkTexts = chunks.map(chunk => chunk.content);
+            const chunkEmbeddings = await this.embed({
+                provider: params.embeddingProvider,
+                input: chunkTexts,
+            });
+
+            // Calculate similarity scores using cosine similarity
+            const queryVector = queryEmbedding[0];
+            const results: IAIProvidersRetrievalResult[] = [];
+
+            for (let i = 0; i < chunks.length; i++) {
+                const chunkVector = chunkEmbeddings[i];
+                const similarity = this.cosineSimilarity(
+                    queryVector,
+                    chunkVector
+                );
+
+                results.push({
+                    content: chunks[i].content,
+                    score: similarity,
+                    document: chunks[i].document,
+                });
+            }
+
+            // Sort by similarity score (descending)
+            results.sort((a, b) => b.score - a.score);
+
+            return results;
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    private cosineSimilarity(vectorA: number[], vectorB: number[]): number {
+        if (vectorA.length !== vectorB.length) {
+            throw new Error('Vectors must have the same length');
+        }
+
+        let dotProduct = 0;
+        let normA = 0;
+        let normB = 0;
+
+        for (let i = 0; i < vectorA.length; i++) {
+            dotProduct += vectorA[i] * vectorB[i];
+            normA += vectorA[i] * vectorA[i];
+            normB += vectorB[i] * vectorB[i];
+        }
+
+        normA = Math.sqrt(normA);
+        normB = Math.sqrt(normB);
+
+        if (normA === 0 || normB === 0) {
+            return 0;
+        }
+
+        return dotProduct / (normA * normB);
     }
 
     /**

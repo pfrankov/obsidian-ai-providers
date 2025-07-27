@@ -30,6 +30,7 @@ export interface IAIProvidersService {
     execute: (params: IAIProvidersExecuteParams) => Promise<IChunkHandler>;
     checkCompatibility: (requiredVersion: number) => void;
     migrateProvider: (provider: IAIProvider) => Promise<IAIProvider | false>;
+    retrieve: (params: IAIProvidersRetrievalParams) => Promise<IAIProvidersRetrievalResult[]>;
 }
 
 export interface IContentBlockText {
@@ -82,8 +83,24 @@ export type IAIProvidersExecuteParams = IAIProvidersExecuteParamsWithPrompt | IA
 
 export interface IAIProvidersEmbedParams {
     input?: string | string[];
-    text?: string | string[];
     provider: IAIProvider;
+}
+
+export interface IAIDocument {
+    content: string;
+    meta?: Record<string, any>;
+}
+
+export interface IAIProvidersRetrievalParams {
+    query: string;
+    documents: IAIDocument[];
+    embeddingProvider: IAIProvider;
+}
+
+export interface IAIProvidersRetrievalResult {
+    content: string; // Text chunk that matches the query
+    score: number;   // Relevance score of the chunk
+    document: IAIDocument; // Reference to original document (not a copy!)
 }
 
 export interface IAIHandler {
@@ -99,7 +116,7 @@ export interface IAIProvidersPluginSettings {
     useNativeFetch?: boolean;
 }
 
-export interface ExtendedApp extends App { 
+export interface ExtendedApp extends App {
     aiProviders?: IAIProvidersService;
     plugins?: {
         enablePlugin: (id: string) => Promise<void>;

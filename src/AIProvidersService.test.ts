@@ -4,6 +4,8 @@ import AIProvidersPlugin from './main';
 import {
     IAIProvider,
     IAIProvidersEmbedParams,
+    IAIProvidersRetrievalParams,
+    IAIDocument,
 } from '@obsidian-ai-providers/sdk';
 
 // Mock the handlers
@@ -130,7 +132,7 @@ describe('AIProvidersService', () => {
     });
 
     it('should initialize with correct version', () => {
-        expect(service.version).toBe(1);
+        expect(service.version).toBe(2);
     });
 
     it('should initialize with providers from plugin settings', () => {
@@ -209,6 +211,141 @@ describe('AIProvidersService', () => {
             expect(handlers[type]).toHaveProperty('execute');
             expect(handlers[type]).toHaveProperty('fetchModels');
             expect(handlers[type]).toHaveProperty('embed');
+        });
+    });
+
+    describe('retrieve method', () => {
+        const testDocuments: IAIDocument[] = [
+            {
+                content: 'JavaScript is a programming language',
+                meta: { id: 1, title: 'JS Intro' },
+            },
+            {
+                content: 'Python is used for data science',
+                meta: { id: 2, title: 'Python Guide' },
+            },
+            {
+                content: 'TypeScript adds types to JavaScript',
+                meta: { id: 3, title: 'TS Overview' },
+            },
+        ];
+
+        let testParams: IAIProvidersRetrievalParams;
+
+        beforeEach(() => {
+            testParams = {
+                query: 'programming language',
+                documents: testDocuments,
+                embeddingProvider: mockProvider,
+            };
+        });
+
+        it('should return sorted results with correct structure', async () => {
+            // Mock the CachedEmbeddingsService to return embeddings
+            const mockEmbedWithCache = jest
+                .fn()
+                .mockResolvedValueOnce([[0.1, 0.2, 0.3]]) // Query embedding
+                .mockResolvedValueOnce([
+                    [0.9, 0.1, 0.1], // High similarity to query
+                    [0.1, 0.9, 0.1], // Medium similarity
+                    [0.8, 0.2, 0.1], // High similarity
+                ]);
+            (service as any).cachedEmbeddingsService = {
+                embedWithCache: mockEmbedWithCache,
+            };
+
+            const results = await service.retrieve(testParams);
+
+            expect(Array.isArray(results)).toBe(true);
+            expect(results.length).toBeGreaterThan(0);
+
+            // Check structure and sorting
+            results.forEach((result, i) => {
+                expect(result).toHaveProperty('content');
+                expect(result).toHaveProperty('score');
+                expect(result).toHaveProperty('document');
+                expect(typeof result.content).toBe('string');
+                expect(typeof result.score).toBe('number');
+
+                // Check sorting (descending by score)
+                if (i > 0) {
+                    expect(results[i - 1].score).toBeGreaterThanOrEqual(
+                        result.score
+                    );
+                }
+            });
+        });
+
+        it('should handle edge cases', async () => {
+            // Empty documents
+            const emptyDocsResult = await service.retrieve({
+                ...testParams,
+                documents: [],
+            });
+            expect(emptyDocsResult).toEqual([]);
+
+            // Empty query
+            const emptyQueryResult = await service.retrieve({
+                ...testParams,
+                query: '',
+            });
+            expect(Array.isArray(emptyQueryResult)).toBe(true);
+        });
+
+        it('should preserve document references', async () => {
+            // Mock the CachedEmbeddingsService to return embeddings
+            const mockEmbedWithCache = jest
+                .fn()
+                .mockResolvedValueOnce([[0.1, 0.2, 0.3]]) // Query embedding
+                .mockResolvedValueOnce([
+                    [0.9, 0.1, 0.1], // High similarity to query
+                    [0.1, 0.9, 0.1], // Medium similarity
+                    [0.8, 0.2, 0.1], // High similarity
+                ]);
+            (service as any).cachedEmbeddingsService = {
+                embedWithCache: mockEmbedWithCache,
+            };
+
+            const results = await service.retrieve(testParams);
+
+            results.forEach(result => {
+                const originalDoc = testDocuments.find(
+                    doc => doc.content === result.document.content
+                );
+                expect(originalDoc).toBeDefined();
+                expect(result.document.meta).toEqual(originalDoc?.meta);
+            });
+        });
+
+        it('should use embeddings service', async () => {
+            const mockEmbedWithCache = jest
+                .fn()
+                .mockResolvedValueOnce([[0.1, 0.2, 0.3]]) // Query embedding
+                .mockResolvedValueOnce([
+                    [0.9, 0.1, 0.1], // High similarity to query
+                    [0.1, 0.9, 0.1], // Medium similarity
+                    [0.8, 0.2, 0.1], // High similarity
+                ]);
+            (service as any).cachedEmbeddingsService = {
+                embedWithCache: mockEmbedWithCache,
+            };
+
+            await service.retrieve(testParams);
+
+            expect(mockEmbedWithCache).toHaveBeenCalled();
+        });
+
+        it('should handle unsupported providers', async () => {
+            const unsupportedProvider = {
+                ...mockProvider,
+                type: 'unsupported' as any,
+            };
+            const params = {
+                ...testParams,
+                embeddingProvider: unsupportedProvider,
+            };
+
+            await expect(service.retrieve(params)).rejects.toThrow();
         });
     });
 });
