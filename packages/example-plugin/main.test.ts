@@ -9,6 +9,31 @@ jest.mock('@obsidian-ai-providers/sdk', () => ({
     waitForAI: jest.fn(),
 }));
 
+// Mock Obsidian components that aren't available in test environment
+jest.mock('obsidian', () => {
+    const originalModule = jest.requireActual('obsidian');
+    return {
+        ...originalModule,
+        Modal: class MockModal {
+            constructor() {}
+            open() {}
+            close() {}
+        },
+    };
+});
+
+jest.mock('./RAGSearchComponent', () => ({
+    RAGSearchComponent: class {
+        render(containerEl: any) {
+            containerEl.createEl('h3', { text: '🔍 RAG Search Demo' });
+        }
+        getState() {
+            return { selectedFiles: new Set(), searchQuery: '' };
+        }
+        setState() {}
+    },
+}));
+
 // Mock utilities
 const createMockProvider = (id: string, name: string, model?: string) => ({
     id,
@@ -25,12 +50,14 @@ const createMockChunkHandler = () => ({
 const createMockAIResolver = (
     providers: any[] = [],
     execute = jest.fn(),
-    embed = jest.fn()
+    embed = jest.fn(),
+    retrieve = jest.fn()
 ) => ({
     promise: Promise.resolve({
         providers,
         execute,
         embed,
+        retrieve,
     }),
 });
 
@@ -407,6 +434,28 @@ describe('AIProvidersExamplePlugin', () => {
             );
             expect(errorP).toBeTruthy();
             expect(errorP?.classList.contains('mod-warning')).toBe(true);
+        });
+
+        it('should display RAG search demo section when provider is selected', async () => {
+            const mockProvider = createMockProvider('provider1', 'Provider 1');
+
+            (waitForAI as jest.Mock).mockResolvedValueOnce(
+                createMockAIResolver([mockProvider])
+            );
+
+            (settingsTab as any).selectedProvider = 'provider1';
+
+            await settingsTab.display();
+
+            // Check for RAG demo heading
+            const ragHeading = Array.from(
+                settingsTab.containerEl.querySelectorAll('h3')
+            ).find(h3 => h3.textContent === '🔍 RAG Search Demo');
+            expect(ragHeading).toBeTruthy();
+
+            // Check that RAG component is rendered
+            const ragComponent = (settingsTab as any).ragSearchComponent;
+            expect(ragComponent).toBeTruthy();
         });
     });
 });

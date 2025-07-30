@@ -1,5 +1,6 @@
 import { App, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
 import { initAI, waitForAI } from '@obsidian-ai-providers/sdk';
+import { RAGSearchComponent } from './RAGSearchComponent';
 
 interface AIProvidersExampleSettings {
     mySetting: string;
@@ -19,10 +20,12 @@ class SampleSettingTab extends PluginSettingTab {
     plugin: AIProvidersExamplePlugin;
     selectedProvider: string;
     selectedFile: string;
+    private ragSearchComponent: RAGSearchComponent;
 
     constructor(app: App, plugin: AIProvidersExamplePlugin) {
         super(app, plugin);
         this.plugin = plugin;
+        this.ragSearchComponent = new RAGSearchComponent(app);
     }
 
     async display(): Promise<void> {
@@ -199,6 +202,9 @@ class SampleSettingTab extends PluginSettingTab {
                             })
                     );
             }
+
+            // RAG Retrieval section - using component
+            this.ragSearchComponent.render(containerEl, aiProviders, provider);
         }
     }
 }
