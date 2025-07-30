@@ -62,15 +62,6 @@ export class AIProvidersSettingTab extends PluginSettingTab {
         // Validate required fields
         if (!provider.id || !provider.name || !provider.type) return false;
 
-        // Validate URL format if URL is provided
-        if (provider.url) {
-            try {
-                new URL(provider.url);
-            } catch {
-                return false;
-            }
-        }
-
         // Check for duplicate names
         const providers = this.plugin.settings.providers || [];
         const existingProvider = providers.find(

@@ -28,6 +28,7 @@
         "model": "模型",
         "modelDesc": "选择此提供商的 AI 模型。<br>或<a>切换到文本模式</a>",
         "modelTextDesc": "输入 AI 模型名称。<br>或<a>切换到下拉模式</a>",
+        "modelTextOnlyDesc": "输入此提供商的 AI 模型名称。",
         "loadingModels": "正在加载模型...",
         "noModelsAvailable": "没有可用的模型",
         "editProvider": "编辑提供商",

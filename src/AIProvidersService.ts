@@ -44,6 +44,7 @@ export class AIProvidersService implements IAIProvidersService {
             gemini: new OpenAIHandler(plugin.settings),
             lmstudio: new OpenAIHandler(plugin.settings),
             groq: new OpenAIHandler(plugin.settings),
+            ai320: new OpenAIHandler(plugin.settings),
         };
 
         // Initialize cached embeddings service

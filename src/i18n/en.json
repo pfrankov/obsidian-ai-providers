@@ -28,6 +28,7 @@
         "model": "Model",
         "modelDesc": "Select the AI model for this provider. <br>Or <a>switch to text mode</a>",
         "modelTextDesc": "Enter the AI model name. <br>Or <a>switch to dropdown mode</a>",
+        "modelTextOnlyDesc": "Enter the AI model name for this provider.",
         "loadingModels": "Loading models...",
         "noModelsAvailable": "No models available",
         "editProvider": "Edit provider",

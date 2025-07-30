@@ -28,6 +28,7 @@
         "model": "Modell",
         "modelDesc": "Wählen Sie das KI-Modell für diesen Anbieter. <br>Oder <a>in den Textmodus wechseln</a>",
         "modelTextDesc": "Geben Sie den KI-Modellnamen ein. <br>Oder <a>in den Dropdown-Modus wechseln</a>",
+        "modelTextOnlyDesc": "Geben Sie den KI-Modellnamen für diesen Anbieter ein.",
         "loadingModels": "Modelle werden geladen...",
         "noModelsAvailable": "Keine Modelle verfügbar",
         "editProvider": "Anbieter bearbeiten",
