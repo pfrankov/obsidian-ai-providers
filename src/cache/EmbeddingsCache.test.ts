@@ -47,25 +47,25 @@ describe('EmbeddingsCache', () => {
     it('should get and set embeddings', async () => {
         await cache.init('test-vault');
 
-        const mockEmbeddings = {
+        const mockCacheItem = {
             providerId: 'test-provider',
             providerModel: 'test-model',
             chunks: [{ content: 'test', embedding: [0.1, 0.2, 0.3] }],
         };
-        mockDb.get.mockResolvedValue(mockEmbeddings);
+        mockDb.get.mockResolvedValue(mockCacheItem);
 
         // Test set
-        await cache.setEmbeddings('test-key', mockEmbeddings);
+        await cache.setEmbeddings('test-key', mockCacheItem);
         expect(mockDb.put).toHaveBeenCalledWith(
             'embeddings',
-            mockEmbeddings,
+            mockCacheItem,
             'test-key'
         );
 
         // Test get
         const result = await cache.getEmbeddings('test-key');
         expect(mockDb.get).toHaveBeenCalledWith('embeddings', 'test-key');
-        expect(result).toEqual(mockEmbeddings);
+        expect(result).toEqual(mockCacheItem);
     });
 
     it('should clear embeddings', async () => {

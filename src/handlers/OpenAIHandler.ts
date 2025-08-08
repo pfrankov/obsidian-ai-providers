@@ -79,19 +79,43 @@ export class OpenAIHandler implements IAIHandler {
             throw new Error('Either input or text parameter must be provided');
         }
 
-        const operation = async (
-            fetchImpl: typeof electronFetch | typeof obsidianFetch
-        ) => {
-            const openai = this.getClient(params.provider, fetchImpl);
-            const response = await openai.embeddings.create({
-                model: params.provider.model || '',
-                input: inputText,
-            });
-            logger.debug('Embed response:', response);
-            return response.data.map(item => item.embedding);
-        };
+        const inputs = Array.isArray(inputText) ? inputText : [inputText];
+        const embeddings: number[][] = [];
 
-        return this.fetchSelector.request(params.provider, operation);
+        // OpenAI has a limit of 2048 inputs per request
+        const CHUNK_SIZE = 2048;
+        const chunks = [];
+
+        for (let i = 0; i < inputs.length; i += CHUNK_SIZE) {
+            chunks.push(inputs.slice(i, i + CHUNK_SIZE));
+        }
+
+        const processedChunks: string[] = [];
+
+        for (const chunk of chunks) {
+            const operation = async (
+                fetchImpl: typeof electronFetch | typeof obsidianFetch
+            ) => {
+                const openai = this.getClient(params.provider, fetchImpl);
+                const response = await openai.embeddings.create({
+                    model: params.provider.model || '',
+                    input: chunk,
+                });
+                logger.debug('Embed response:', response);
+                return response.data.map(item => item.embedding);
+            };
+
+            const chunkEmbeddings = await this.fetchSelector.request(
+                params.provider,
+                operation
+            );
+            embeddings.push(...chunkEmbeddings);
+
+            processedChunks.push(...chunk);
+            params.onProgress && params.onProgress([...processedChunks]);
+        }
+
+        return embeddings;
     }
 
     private async executeOpenAIGeneration(

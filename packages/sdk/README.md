@@ -187,6 +187,22 @@ const embeddings = await aiProviders.embed({
 embeddings; // [0.1, 0.2, 0.3, ...]
 ```
 
+#### Progress tracking for embeddings
+You can track the progress of embedding generation, especially useful when processing multiple text chunks:
+
+```typescript
+const embeddings = await aiProviders.embed({
+    provider: aiProviders.providers[0],
+    input: ["Text 1", "Text 2", "Text 3", "Text 4"],  // Multiple inputs
+    onProgress: (processedChunks) => {
+        console.log(`Processing: ${processedChunks.length} chunks processed`);
+		
+        // Access processed chunks if needed
+        console.log('Latest processed chunks:', processedChunks);
+    }
+});
+```
+
 ### Retrieve relevant documents
 The `retrieve` method performs semantic search to find the most relevant text chunks from a collection of documents based on a query. This is useful for implementing RAG (Retrieval-Augmented Generation) functionality.
 
@@ -216,11 +232,18 @@ for (const file of markdownFiles.slice(0, 10)) { // Limit for demo
     }
 }
 
-// Perform semantic search
+// Perform semantic search with progress tracking
 const results = await aiProviders.retrieve({
     query: "machine learning algorithms",
     documents: documents,
-    embeddingProvider: aiProviders.providers[0]
+    embeddingProvider: aiProviders.providers[0],
+    onProgress: (progress) => {
+        const chunksPercentage = (progress.processedChunks.length / progress.totalChunks) * 100;
+        const docsPercentage = (progress.processedDocuments.length / progress.totalDocuments) * 100;
+        
+        console.log(`Processing chunks: ${progress.processedChunks.length}/${progress.totalChunks} (${chunksPercentage.toFixed(1)}%)`);
+        console.log(`Processing documents: ${progress.processedDocuments.length}/${progress.totalDocuments} (${docsPercentage.toFixed(1)}%)`);
+    }
 });
 
 // Results are sorted by relevance score (highest first)

@@ -51,6 +51,8 @@
         "missingUrl": "需要提供服务地址",
         "missingModel": "需要选择模型",
         "pluginMustBeUpdated": "插件需要更新",
-        "pluginMustBeUpdatedFormatted": "插件需要更新才能与此版本的 AI Providers 一起使用"
+        "pluginMustBeUpdatedFormatted": "插件需要更新才能与此版本的 AI Providers 一起使用",
+        "providerNameRequired": "需要提供商名称",
+        "providerNameExists": "名为\"{{name}}\"的提供商已存在"
     }
 }

@@ -76,6 +76,11 @@ const createMockClient = (): IMockClient => ({
                 }),
         },
     },
+    embeddings: {
+        create: jest.fn().mockResolvedValue({
+            data: [{ embedding: [0.1, 0.2, 0.3], index: 0 }],
+        }),
+    },
 });
 
 const verifyApiCalls = createDefaultVerifyApiCalls();
@@ -115,6 +120,7 @@ createAIHandlerTests(
         },
         embeddingOptions: {
             mockEmbeddingResponse: [[0.1, 0.2, 0.3]],
+            progressBehavior: 'per-chunk',
             setupEmbedMock: mockClient => {
                 (mockClient as any).embeddings = {
                     create: jest.fn().mockResolvedValue({

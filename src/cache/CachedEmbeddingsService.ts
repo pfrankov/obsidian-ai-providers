@@ -1,6 +1,7 @@
 import { IAIProvidersEmbedParams } from '@obsidian-ai-providers/sdk';
 import { embeddingsCache } from './EmbeddingsCache';
 import { logger } from '../utils/logger';
+import { createCacheKeyHash } from '../utils/hashUtils';
 
 export interface EmbeddingChunk {
     content: string;
@@ -8,14 +9,7 @@ export interface EmbeddingChunk {
 }
 
 interface CachedEmbedParams extends IAIProvidersEmbedParams {
-    cacheKey?: string;
     chunks?: string[];
-}
-
-interface CachedEmbeddingData {
-    providerId: string;
-    providerModel: string;
-    chunks: EmbeddingChunk[];
 }
 
 export class CachedEmbeddingsService {
@@ -29,131 +23,94 @@ export class CachedEmbeddingsService {
      * Generate embeddings with caching support
      */
     async embedWithCache(params: CachedEmbedParams): Promise<number[][]> {
-        // If no cache key provided, directly call embed function
-        if (!params.cacheKey) {
+        if (!params.chunks) {
             return this.embedFunction(params);
         }
 
-        try {
-            const cached = await embeddingsCache.getEmbeddings(params.cacheKey);
+        const cacheKey = await this.generateCacheKey(params);
 
-            // Try to use cached embeddings if valid
-            const cachedResult = this.tryUseCachedEmbeddings(cached, params);
-            if (cachedResult) {
-                return cachedResult;
-            }
-
-            // Generate and cache new embeddings
-            return this.generateAndCacheEmbeddings(params);
-        } catch (error) {
-            logger.error('Error in embedWithCache:', error);
-            // Fall back to direct embedding on cache error
-            return this.embedFunction(params);
-        }
-    }
-
-    /**
-     * Try to use cached embeddings if they are valid
-     */
-    private tryUseCachedEmbeddings(
-        cached: CachedEmbeddingData | undefined,
-        params: CachedEmbedParams
-    ): number[][] | null {
-        if (!cached) {
-            return null;
-        }
-
-        // Check if cache is valid (provider/model)
-        if (!this.isCacheValid(cached, params)) {
-            return null;
-        }
-
-        // If chunks are provided, ensure they match
-        if (params.chunks && !this.chunksMatch(params.chunks, cached.chunks)) {
-            return null;
-        }
-
-        return cached.chunks.map((chunk: EmbeddingChunk) => chunk.embedding);
-    }
-
-    /**
-     * Check if cached data is valid
-     */
-    private isCacheValid(
-        cached: CachedEmbeddingData,
-        params: CachedEmbedParams
-    ): boolean {
-        // If provider doesn't have a model, cache is invalid
-        if (!params.provider.model) {
-            return false;
-        }
-
-        return (
-            cached.providerId === params.provider.id &&
-            cached.providerModel === params.provider.model
+        const { chunks } = params;
+        const chunksMap = await this.loadCachedChunks(params, cacheKey);
+        const uncachedChunks = chunks.filter(
+            content => !chunksMap.has(content)
         );
-    }
 
-    /**
-     * Check if chunks match with cached chunks (more efficient comparison)
-     */
-    private chunksMatch(
-        newChunks: string[],
-        cachedChunks: EmbeddingChunk[]
-    ): boolean {
-        if (newChunks.length !== cachedChunks.length) {
-            return false;
+        if (uncachedChunks.length > 0) {
+            await this.embedAndCacheChunks(
+                params,
+                uncachedChunks,
+                chunksMap,
+                cacheKey
+            );
         }
 
-        // Use early return for better performance
-        for (let i = 0; i < newChunks.length; i++) {
-            if (newChunks[i] !== cachedChunks[i].content) {
-                return false;
-            }
-        }
-
-        return true;
+        params.onProgress?.(chunks);
+        return chunks.map(content => chunksMap.get(content)!);
     }
 
-    /**
-     * Generate new embeddings and cache them
-     */
-    private async generateAndCacheEmbeddings(
-        params: CachedEmbedParams
-    ): Promise<number[][]> {
-        const embeddings = await this.embedFunction(params);
-
-        // Cache the embeddings if chunks are provided
-        if (params.chunks && embeddings.length === params.chunks.length) {
-            await this.cacheEmbeddings(params, embeddings);
-        }
-
-        return embeddings;
-    }
-
-    /**
-     * Cache the generated embeddings
-     */
-    private async cacheEmbeddings(
+    private async embedAndCacheChunks(
         params: CachedEmbedParams,
-        embeddings: number[][]
-    ): Promise<void> {
-        // Only cache if provider has a model specified
-        if (!params.provider.model) {
-            return;
+        uncachedChunks: string[],
+        chunksMap: Map<string, number[]>,
+        cacheKey: string
+    ) {
+        const newEmbeddings = await this.embedFunction({
+            ...params,
+            input: uncachedChunks,
+        });
+        uncachedChunks.forEach((content, i) =>
+            chunksMap.set(content, newEmbeddings[i])
+        );
+        await this.saveCachedChunks(cacheKey, params.provider, chunksMap);
+    }
+
+    private async loadCachedChunks(
+        params: CachedEmbedParams,
+        cacheKey: string
+    ): Promise<Map<string, number[]>> {
+        const cached = await embeddingsCache
+            .getEmbeddings(cacheKey)
+            .catch(error => {
+                logger.error('Error reading from embeddings cache:', error);
+                return null;
+            });
+
+        if (
+            cached?.providerId === params.provider.id &&
+            cached?.providerModel === params.provider.model
+        ) {
+            return new Map(cached.chunks.map(c => [c.content, c.embedding]));
         }
 
-        const chunks: EmbeddingChunk[] = params.chunks!.map(
-            (content, index) => ({
-                content,
-                embedding: embeddings[index],
-            })
-        );
+        return new Map();
+    }
 
-        await embeddingsCache.setEmbeddings(params.cacheKey!, {
-            providerId: params.provider.id,
-            providerModel: params.provider.model,
-            chunks,
-        });
+    private async saveCachedChunks(
+        cacheKey: string,
+        provider: any,
+        chunksMap: Map<string, number[]>
+    ): Promise<void> {
+        if (!provider.model) return;
+
+        const chunksToCache = Array.from(chunksMap, ([content, embedding]) => ({
+            content,
+            embedding,
+        }));
+
+        await embeddingsCache
+            .setEmbeddings(cacheKey, {
+                providerId: provider.id,
+                providerModel: provider.model,
+                chunks: chunksToCache,
+            })
+            .catch(error => {
+                logger.error('Error writing to embeddings cache:', error);
+            });
+    }
+
+    private async generateCacheKey(
+        params: IAIProvidersEmbedParams
+    ): Promise<string> {
+        return `embed:${params.provider.id}:${params.provider.model}`;
     }
 }

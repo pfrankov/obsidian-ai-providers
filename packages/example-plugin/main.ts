@@ -99,7 +99,10 @@ class SampleSettingTab extends PluginSettingTab {
                             paragraph.setText(accumulatedText);
                         });
                         chunkHandler.onEnd(fullText => {
-                            console.log(fullText);
+                            const statusEl = containerEl.createEl('p', {
+                                text: `✅ Completed: ${fullText.length} characters generated`,
+                            });
+                            statusEl.addClass('mod-success');
                         });
                         chunkHandler.onError(error => {
                             paragraph.setText(error.message);
@@ -187,10 +190,11 @@ class SampleSettingTab extends PluginSettingTab {
                                             .join(', ')}...]`,
                                     });
 
-                                    console.log(
-                                        'Generated embeddings:',
-                                        embeddings
-                                    );
+                                    // Show completion status
+                                    const statusEl = resultEl.createEl('p', {
+                                        text: `✅ Embeddings generated successfully`,
+                                    });
+                                    statusEl.addClass('mod-success');
                                 } catch (error) {
                                     const errorEl = resultEl.createEl('p', {
                                         text: `Error: ${error.message}`,

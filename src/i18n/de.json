@@ -51,6 +51,8 @@
         "missingUrl": "Anbieter-URL ist erforderlich",
         "missingModel": "Modell muss ausgewählt werden",
         "pluginMustBeUpdated": "Plugin muss aktualisiert werden",
-        "pluginMustBeUpdatedFormatted": "Das Plugin muss aktualisiert werden, um mit dieser Version von AI Providers zu funktionieren"
+        "pluginMustBeUpdatedFormatted": "Das Plugin muss aktualisiert werden, um mit dieser Version von AI Providers zu funktionieren",
+        "providerNameRequired": "Anbietername ist erforderlich",
+        "providerNameExists": "Ein Anbieter mit dem Namen \"{{name}}\" existiert bereits"
     }
 }

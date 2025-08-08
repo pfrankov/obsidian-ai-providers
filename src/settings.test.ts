@@ -276,4 +276,36 @@ describe('AIProvidersSettingTab', () => {
         expect(plugin.settings.providers[1].name).toContain('Duplicate');
         expect(plugin.saveSettings).toHaveBeenCalled();
     });
+
+    it('should validate provider and show error for missing name', async () => {
+        const invalidProvider = createTestProvider({ name: '' });
+        const result = (settingTab as any).validateProvider(invalidProvider);
+
+        expect(result.isValid).toBe(false);
+        expect(result.error).toBe('errors.providerNameRequired');
+    });
+
+    it('should validate provider and show error for duplicate name', async () => {
+        const existingProvider = createTestProvider({
+            name: 'Existing Provider',
+        });
+        plugin.settings.providers = [existingProvider];
+
+        const duplicateProvider = createTestProvider({
+            id: 'different-id',
+            name: 'Existing Provider',
+        });
+        const result = (settingTab as any).validateProvider(duplicateProvider);
+
+        expect(result.isValid).toBe(false);
+        expect(result.error).toBe('errors.providerNameExists');
+    });
+
+    it('should validate provider successfully for valid provider', async () => {
+        const validProvider = createTestProvider();
+        const result = (settingTab as any).validateProvider(validProvider);
+
+        expect(result.isValid).toBe(true);
+        expect(result.error).toBeUndefined();
+    });
 });

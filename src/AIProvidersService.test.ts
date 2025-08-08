@@ -132,7 +132,7 @@ describe('AIProvidersService', () => {
     });
 
     it('should initialize with correct version', () => {
-        expect(service.version).toBe(2);
+        expect(service.version).toBe(3);
     });
 
     it('should initialize with providers from plugin settings', () => {
@@ -155,34 +155,6 @@ describe('AIProvidersService', () => {
         await service.initEmbeddingsCache();
 
         expect(embeddingsCache.init).toHaveBeenCalledWith('test-app-id');
-    });
-
-    it('should generate consistent cache keys for same input', async () => {
-        const mockHashBuffer = new ArrayBuffer(32);
-        new Uint8Array(mockHashBuffer).fill(42);
-
-        global.crypto = {
-            subtle: {
-                digest: jest.fn().mockResolvedValue(mockHashBuffer),
-            },
-        } as any;
-
-        const params: IAIProvidersEmbedParams = {
-            provider: mockProvider,
-            input: 'test content',
-        };
-
-        const key1 = await (service as any).generateCacheKey(params, [
-            'test content',
-        ]);
-        const key2 = await (service as any).generateCacheKey(params, [
-            'test content',
-        ]);
-
-        expect(key1).toBe(key2);
-        expect(key1).toBe(
-            'embed:test-provider:gpt-3.5-turbo:2a2a2a2a2a2a2a2a2a2a'
-        );
     });
 
     it('should cleanup embeddings cache', async () => {
@@ -257,7 +229,7 @@ describe('AIProvidersService', () => {
             const results = await service.retrieve(testParams);
 
             expect(Array.isArray(results)).toBe(true);
-            expect(results.length).toBeGreaterThan(0);
+            expect(results.length).toBe(3);
 
             // Check structure and sorting
             results.forEach((result, i) => {
@@ -346,6 +318,86 @@ describe('AIProvidersService', () => {
             };
 
             await expect(service.retrieve(params)).rejects.toThrow();
+        });
+
+        it('should call onProgress callback with correct parameters', async () => {
+            const mockOnProgress = jest.fn();
+            const mockEmbedWithCache = jest
+                .fn()
+                .mockImplementation(params => {
+                    // Simulate progress callback from embed method
+                    if (params.onProgress) {
+                        params.onProgress({
+                            totalChunks: 3,
+                            processedChunks: ['chunk1', 'chunk2', 'chunk3'],
+                            processingType: 'embedding',
+                        });
+                    }
+                    return Promise.resolve([[0.1, 0.2, 0.3]]);
+                })
+                .mockImplementationOnce(params => {
+                    // Query embedding - no progress callback
+                    return Promise.resolve([[0.1, 0.2, 0.3]]);
+                })
+                .mockImplementationOnce(params => {
+                    // Document chunks embedding - with progress callback
+                    if (params.onProgress) {
+                        params.onProgress({
+                            totalChunks: 3,
+                            processedChunks: ['chunk1', 'chunk2', 'chunk3'],
+                            processingType: 'embedding',
+                        });
+                    }
+                    return Promise.resolve([
+                        [0.9, 0.1, 0.1], // High similarity to query
+                        [0.1, 0.9, 0.1], // Medium similarity
+                        [0.8, 0.2, 0.1], // High similarity
+                    ]);
+                });
+            (service as any).cachedEmbeddingsService = {
+                embedWithCache: mockEmbedWithCache,
+            };
+
+            const paramsWithProgress = {
+                ...testParams,
+                onProgress: mockOnProgress,
+            };
+
+            await service.retrieve(paramsWithProgress);
+
+            // Should be called at least once from embedding progress
+            expect(mockOnProgress).toHaveBeenCalled();
+
+            // Check that progress includes processing type and embedding info
+            const calls = mockOnProgress.mock.calls;
+            expect(calls.length).toBeGreaterThanOrEqual(1);
+
+            const progressCall = calls[0];
+            expect(progressCall[0]).toEqual({
+                totalDocuments: expect.any(Number),
+                totalChunks: expect.any(Number),
+                processedDocuments: expect.any(Array),
+                processedChunks: expect.any(Array),
+                processingType: 'embedding',
+            });
+        });
+
+        it('should work without onProgress callback', async () => {
+            const mockEmbedWithCache = jest
+                .fn()
+                .mockResolvedValueOnce([[0.1, 0.2, 0.3]]) // Query embedding
+                .mockResolvedValueOnce([
+                    [0.9, 0.1, 0.1], // High similarity to query
+                    [0.1, 0.9, 0.1], // Medium similarity
+                    [0.8, 0.2, 0.1], // High similarity
+                ]);
+            (service as any).cachedEmbeddingsService = {
+                embedWithCache: mockEmbedWithCache,
+            };
+
+            // Should not throw when onProgress is not provided
+            const results = await service.retrieve(testParams);
+            expect(Array.isArray(results)).toBe(true);
         });
     });
 });

@@ -136,6 +136,29 @@
     margin: 0;
 }
 
+.rag-progress {
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background: var(--background-secondary);
+    border-radius: 6px;
+    border-left: 4px solid var(--interactive-accent);
+    animation: pulse 2s infinite;
+}
+.rag-progress h4 {
+    margin: 0 0 8px 0;
+    color: var(--interactive-accent);
+}
+.rag-progress p {
+    margin: 0;
+    font-family: var(--font-monospace);
+    font-size: 0.9em;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
 .callout {
     padding: 12px 16px;
     border-radius: 6px;

@@ -403,6 +403,7 @@ export class OllamaHandler implements IAIHandler {
 
             const inputs = Array.isArray(inputText) ? inputText : [inputText];
             const embeddings: number[][] = [];
+            const processedChunks: string[] = [];
 
             for (const input of inputs) {
                 const response = await ollama.embed({
@@ -411,6 +412,10 @@ export class OllamaHandler implements IAIHandler {
                     options: { num_ctx },
                 });
                 embeddings.push(response.embeddings[0]);
+                logger.debug('Embed response:', response);
+
+                processedChunks.push(input);
+                params.onProgress && params.onProgress([...processedChunks]);
             }
 
             return embeddings;

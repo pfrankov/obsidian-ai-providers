@@ -1,15 +1,15 @@
 import { App, Notice } from 'obsidian';
 import {
-    IAIProvider,
-    IAIProvidersService,
-    IAIProvidersExecuteParams,
-    IChunkHandler,
-    IAIProvidersEmbedParams,
-    IAIHandler,
     AIProviderType,
+    IAIDocument,
+    IAIHandler,
+    IAIProvider,
+    IAIProvidersEmbedParams,
+    IAIProvidersExecuteParams,
     IAIProvidersRetrievalParams,
     IAIProvidersRetrievalResult,
-    IAIDocument,
+    IAIProvidersService,
+    IChunkHandler,
 } from '@obsidian-ai-providers/sdk';
 import { OpenAIHandler } from './handlers/OpenAIHandler';
 import { OllamaHandler } from './handlers/OllamaHandler';
@@ -19,12 +19,12 @@ import { ConfirmationModal } from './modals/ConfirmationModal';
 import { CachedEmbeddingsService } from './cache/CachedEmbeddingsService';
 import { embeddingsCache } from './cache/EmbeddingsCache';
 import { logger } from './utils/logger';
-import { createCacheKeyHash } from './utils/hashUtils';
 import { preprocessContent, splitContent } from './utils/textProcessing';
+import { IAIProvidersRetrievalChunk } from '@obsidian-ai-providers/sdk/types';
 
 export class AIProvidersService implements IAIProvidersService {
     providers: IAIProvider[] = [];
-    version = 2;
+    version = 3;
     private app: App;
     private plugin: AIProvidersPlugin;
     private handlers: Record<string, IAIHandler>;
@@ -95,14 +95,10 @@ export class AIProvidersService implements IAIProvidersService {
                 ? params.input
                 : [params.input];
 
-            // Create automatic cache key based on input content and provider
-            const cacheKey = await this.generateCacheKey(params, inputArray);
-
             // Use cached embeddings service with automatic caching
             const cachedParams = {
                 ...params,
                 input: inputArray,
-                cacheKey,
                 chunks: inputArray, // Store input as chunks for caching
             };
 
@@ -115,15 +111,6 @@ export class AIProvidersService implements IAIProvidersService {
             new Notice(message);
             throw error;
         }
-    }
-
-    private async generateCacheKey(
-        params: IAIProvidersEmbedParams,
-        inputArray: string[]
-    ): Promise<string> {
-        // Generate cache key based on provider and input content
-        const contentHash = await createCacheKeyHash(inputArray.join('|'));
-        return `embed:${params.provider.id}:${params.provider.model}:${contentHash}`;
     }
 
     async fetchModels(provider: IAIProvider): Promise<string[]> {
@@ -208,112 +195,161 @@ export class AIProvidersService implements IAIProvidersService {
     async retrieve(
         params: IAIProvidersRetrievalParams
     ): Promise<IAIProvidersRetrievalResult[]> {
-        try {
-            // Validate input parameters
-            if (!params.query) {
-                return [];
-            }
+        // Validate input parameters
+        if (!params.query) {
+            return [];
+        }
 
-            if (!params.documents || params.documents.length === 0) {
-                return [];
-            }
+        if (!params.documents || params.documents.length === 0) {
+            return [];
+        }
 
-            // Check if handler exists for provider
-            const handler = this.getHandler(params.embeddingProvider.type);
-            if (!handler) {
-                throw new Error(
-                    `Handler not found for provider type: ${params.embeddingProvider.type}`
-                );
-            }
+        // Check if handler exists for provider
+        const handler = this.getHandler(params.embeddingProvider.type);
+        if (!handler) {
+            throw new Error(
+                `Handler not found for provider type: ${params.embeddingProvider.type}`
+            );
+        }
 
-            // Process documents into chunks with references
-            interface ProcessedChunk {
-                content: string;
-                document: IAIDocument;
-            }
+        // Process documents into chunks with references
+        const { chunks, totalChunks, documentChunkCounts } =
+            this.processDocuments(params.documents);
 
-            const chunks: ProcessedChunk[] = [];
+        if (chunks.length === 0) {
+            return [];
+        }
 
-            for (const document of params.documents) {
-                const preprocessed = preprocessContent(document.content);
-                const documentChunks = splitContent(preprocessed);
+        // Initialize progress tracking
+        const totalDocuments = params.documents.length;
 
-                for (const chunk of documentChunks) {
-                    if (chunk.trim().length > 0) {
-                        chunks.push({
-                            content: chunk.trim(),
-                            document: document, // Reference to original document
-                        });
-                    }
-                }
-            }
+        // Report initial progress
+        params.onProgress?.({
+            totalDocuments,
+            totalChunks,
+            processedDocuments: [],
+            processedChunks: [],
+            processingType: 'embedding',
+        });
 
-            if (chunks.length === 0) {
-                return [];
-            }
-
-            // Generate embeddings for query and chunks
-            const queryEmbedding = await this.embed({
+        // Generate embeddings for query and chunks in parallel
+        const [queryEmbedding, chunkEmbeddings] = await Promise.all([
+            this.embed({
                 provider: params.embeddingProvider,
                 input: params.query,
-            });
-
-            const chunkTexts = chunks.map(chunk => chunk.content);
-            const chunkEmbeddings = await this.embed({
+            }),
+            this.embed({
                 provider: params.embeddingProvider,
-                input: chunkTexts,
-            });
+                input: chunks.map(chunk => chunk.content),
+                onProgress: processedChunkTexts => {
+                    const processedChunkCount = processedChunkTexts.length;
+                    const processedChunks = chunks.slice(
+                        0,
+                        processedChunkCount
+                    );
+                    const processedDocs = this.getProcessedDocs(
+                        processedChunks,
+                        documentChunkCounts,
+                        params.documents
+                    );
 
-            // Calculate similarity scores using cosine similarity
-            const queryVector = queryEmbedding[0];
-            const results: IAIProvidersRetrievalResult[] = [];
+                    params.onProgress?.({
+                        totalDocuments,
+                        totalChunks,
+                        processedDocuments: processedDocs,
+                        processedChunks,
+                        processingType: 'embedding',
+                    });
+                },
+            }),
+        ]);
 
-            for (let i = 0; i < chunks.length; i++) {
-                const chunkVector = chunkEmbeddings[i];
-                const similarity = this.cosineSimilarity(
-                    queryVector,
-                    chunkVector
-                );
-
-                results.push({
-                    content: chunks[i].content,
-                    score: similarity,
-                    document: chunks[i].document,
-                });
-            }
-
-            // Sort by similarity score (descending)
-            results.sort((a, b) => b.score - a.score);
-
-            return results;
-        } catch (error) {
-            throw error;
-        }
+        // Calculate similarity and rank chunks
+        return this.rankChunks(queryEmbedding[0], chunks, chunkEmbeddings);
     }
 
-    private cosineSimilarity(vectorA: number[], vectorB: number[]): number {
-        if (vectorA.length !== vectorB.length) {
-            throw new Error('Vectors must have the same length');
+    private processDocuments(documents: IAIDocument[]) {
+        interface ProcessedChunk {
+            content: string;
+            document: IAIDocument;
         }
 
-        let dotProduct = 0;
-        let normA = 0;
-        let normB = 0;
+        const chunks: ProcessedChunk[] = [];
+        const documentChunkCounts: { [docId: string]: number } = {};
 
-        for (let i = 0; i < vectorA.length; i++) {
-            dotProduct += vectorA[i] * vectorB[i];
-            normA += vectorA[i] * vectorA[i];
-            normB += vectorB[i] * vectorB[i];
+        for (const document of documents) {
+            const preprocessed = preprocessContent(document.content);
+            const documentChunks = splitContent(preprocessed);
+            const docId = document.meta?.id || document.content;
+            documentChunkCounts[docId] = 0;
+
+            for (const chunk of documentChunks) {
+                if (chunk.trim().length > 0) {
+                    chunks.push({
+                        content: chunk.trim(),
+                        document: document,
+                    });
+                    documentChunkCounts[docId]++;
+                }
+            }
         }
 
-        normA = Math.sqrt(normA);
-        normB = Math.sqrt(normB);
+        return { chunks, totalChunks: chunks.length, documentChunkCounts };
+    }
 
-        if (normA === 0 || normB === 0) {
-            return 0;
+    private getProcessedDocs(
+        processedChunks: IAIProvidersRetrievalChunk[],
+        documentChunkCounts: { [docId: string]: number },
+        documents: IAIDocument[]
+    ) {
+        const processedChunksPerDoc: { [docId: string]: number } = {};
+        for (const chunk of processedChunks) {
+            const docId = chunk.document.meta?.id || chunk.document.content;
+            processedChunksPerDoc[docId] =
+                (processedChunksPerDoc[docId] || 0) + 1;
         }
 
-        return dotProduct / (normA * normB);
+        const processedDocs: IAIDocument[] = [];
+        for (const document of documents) {
+            const docId = document.meta?.id || document.content;
+            if (
+                documentChunkCounts[docId] > 0 &&
+                processedChunksPerDoc[docId] === documentChunkCounts[docId]
+            ) {
+                processedDocs.push(document);
+            }
+        }
+
+        return processedDocs;
+    }
+
+    private rankChunks(
+        queryEmbedding: number[],
+        chunks: IAIProvidersRetrievalChunk[],
+        chunkEmbeddings: number[][]
+    ): IAIProvidersRetrievalResult[] {
+        const similarities = chunkEmbeddings.map(embedding =>
+            this.cosineSimilarity(queryEmbedding, embedding)
+        );
+
+        return chunks
+            .map((chunk, index) => ({
+                document: chunk.document,
+                score: similarities[index],
+                content: chunk.content,
+            }))
+            .sort((a, b) => b.score - a.score);
+    }
+
+    private cosineSimilarity(vecA: number[], vecB: number[]): number {
+        const dotProduct = vecA.reduce((acc, val, i) => acc + val * vecB[i], 0);
+        const magnitudeA = Math.sqrt(
+            vecA.reduce((acc, val) => acc + val * val, 0)
+        );
+        const magnitudeB = Math.sqrt(
+            vecB.reduce((acc, val) => acc + val * val, 0)
+        );
+        return dotProduct / (magnitudeA * magnitudeB);
     }
 
     /**

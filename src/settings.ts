@@ -1,5 +1,6 @@
 import {
     App,
+    Notice,
     PluginSettingTab,
     sanitizeHTMLToDom,
     Setting,
@@ -24,6 +25,7 @@ export const DEFAULT_SETTINGS: IAIProvidersPluginSettings = {
 export class AIProvidersSettingTab extends PluginSettingTab {
     private isFormOpen = false;
     private isDeveloperMode = false;
+    private currentModal?: ProviderFormModal;
 
     plugin: AIProvidersPlugin;
 
@@ -42,7 +44,7 @@ export class AIProvidersSettingTab extends PluginSettingTab {
             model: '',
         };
 
-        new ProviderFormModal(
+        this.currentModal = new ProviderFormModal(
             this.app,
             this.plugin,
             editingProvider,
@@ -50,32 +52,55 @@ export class AIProvidersSettingTab extends PluginSettingTab {
                 await this.saveProvider(updatedProvider);
             },
             isAdding
-        ).open();
+        );
+        this.currentModal.open();
     }
 
     private closeForm() {
         this.isFormOpen = false;
+        if (this.currentModal) {
+            this.currentModal.close();
+            this.currentModal = undefined;
+        }
         this.display();
     }
 
-    private validateProvider(provider: IAIProvider): boolean {
-        // Validate required fields
-        if (!provider.id || !provider.name || !provider.type) return false;
+    private validateProvider(provider: IAIProvider): {
+        isValid: boolean;
+        error?: string;
+    } {
+        // Validate provider name
+        if (!provider.name || provider.name.trim() === '') {
+            return {
+                isValid: false,
+                error: I18n.t('errors.providerNameRequired'),
+            };
+        }
 
         // Check for duplicate names
         const providers = this.plugin.settings.providers || [];
         const existingProvider = providers.find(
-            (p: IAIProvider) => p.name === provider.name && p.id !== provider.id
+            (p: IAIProvider) =>
+                p.name.trim() === provider.name.trim() && p.id !== provider.id
         );
         if (existingProvider) {
-            return false;
+            return {
+                isValid: false,
+                error: I18n.t('errors.providerNameExists', {
+                    name: provider.name,
+                }),
+            };
         }
 
-        return true;
+        return { isValid: true };
     }
 
     async saveProvider(provider: IAIProvider) {
-        if (!this.validateProvider(provider)) return;
+        const validation = this.validateProvider(provider);
+        if (!validation.isValid) {
+            new Notice(validation.error!);
+            return;
+        }
 
         const providers = this.plugin.settings.providers || [];
         const existingIndex = providers.findIndex(

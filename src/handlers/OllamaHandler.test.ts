@@ -19,14 +19,24 @@ const createHandler = () => {
     const mockFetchSelector = {
         execute: jest
             .fn()
-            .mockImplementation(async (provider: any, operation: Function) => {
-                return operation(jest.fn());
-            }),
+            .mockImplementation(
+                async (
+                    provider: any,
+                    operation: (client: any) => Promise<any>
+                ) => {
+                    return operation(jest.fn());
+                }
+            ),
         request: jest
             .fn()
-            .mockImplementation(async (provider: any, operation: Function) => {
-                return operation(jest.fn());
-            }),
+            .mockImplementation(
+                async (
+                    provider: any,
+                    operation: (client: any) => Promise<any>
+                ) => {
+                    return operation(jest.fn());
+                }
+            ),
         clear: jest.fn(),
     };
 
@@ -120,6 +130,9 @@ createAIHandlerTests(
             verifyCaching: async (handler: any, mockClient: IMockClient) => {
                 expect((mockClient as any).show).toHaveBeenCalled();
             },
+        },
+        embeddingOptions: {
+            progressBehavior: 'per-item',
         },
         imageHandlingOptions: {
             verifyImageHandling: async (_handler, mockClient) => {

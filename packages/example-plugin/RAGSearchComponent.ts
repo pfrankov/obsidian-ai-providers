@@ -139,6 +139,15 @@ export class RAGSearchComponent {
         ) as unknown as HTMLElement;
         resultsContainer.empty();
 
+        // Create progress display element
+        const progressEl = resultsContainer.createEl('div');
+        progressEl.addClass('rag-progress');
+        progressEl.createEl('h4', { text: '📊 Processing Progress' });
+        const progressText = progressEl.createEl('p', {
+            text: 'Initializing...',
+        });
+        progressText.addClass('mod-muted');
+
         try {
             const documents = await Promise.all(
                 Array.from(this.selectedFiles).map(async path => {
@@ -153,12 +162,28 @@ export class RAGSearchComponent {
                 })
             );
 
-            // 🎯 Simple retrieve() call - that's it!
+            // 🎯 Retrieve with progress tracking!
             const results = await aiProviders.retrieve({
                 query: this.searchQuery,
                 documents,
                 embeddingProvider: provider,
+                onProgress: ({
+                    processedChunks,
+                    processedDocuments,
+                    totalDocuments,
+                    totalChunks,
+                    processingType,
+                }) => {
+                    const docsProgress = `${processedDocuments.length}/${totalDocuments}`;
+                    const chunksProgress = `${processedChunks.length}/${totalChunks}`;
+                    progressText.setText(
+                        `${processingType}: Documents ${docsProgress} • Chunks ${chunksProgress}`
+                    );
+                },
             });
+
+            // Remove progress display when done
+            progressEl.remove();
 
             this.displayResults(resultsContainer, results);
         } catch (error) {

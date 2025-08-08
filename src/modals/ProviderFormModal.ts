@@ -334,8 +334,10 @@ export class ProviderFormModal extends Modal {
                     .setButtonText(I18n.t('settings.save'))
                     .setCta()
                     .onClick(async () => {
+                        // Trim name to avoid issues with whitespace
+                        this.provider.name = this.provider.name.trim();
                         await this.onSave(this.provider);
-                        this.close();
+                        // Note: Modal will be closed by saveProvider if validation passes
                     })
             )
             .addButton(button => {

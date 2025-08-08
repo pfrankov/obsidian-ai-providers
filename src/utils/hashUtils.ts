@@ -10,7 +10,7 @@
  */
 export async function createSecureHash(
     input: string,
-    length: number = 16
+    length = 16
 ): Promise<string> {
     if (!crypto?.subtle) {
         throw new Error(

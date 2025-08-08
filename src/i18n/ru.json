@@ -51,6 +51,8 @@
         "missingUrl": "Требуется URL провайдера",
         "missingModel": "Необходимо выбрать модель",
         "pluginMustBeUpdated": "Плагин требует обновления",
-        "pluginMustBeUpdatedFormatted": "Для работы с этой версией AI Providers требуется обновление плагина"
+        "pluginMustBeUpdatedFormatted": "Для работы с этой версией AI Providers требуется обновление плагина",
+        "providerNameRequired": "Требуется имя провайдера",
+        "providerNameExists": "Провайдер с именем \"{{name}}\" уже существует"
     }
 }

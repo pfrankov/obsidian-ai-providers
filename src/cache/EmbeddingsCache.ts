@@ -1,13 +1,11 @@
 import { openDB, IDBPDatabase } from 'idb';
 import { createDatabaseHash } from '../utils/hashUtils';
+import { EmbeddingChunk } from './CachedEmbeddingsService';
 
-interface EmbeddingsCacheItem {
+export interface EmbeddingsCacheItem {
     providerId: string; // ID of the provider used
     providerModel: string; // Model name used for embeddings
-    chunks: {
-        content: string;
-        embedding: number[];
-    }[];
+    chunks: EmbeddingChunk[];
 }
 
 export class EmbeddingsCache {

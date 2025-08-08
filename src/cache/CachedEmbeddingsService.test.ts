@@ -1,15 +1,7 @@
 import { CachedEmbeddingsService } from './CachedEmbeddingsService';
 import { embeddingsCache } from './EmbeddingsCache';
-import {
-    IAIProvidersEmbedParams,
-    IAIProvider,
-} from '@obsidian-ai-providers/sdk';
-
-// Local type for tests
-interface TestCachedEmbedParams extends IAIProvidersEmbedParams {
-    cacheKey?: string;
-    chunks?: string[];
-}
+import { IAIProvider } from '@obsidian-ai-providers/sdk';
+import { EmbeddingChunk } from './CachedEmbeddingsService';
 
 // Mock dependencies
 jest.mock('./EmbeddingsCache');
@@ -32,28 +24,15 @@ describe('CachedEmbeddingsService', () => {
         };
 
         jest.clearAllMocks();
-    });
-
-    it('should call embed function directly when no cache key provided', async () => {
-        const params: TestCachedEmbedParams = {
-            provider: mockProvider,
-            input: ['test text'],
-        };
-
-        mockEmbedFunction.mockResolvedValue([[0.1, 0.2, 0.3]]);
-
-        const result = await service.embedWithCache(params);
-
-        expect(mockEmbedFunction).toHaveBeenCalledWith(params);
-        expect(embeddingsCache.getEmbeddings).not.toHaveBeenCalled();
-        expect(result).toEqual([[0.1, 0.2, 0.3]]);
+        (embeddingsCache.setEmbeddings as jest.Mock).mockResolvedValue(
+            undefined
+        );
     });
 
     it('should use cached embeddings when available', async () => {
-        const params: TestCachedEmbedParams = {
+        const params = {
             provider: mockProvider,
             input: ['test text'],
-            cacheKey: 'test-key',
             chunks: ['test text'],
         };
 
@@ -69,16 +48,17 @@ describe('CachedEmbeddingsService', () => {
 
         const result = await service.embedWithCache(params);
 
-        expect(embeddingsCache.getEmbeddings).toHaveBeenCalledWith('test-key');
+        expect(embeddingsCache.getEmbeddings).toHaveBeenCalledWith(
+            'embed:test-provider:test-model'
+        );
         expect(mockEmbedFunction).not.toHaveBeenCalled();
         expect(result).toEqual([[0.1, 0.2, 0.3]]);
     });
 
     it('should generate new embeddings when provider changes', async () => {
-        const params: TestCachedEmbedParams = {
+        const params = {
             provider: mockProvider,
             input: ['test text'],
-            cacheKey: 'test-key',
             chunks: ['test text'],
         };
 
@@ -95,15 +75,18 @@ describe('CachedEmbeddingsService', () => {
 
         const result = await service.embedWithCache(params);
 
-        expect(mockEmbedFunction).toHaveBeenCalledWith(params);
+        expect(mockEmbedFunction).toHaveBeenCalledWith({
+            ...params,
+            input: ['test text'],
+        });
         expect(result).toEqual([[0.4, 0.5, 0.6]]);
     });
 
     it('should handle cache errors gracefully', async () => {
-        const params: TestCachedEmbedParams = {
+        const params = {
             provider: mockProvider,
             input: ['test text'],
-            cacheKey: 'test-key',
+            chunks: ['test text'],
         };
 
         (embeddingsCache.getEmbeddings as jest.Mock).mockRejectedValue(
@@ -113,7 +96,64 @@ describe('CachedEmbeddingsService', () => {
 
         const result = await service.embedWithCache(params);
 
-        expect(mockEmbedFunction).toHaveBeenCalledWith(params);
+        expect(mockEmbedFunction).toHaveBeenCalledWith({
+            ...params,
+            input: ['test text'],
+        });
         expect(result).toEqual([[0.1, 0.2, 0.3]]);
+    });
+
+    it('should embed only new chunks and use cache for existing ones', async () => {
+        const params = {
+            provider: mockProvider,
+            input: ['cached text', 'new text'],
+            chunks: ['cached text', 'new text'],
+        };
+
+        const cachedData = {
+            providerId: 'test-provider',
+            providerModel: 'test-model',
+            chunks: [{ content: 'cached text', embedding: [0.1, 0.2, 0.3] }],
+        };
+
+        (embeddingsCache.getEmbeddings as jest.Mock).mockResolvedValue(
+            cachedData
+        );
+        mockEmbedFunction.mockResolvedValue([[0.4, 0.5, 0.6]]); // Embedding for 'new text'
+
+        const result = await service.embedWithCache(params);
+
+        expect(embeddingsCache.getEmbeddings).toHaveBeenCalledWith(
+            'embed:test-provider:test-model'
+        );
+        expect(mockEmbedFunction).toHaveBeenCalledWith({
+            ...params,
+            input: ['new text'],
+        });
+        expect(result).toEqual([
+            [0.1, 0.2, 0.3], // from cache
+            [0.4, 0.5, 0.6], // from new embedding
+        ]);
+
+        const expectedChunksToCache: EmbeddingChunk[] = [
+            { content: 'cached text', embedding: [0.1, 0.2, 0.3] },
+            { content: 'new text', embedding: [0.4, 0.5, 0.6] },
+        ];
+
+        // Use expect.any(Array) for the chunks because the order is not guaranteed
+        expect(embeddingsCache.setEmbeddings).toHaveBeenCalledWith(
+            'embed:test-provider:test-model',
+            {
+                providerId: 'test-provider',
+                providerModel: 'test-model',
+                chunks: expect.any(Array),
+            }
+        );
+
+        const actualCachedChunks = (embeddingsCache.setEmbeddings as jest.Mock)
+            .mock.calls[0][1].chunks;
+        expect(actualCachedChunks).toHaveLength(2);
+        expect(actualCachedChunks).toContainEqual(expectedChunksToCache[0]);
+        expect(actualCachedChunks).toContainEqual(expectedChunksToCache[1]);
     });
 });

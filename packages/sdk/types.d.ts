@@ -81,9 +81,12 @@ export type IAIProvidersExecuteParamsWithMessages = IAIProvidersExecuteParamsBas
 
 export type IAIProvidersExecuteParams = IAIProvidersExecuteParamsWithPrompt | IAIProvidersExecuteParamsWithMessages;
 
+export type IAIProcessingType = 'embedding';
+
 export interface IAIProvidersEmbedParams {
     input?: string | string[];
     provider: IAIProvider;
+    onProgress?: (processedEmbeddings: string[]) => void;
 }
 
 export interface IAIDocument {
@@ -91,10 +94,24 @@ export interface IAIDocument {
     meta?: Record<string, any>;
 }
 
+export interface IAIProvidersRetrievalChunk {
+    content: string;
+    document: IAIDocument; // Reference to original document
+}
+
+export interface IAIProvidersRetrievalProgressInfo {
+    totalDocuments: number;
+    totalChunks: number;
+    processedDocuments: IAIDocument[]; // References to processed documents
+    processedChunks: IAIProvidersRetrievalChunk[]; // References to processed chunks
+    processingType: IAIProcessingType;
+}
+
 export interface IAIProvidersRetrievalParams {
     query: string;
     documents: IAIDocument[];
     embeddingProvider: IAIProvider;
+    onProgress?: (progress: IAIProvidersRetrievalProgressInfo) => void;
 }
 
 export interface IAIProvidersRetrievalResult {
