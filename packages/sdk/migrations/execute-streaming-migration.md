@@ -1,6 +1,6 @@
-# Migration: execute() Streaming Change (IChunkHandler → Promise + onProgress) *(since SDK 1.4.0)*
+# Migration: execute() Streaming Change (IChunkHandler → Promise + onProgress) *(since SDK 1.5.0)*
 
-Introduced in **@obsidian-ai-providers/sdk 1.4.0** with service API version **3**. Earlier versions returned an `IChunkHandler` unconditionally. From 1.4.0 (API v3) the default return value is a `Promise<string>`; the legacy handler is only produced when no streaming / abort params are provided (deprecated path).
+Introduced in **@obsidian-ai-providers/sdk 1.5.0** with service API version **3**. Earlier versions returned an `IChunkHandler` unconditionally. From 1.5.0 (API v3) the default return value is a `Promise<string>`; the legacy handler is only produced when no streaming / abort params are provided (deprecated path).
 
 This migration explains the change to `execute()`: it now returns a `Promise<string>` (final text) directly instead of a chainable `IChunkHandler`. Streaming is provided inline via the `onProgress` parameter; cancellation uses an `AbortController`.
 

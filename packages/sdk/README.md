@@ -14,10 +14,10 @@ npm install @obsidian-ai-providers/sdk
 
 ### Migration Guides
 If you are upgrading from older versions, see:
-- [execute() streaming change: IChunkHandler → Promise + onProgress (since 1.4.0)](./migrations/execute-streaming-migration.md)
+- [execute() streaming change: IChunkHandler → Promise + onProgress (since 1.5.0)](./migrations/execute-streaming-migration.md)
 
 ### Version Notes
-SDK 1.4.0 (Service API v3) changes `execute()` to return a `Promise<string>` and introduces inline streaming via `onProgress` plus cancellation via `AbortController`. The old chainable `IChunkHandler` object is now deprecated and only returned when neither `onProgress` nor `abortController` are passed.
+SDK 1.5.0 (Service API v3) changes `execute()` to return a `Promise<string>` and introduces inline streaming via `onProgress` plus cancellation via `AbortController`. The old chainable `IChunkHandler` object is now deprecated and only returned when neither `onProgress` nor `abortController` are passed.
 
 ### 1. Wait for AI Providers plugin in your plugin
 Any plugin can not be loaded instantly, so you need to wait for AI Providers plugin to be loaded.
