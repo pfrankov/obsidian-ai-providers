@@ -15,6 +15,10 @@ export interface IAIProvider {
     availableModels?: string[];
 }
 
+/**
+ * @deprecated Use execute({... onProgress ...}) without relying on the returned handler.
+ * The execute method now accepts streaming callbacks directly via params; this object remains only for backward compatibility.
+ */
 export interface IChunkHandler {
     onData(callback: (chunk: string, accumulatedText: string) => void): void;
     onEnd(callback: (fullText: string) => void): void;
@@ -25,9 +29,22 @@ export interface IChunkHandler {
 export interface IAIProvidersService {
     version: number;
     providers: IAIProvider[];
-    fetchModels: (provider: IAIProvider) => Promise<string[]>;
+    /** @deprecated Pass an object: { provider, abortController? } */
+    fetchModels(provider: IAIProvider): Promise<string[]>;
+    fetchModels(params: { provider: IAIProvider; abortController?: AbortController }): Promise<string[]>;
     embed: (params: IAIProvidersEmbedParams) => Promise<number[][]>;
-    execute: (params: IAIProvidersExecuteParams) => Promise<IChunkHandler>;
+    /**
+     * Execute text generation.
+     * If caller supplies onProgress or abortController (stream-style usage) -> Promise<string>.
+     * If neither onProgress nor abortController provided (legacy usage) -> Promise<IChunkHandler>.
+     */
+    execute(
+        params: IAIProvidersExecuteParams &
+            ({ onProgress?: (chunk: string, accumulatedText: string) => void } | { abortController?: AbortController })
+    ): Promise<string>;
+    execute(
+        params: IAIProvidersExecuteParams & { onProgress?: undefined; abortController?: undefined }
+    ): Promise<IChunkHandler>;
     checkCompatibility: (requiredVersion: number) => void;
     migrateProvider: (provider: IAIProvider) => Promise<IAIProvider | false>;
     retrieve: (params: IAIProvidersRetrievalParams) => Promise<IAIProvidersRetrievalResult[]>;
@@ -65,6 +82,10 @@ export interface IAIProvidersExecuteParamsBase {
         stop?: string[];
         [key: string]: any;
     };
+    /** Optional AbortController to cancel execution (stream) */
+    abortController?: AbortController;
+    /** Optional streaming progress callback for partial chunks. The promise resolves with the final text or rejects on error/abort. */
+    onProgress?: (chunk: string, accumulatedText: string) => void;
 }
 
 export type IAIProvidersExecuteParamsWithPrompt = IAIProvidersExecuteParamsBase & {
@@ -87,6 +108,7 @@ export interface IAIProvidersEmbedParams {
     input?: string | string[];
     provider: IAIProvider;
     onProgress?: (processedEmbeddings: string[]) => void;
+    abortController?: AbortController;
 }
 
 export interface IAIDocument {
@@ -112,6 +134,7 @@ export interface IAIProvidersRetrievalParams {
     documents: IAIDocument[];
     embeddingProvider: IAIProvider;
     onProgress?: (progress: IAIProvidersRetrievalProgressInfo) => void;
+    abortController?: AbortController;
 }
 
 export interface IAIProvidersRetrievalResult {
@@ -121,9 +144,9 @@ export interface IAIProvidersRetrievalResult {
 }
 
 export interface IAIHandler {
-    fetchModels(provider: IAIProvider): Promise<string[]>;
+    fetchModels(params: { provider: IAIProvider; abortController?: AbortController }): Promise<string[]>;
     embed(params: IAIProvidersEmbedParams): Promise<number[][]>;
-    execute(params: IAIProvidersExecuteParams): Promise<IChunkHandler>;
+    execute(params: IAIProvidersExecuteParams): Promise<string>;
 }
 
 export interface IAIProvidersPluginSettings {

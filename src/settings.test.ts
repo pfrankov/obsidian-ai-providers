@@ -53,12 +53,7 @@ jest.mock('./modals/ProviderFormModal', () => ({
 // Mock handlers with common implementation
 const mockHandlerImplementation = {
     fetchModels: jest.fn().mockResolvedValue(['model-1', 'model-2']),
-    execute: jest.fn().mockResolvedValue({
-        onData: jest.fn(),
-        onEnd: jest.fn(),
-        onError: jest.fn(),
-        abort: jest.fn(),
-    }),
+    execute: jest.fn().mockResolvedValue('result'),
 };
 
 jest.mock('./handlers/OpenAIHandler', () => ({
@@ -88,12 +83,7 @@ jest.mock('./AIProvidersService', () => {
             fetchModels: jest
                 .fn()
                 .mockResolvedValue(['gpt-4', 'gpt-3.5-turbo']),
-            execute: jest.fn().mockResolvedValue({
-                onData: jest.fn(),
-                onEnd: jest.fn(),
-                onError: jest.fn(),
-                abort: jest.fn(),
-            }),
+            execute: jest.fn().mockResolvedValue('result'),
             checkCompatibility: jest.fn(),
         })),
     };

@@ -90,6 +90,12 @@ export class AIProvidersService implements IAIProvidersService {
                 throw new Error('Input is required for embedding');
             }
 
+            const abortController: AbortController | undefined = (params as any)
+                .abortController;
+            if (abortController?.signal.aborted) {
+                throw new Error('Aborted');
+            }
+
             // Normalize input to array
             const inputArray = Array.isArray(params.input)
                 ? params.input
@@ -113,15 +119,27 @@ export class AIProvidersService implements IAIProvidersService {
         }
     }
 
-    async fetchModels(provider: IAIProvider): Promise<string[]> {
+    async fetchModels(
+        params:
+            | { provider: IAIProvider; abortController?: AbortController }
+            | IAIProvider
+    ): Promise<string[]> {
         try {
+            const provider = (params as any).provider
+                ? (params as any).provider
+                : (params as IAIProvider);
+            const abortController: AbortController | undefined = (params as any)
+                .abortController;
+            if (abortController?.signal.aborted) {
+                throw new Error('Aborted');
+            }
             const handler = this.getHandler(provider.type);
             if (!handler) {
                 throw new Error(
                     `Handler not found for provider type: ${provider.type}`
                 );
             }
-            return handler.fetchModels(provider);
+            return (handler as any).fetchModels({ provider, abortController });
         } catch (error) {
             const message =
                 error instanceof Error
@@ -132,23 +150,80 @@ export class AIProvidersService implements IAIProvidersService {
         }
     }
 
-    async execute(params: IAIProvidersExecuteParams): Promise<IChunkHandler> {
-        try {
-            const handler = this.getHandler(params.provider.type);
-            if (!handler) {
-                throw new Error(
-                    `Handler not found for provider type: ${params.provider.type}`
-                );
-            }
-            return handler.execute(params);
-        } catch (error) {
-            const message =
-                error instanceof Error
-                    ? error.message
-                    : I18n.t('errors.failedToExecuteRequest');
-            new Notice(message);
-            throw error;
+    async execute(
+        params: IAIProvidersExecuteParams & {
+            onProgress?: undefined;
+            abortController?: undefined;
         }
+    ): Promise<IChunkHandler>;
+    async execute(
+        params: IAIProvidersExecuteParams &
+            (
+                | {
+                      onProgress?: (
+                          chunk: string,
+                          accumulatedText: string
+                      ) => void;
+                  }
+                | { abortController?: AbortController }
+            )
+    ): Promise<string>;
+    async execute(
+        params: IAIProvidersExecuteParams
+    ): Promise<string | IChunkHandler> {
+        const handler = this.getHandler(params.provider.type);
+        if (!handler) {
+            throw new Error(
+                `Handler not found for provider type: ${params.provider.type}`
+            );
+        }
+
+        const hasOnData = Boolean((params as any).onProgress);
+        const hasAbort = Boolean((params as any).abortController);
+        const useLegacyWrapper = !hasOnData && !hasAbort;
+
+        if (!useLegacyWrapper) {
+            // Ensure a provided abortController (if any) is forwarded unchanged
+            return await handler.execute(params);
+        }
+
+        const internalAbortController = new AbortController();
+        const handlers = {
+            data: [] as ((chunk: string, accumulatedText: string) => void)[],
+            end: [] as ((fullText: string) => void)[],
+            error: [] as ((error: Error) => void)[],
+        };
+
+        handler
+            .execute({
+                ...params,
+                abortController: internalAbortController,
+                onProgress: (chunk: string, acc: string) => {
+                    handlers.data.forEach(handler => handler(chunk, acc));
+                },
+            })
+            .then((full: string) => {
+                handlers.end.forEach(handler => handler(full));
+            })
+            .catch((err: any) => {
+                handlers.error.forEach(handler => handler(err));
+            });
+
+        const legacyHandler: IChunkHandler = {
+            onData(callback: (chunk: string, accumulatedText: string) => void) {
+                handlers.data.push(callback);
+            },
+            onEnd(callback: (fullText: string) => void) {
+                handlers.end.push(callback);
+            },
+            onError(callback: (error: Error) => void) {
+                handlers.error.push(callback);
+            },
+            abort: () => {
+                internalAbortController.abort();
+            },
+        };
+        return legacyHandler;
     }
 
     async migrateProvider(provider: IAIProvider): Promise<IAIProvider | false> {
@@ -195,11 +270,15 @@ export class AIProvidersService implements IAIProvidersService {
     async retrieve(
         params: IAIProvidersRetrievalParams
     ): Promise<IAIProvidersRetrievalResult[]> {
+        const abortController: AbortController | undefined = (params as any)
+            .abortController;
+        if (abortController?.signal.aborted) {
+            throw new Error('Aborted');
+        }
         // Validate input parameters
         if (!params.query) {
             return [];
         }
-
         if (!params.documents || params.documents.length === 0) {
             return [];
         }
@@ -215,7 +294,6 @@ export class AIProvidersService implements IAIProvidersService {
         // Process documents into chunks with references
         const { chunks, totalChunks, documentChunkCounts } =
             this.processDocuments(params.documents);
-
         if (chunks.length === 0) {
             return [];
         }
@@ -237,11 +315,16 @@ export class AIProvidersService implements IAIProvidersService {
             this.embed({
                 provider: params.embeddingProvider,
                 input: params.query,
-            }),
+                abortController: (params as any).abortController,
+            } as any),
             this.embed({
                 provider: params.embeddingProvider,
                 input: chunks.map(chunk => chunk.content),
-                onProgress: processedChunkTexts => {
+                abortController: (params as any).abortController,
+                onProgress: (processedChunkTexts: string[]) => {
+                    if (abortController?.signal.aborted) {
+                        return;
+                    }
                     const processedChunkCount = processedChunkTexts.length;
                     const processedChunks = chunks.slice(
                         0,
@@ -252,7 +335,6 @@ export class AIProvidersService implements IAIProvidersService {
                         documentChunkCounts,
                         params.documents
                     );
-
                     params.onProgress?.({
                         totalDocuments,
                         totalChunks,
@@ -261,8 +343,13 @@ export class AIProvidersService implements IAIProvidersService {
                         processingType: 'embedding',
                     });
                 },
-            }),
-        ]);
+            } as any),
+        ]).catch(error => {
+            if ((params as any).abortController?.signal?.aborted) {
+                throw new Error('Aborted');
+            }
+            throw error;
+        });
 
         // Calculate similarity and rank chunks
         return this.rankChunks(queryEmbedding[0], chunks, chunkEmbeddings);

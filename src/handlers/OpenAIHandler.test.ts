@@ -168,7 +168,39 @@ describe('OpenAI CORS Handling', () => {
             }
         );
 
-        const result = await handler.fetchModels(mockProvider);
+        const result = await handler.fetchModels({ provider: mockProvider });
         expect(result).toEqual(['model1']);
+    });
+
+    it('should support new object param form for fetchModels', async () => {
+        const mockClient = createMockClient();
+        jest.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+        const result = await handler.fetchModels({ provider: mockProvider });
+        expect(result).toEqual(expect.any(Array));
+    });
+
+    it('should abort with new object param form', async () => {
+        const mockClient = createMockClient();
+        jest.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+        const abortController = new AbortController();
+        abortController.abort();
+        await expect(
+            handler.fetchModels({ provider: mockProvider, abortController })
+        ).rejects.toThrow(/Aborted/);
+    });
+
+    it('should abort embedding when abortController is aborted', async () => {
+        const mockClient = createMockClient();
+        jest.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+        const abortController = new AbortController();
+        abortController.abort();
+
+        await expect(
+            handler.embed({
+                provider: mockProvider,
+                input: 'test',
+                abortController,
+            } as any)
+        ).rejects.toThrow(/Aborted/);
     });
 });

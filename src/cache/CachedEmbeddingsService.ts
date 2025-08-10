@@ -27,6 +27,12 @@ export class CachedEmbeddingsService {
             return this.embedFunction(params);
         }
 
+        const abortController: AbortController | undefined = (params as any)
+            .abortController;
+        if (abortController?.signal.aborted) {
+            throw new Error('Aborted');
+        }
+
         const cacheKey = await this.generateCacheKey(params);
 
         const { chunks } = params;
@@ -36,6 +42,9 @@ export class CachedEmbeddingsService {
         );
 
         if (uncachedChunks.length > 0) {
+            if (abortController?.signal.aborted) {
+                throw new Error('Aborted');
+            }
             await this.embedAndCacheChunks(
                 params,
                 uncachedChunks,
@@ -54,6 +63,11 @@ export class CachedEmbeddingsService {
         chunksMap: Map<string, number[]>,
         cacheKey: string
     ) {
+        const abortController: AbortController | undefined = (params as any)
+            .abortController;
+        if (abortController?.signal.aborted) {
+            throw new Error('Aborted');
+        }
         const newEmbeddings = await this.embedFunction({
             ...params,
             input: uncachedChunks,

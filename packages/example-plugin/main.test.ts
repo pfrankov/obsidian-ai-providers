@@ -41,12 +41,6 @@ const createMockProvider = (id: string, name: string, model?: string) => ({
     ...(model ? { model } : {}),
 });
 
-const createMockChunkHandler = () => ({
-    onData: jest.fn(),
-    onEnd: jest.fn(),
-    onError: jest.fn(),
-});
-
 const createMockAIResolver = (
     providers: any[] = [],
     execute = jest.fn(),
@@ -172,9 +166,7 @@ describe('AIProvidersExamplePlugin', () => {
 
         it('should show execute button when provider is selected', async () => {
             const mockProvider = createMockProvider('provider1', 'Provider 1');
-            const mockExecute = jest
-                .fn()
-                .mockResolvedValue(createMockChunkHandler());
+            const mockExecute = jest.fn().mockResolvedValue('London');
 
             (waitForAI as jest.Mock).mockResolvedValueOnce(
                 createMockAIResolver([mockProvider], mockExecute)
@@ -191,11 +183,9 @@ describe('AIProvidersExamplePlugin', () => {
             expect(executeButton?.textContent).toBe('Execute');
         });
 
-        it('should handle AI execution correctly', async () => {
+        it('should handle AI execution correctly (stream API)', async () => {
             const mockProvider = createMockProvider('provider1', 'Provider 1');
-            const mockExecute = jest
-                .fn()
-                .mockResolvedValue(createMockChunkHandler());
+            const mockExecute = jest.fn().mockResolvedValue('London');
 
             (waitForAI as jest.Mock).mockResolvedValueOnce(
                 createMockAIResolver([mockProvider], mockExecute)
@@ -212,10 +202,17 @@ describe('AIProvidersExamplePlugin', () => {
             // Click execute button
             executeButton?.click();
 
-            expect(mockExecute).toHaveBeenCalledWith({
-                provider: mockProvider,
-                prompt: 'What is the capital of Great Britain?',
-            });
+            expect(mockExecute).toHaveBeenCalledTimes(1);
+            const callArg = mockExecute.mock.calls[0][0];
+            expect(callArg.provider).toBe(mockProvider);
+            expect(callArg.prompt).toBe(
+                'What is the capital of Great Britain?'
+            );
+            expect(typeof callArg.onProgress).toBe('function');
+            expect(callArg.onEnd).toBeUndefined();
+            expect(callArg.onError).toBeUndefined();
+            // abortController is optional but we demonstrate passing it
+            expect(callArg.abortController).toBeInstanceOf(AbortController);
         });
 
         it('should clear container before displaying settings', async () => {

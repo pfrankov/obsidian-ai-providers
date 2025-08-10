@@ -157,6 +157,74 @@ describe('AIProvidersService', () => {
         expect(embeddingsCache.init).toHaveBeenCalledWith('test-app-id');
     });
 
+    describe('execute legacy augmentation', () => {
+        beforeEach(() => {
+            // Mock handler.execute to stream two chunks then resolve
+            const handlers = (service as any).handlers;
+            Object.values(handlers).forEach((h: any) => {
+                h.execute = jest
+                    .fn()
+                    .mockImplementation(({ onProgress }: any) => {
+                        return new Promise<string>(resolve => {
+                            setTimeout(() => {
+                                onProgress && onProgress('Hel', 'Hel');
+                                onProgress && onProgress('lo', 'Hello');
+                                resolve('Hello');
+                            }, 0);
+                        });
+                    });
+            });
+        });
+
+        it('returns a promise resolving to legacy handler object with onData/onEnd/onError/abort when no onProgress and no abortController passed', async () => {
+            const promise: any = service.execute({
+                provider: mockProvider,
+                prompt: 'Hi',
+            } as any);
+            // Should be a promise
+            expect(typeof promise.then).toBe('function');
+            // Await the legacy handler object
+            const legacyHandler: any = await promise;
+            expect(typeof legacyHandler.onData).toBe('function');
+            expect(typeof legacyHandler.onEnd).toBe('function');
+            expect(typeof legacyHandler.onError).toBe('function');
+            expect(typeof legacyHandler.abort).toBe('function');
+            const collected: string[] = [];
+            await new Promise<void>(resolve => {
+                legacyHandler.onData((chunk: string) => collected.push(chunk));
+                legacyHandler.onEnd((full: string) => {
+                    expect(full).toBe('Hello');
+                    expect(collected.join('')).toBe('Hello');
+                    resolve();
+                });
+            });
+        });
+
+        it('returns plain promise (no legacy methods) when user onProgress provided', () => {
+            const result: any = service.execute({
+                provider: mockProvider,
+                prompt: 'Hi',
+                onProgress: () => {},
+            } as any);
+            expect(typeof result.then).toBe('function');
+            expect(result.onData).toBeUndefined();
+            expect(result.onEnd).toBeUndefined();
+            expect(result.onError).toBeUndefined();
+        });
+
+        it('returns plain promise (no legacy methods) when abortController provided', () => {
+            const result: any = service.execute({
+                provider: mockProvider,
+                prompt: 'Hi',
+                abortController: new AbortController(),
+            } as any);
+            expect(typeof result.then).toBe('function');
+            expect(result.onData).toBeUndefined();
+            expect(result.onEnd).toBeUndefined();
+            expect(result.onError).toBeUndefined();
+        });
+    });
+
     it('should cleanup embeddings cache', async () => {
         const { embeddingsCache } = jest.requireMock('./cache/EmbeddingsCache');
 
@@ -398,6 +466,38 @@ describe('AIProvidersService', () => {
             // Should not throw when onProgress is not provided
             const results = await service.retrieve(testParams);
             expect(Array.isArray(results)).toBe(true);
+        });
+
+        it('should abort retrieval when abortController is triggered', async () => {
+            const abortController = new AbortController();
+            // Mock embedWithCache to be abort-aware
+            const mockEmbedWithCache = jest.fn().mockImplementation(params => {
+                return new Promise<number[][]>((resolve, reject) => {
+                    const signal: AbortSignal | undefined = (params as any)
+                        .abortController?.signal;
+                    const timer = setTimeout(() => {
+                        if (signal?.aborted) {
+                            reject(new Error('Aborted'));
+                        } else {
+                            resolve([[0.1, 0.2, 0.3]]);
+                        }
+                    }, 50);
+                    signal?.addEventListener('abort', () => {
+                        clearTimeout(timer);
+                        reject(new Error('Aborted'));
+                    });
+                });
+            });
+            (service as any).cachedEmbeddingsService = {
+                embedWithCache: mockEmbedWithCache,
+            };
+
+            const promise = service.retrieve({
+                ...testParams,
+                abortController,
+            } as any);
+            abortController.abort();
+            await expect(promise).rejects.toThrow(/Aborted/);
         });
     });
 });

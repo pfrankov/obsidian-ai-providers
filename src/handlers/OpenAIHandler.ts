@@ -1,9 +1,8 @@
 import {
     IAIHandler,
     IAIProvider,
-    IAIProvidersExecuteParams,
-    IChunkHandler,
     IAIProvidersEmbedParams,
+    IAIProvidersExecuteParams,
     IAIProvidersPluginSettings,
 } from '@obsidian-ai-providers/sdk';
 import { electronFetch } from '../utils/electronFetch';
@@ -58,16 +57,31 @@ export class OpenAIHandler implements IAIHandler {
         return openai;
     }
 
-    async fetchModels(provider: IAIProvider): Promise<string[]> {
-        const operation = async (
-            fetchImpl: typeof electronFetch | typeof obsidianFetch
-        ) => {
-            const openai = this.getClient(provider, fetchImpl);
-            const response = await openai.models.list();
-            return response.data.map(model => model.id);
-        };
-
-        return this.fetchSelector.request(provider, operation);
+    async fetchModels({
+        provider,
+        abortController,
+    }: {
+        provider: IAIProvider;
+        abortController?: AbortController;
+    }): Promise<string[]> {
+        if (abortController?.signal.aborted) {
+            throw new Error('Aborted');
+        }
+        const result = await this.fetchSelector.request(
+            provider,
+            async (fetchImpl: typeof electronFetch | typeof obsidianFetch) => {
+                if (abortController?.signal.aborted) {
+                    throw new Error('Aborted');
+                }
+                const openai = this.getClient(provider, fetchImpl);
+                const response = await openai.models.list();
+                return response.data.map(model => model.id);
+            }
+        );
+        if (abortController?.signal.aborted) {
+            throw new Error('Aborted');
+        }
+        return result;
     }
 
     async embed(params: IAIProvidersEmbedParams): Promise<number[][]> {
@@ -77,6 +91,13 @@ export class OpenAIHandler implements IAIHandler {
 
         if (!inputText) {
             throw new Error('Either input or text parameter must be provided');
+        }
+
+        // Access optional abortController directly for consistency
+        const abortController: AbortController | undefined = (params as any)
+            .abortController;
+        if (abortController?.signal.aborted) {
+            throw new Error('Aborted');
         }
 
         const inputs = Array.isArray(inputText) ? inputText : [inputText];
@@ -93,14 +114,20 @@ export class OpenAIHandler implements IAIHandler {
         const processedChunks: string[] = [];
 
         for (const chunk of chunks) {
+            if (abortController?.signal.aborted) {
+                throw new Error('Aborted');
+            }
             const operation = async (
                 fetchImpl: typeof electronFetch | typeof obsidianFetch
             ) => {
                 const openai = this.getClient(params.provider, fetchImpl);
-                const response = await openai.embeddings.create({
-                    model: params.provider.model || '',
-                    input: chunk,
-                });
+                const response = await openai.embeddings.create(
+                    {
+                        model: params.provider.model || '',
+                        input: chunk,
+                    },
+                    { signal: abortController?.signal }
+                );
                 logger.debug('Embed response:', response);
                 return response.data.map(item => item.embedding);
             };
@@ -113,6 +140,10 @@ export class OpenAIHandler implements IAIHandler {
 
             processedChunks.push(...chunk);
             params.onProgress && params.onProgress([...processedChunks]);
+
+            if (abortController?.signal.aborted) {
+                throw new Error('Aborted');
+            }
         }
 
         return embeddings;
@@ -121,14 +152,9 @@ export class OpenAIHandler implements IAIHandler {
     private async executeOpenAIGeneration(
         params: IAIProvidersExecuteParams,
         openai: OpenAI,
-        handlers: {
-            data: ((chunk: string, accumulatedText: string) => void)[];
-            end: ((fullText: string) => void)[];
-            error: ((error: Error) => void)[];
-        },
-        isAborted: () => boolean,
-        controller: AbortController
-    ): Promise<void> {
+        onProgress?: (chunk: string, accumulatedText: string) => void,
+        abortController?: AbortController
+    ): Promise<string> {
         let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
 
         if ('messages' in params && params.messages) {
@@ -199,32 +225,24 @@ export class OpenAIHandler implements IAIHandler {
                 stream: true,
                 ...params.options,
             },
-            { signal: controller.signal }
+            { signal: abortController?.signal }
         );
 
         let fullText = '';
         for await (const chunk of response) {
-            if (isAborted()) {
-                logger.debug('Generation aborted');
-                break;
+            if (abortController?.signal.aborted) {
+                throw new Error('Aborted');
             }
-
             const content = chunk.choices[0]?.delta?.content;
             if (content) {
                 fullText += content;
-                handlers.data.forEach(handler => handler(content, fullText));
+                onProgress && onProgress(content, fullText);
             }
         }
-
-        if (!isAborted()) {
-            logger.debug('Generation completed successfully:', {
-                totalLength: fullText.length,
-            });
-            handlers.end.forEach(handler => handler(fullText));
-        }
+        return fullText;
     }
 
-    async execute(params: IAIProvidersExecuteParams): Promise<IChunkHandler> {
+    async execute(params: IAIProvidersExecuteParams): Promise<string> {
         logger.debug('Starting execute process with params:', {
             model: params.provider.model,
             messagesCount: params.messages?.length || 0,
@@ -232,54 +250,41 @@ export class OpenAIHandler implements IAIHandler {
             systemPromptLength: params.systemPrompt?.length || 0,
             hasImages: !!params.images?.length,
         });
+        const unsafe = params as any;
+        const externalAbort: AbortController = unsafe.abortController;
 
-        const controller = new AbortController();
-        let isAborted = false;
+        const onProgress = unsafe.onProgress as
+            | ((c: string, a: string) => void)
+            | undefined;
 
-        const handlers = {
-            data: [] as ((chunk: string, accumulatedText: string) => void)[],
-            end: [] as ((fullText: string) => void)[],
-            error: [] as ((error: Error) => void)[],
-        };
+        if (externalAbort?.signal.aborted) {
+            return Promise.reject(new Error('Aborted'));
+        }
 
-        (async () => {
-            if (isAborted) return;
-
-            try {
-                const operation = async (
-                    fetchImpl: typeof electronFetch | typeof obsidianFetch
-                ) => {
+        try {
+            return await this.fetchSelector.execute(
+                params.provider,
+                async fetchImpl => {
                     const openai = this.getClient(params.provider, fetchImpl);
-                    await this.executeOpenAIGeneration(
+                    return this.executeOpenAIGeneration(
                         params,
                         openai,
-                        handlers,
-                        () => isAborted,
-                        controller
+                        (chunk, acc) => {
+                            onProgress && onProgress(chunk, acc);
+                            if (externalAbort?.signal.aborted) {
+                                throw new Error('Aborted');
+                            }
+                        },
+                        externalAbort
                     );
-                };
-
-                await this.fetchSelector.execute(params.provider, operation);
-            } catch (error) {
-                handlers.error.forEach(handler => handler(error as Error));
+                }
+            );
+        } catch (e) {
+            const error = e as Error;
+            if (error.message === 'Aborted') {
+                return Promise.reject(error);
             }
-        })();
-
-        return {
-            onData(callback: (chunk: string, accumulatedText: string) => void) {
-                handlers.data.push(callback);
-            },
-            onEnd(callback: (fullText: string) => void) {
-                handlers.end.push(callback);
-            },
-            onError(callback: (error: Error) => void) {
-                handlers.error.push(callback);
-            },
-            abort() {
-                logger.debug('Request aborted');
-                isAborted = true;
-                controller.abort();
-            },
-        };
+            throw error;
+        }
     }
 }

@@ -90,6 +90,24 @@ There are several options to run local OpenAI-like server:
 ## For plugin developers
 [Docs: How to integrate AI Providers in your plugin.](./packages/sdk/README.md)
 
+Quick reference (details in SDK docs):
+
+```ts
+try {
+	const finalText = await aiProviders.execute({
+		provider,
+		prompt: "Hello",
+		onProgress: (chunk, full) => {/* stream UI update */},
+		abortController
+	});
+	// use finalText
+} catch (e) {
+	// handle error / abort
+}
+```
+
+Removed callbacks: onEnd / onError — promise resolve/reject covers them (only onProgress remains for streaming). Legacy chainable handler also deprecated.
+
 ## Roadmap
 - [x] Docs for devs
 - [x] Ollama context optimizations

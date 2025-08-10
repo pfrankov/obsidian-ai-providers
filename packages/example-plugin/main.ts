@@ -89,27 +89,36 @@ class SampleSettingTab extends PluginSettingTab {
                 .addButton(button =>
                     button.setButtonText('Execute').onClick(async () => {
                         button.setDisabled(true);
-                        const paragraph = containerEl.createEl('p');
+                        // Reuse single result container just under the button
+                        executeResultEl.empty();
+                        const paragraph = executeResultEl.createEl('p');
+                        const abortController = new AbortController();
 
-                        const chunkHandler = await aiProviders.execute({
-                            provider,
-                            prompt: 'What is the capital of Great Britain?',
-                        });
-                        chunkHandler.onData((chunk, accumulatedText) => {
-                            paragraph.setText(accumulatedText);
-                        });
-                        chunkHandler.onEnd(fullText => {
-                            const statusEl = containerEl.createEl('p', {
+                        try {
+                            const fullText = await aiProviders.execute({
+                                provider,
+                                prompt: 'What is the capital of Great Britain?',
+                                abortController,
+                                onProgress: (_chunk, accumulatedText) => {
+                                    paragraph.setText(accumulatedText);
+                                },
+                            });
+                            const statusEl = executeResultEl.createEl('p', {
                                 text: `✅ Completed: ${fullText.length} characters generated`,
                             });
                             statusEl.addClass('mod-success');
-                        });
-                        chunkHandler.onError(error => {
-                            paragraph.setText(error.message);
-                        });
-                        button.setDisabled(false);
+                        } catch (error) {
+                            paragraph.setText((error as Error).message);
+                        } finally {
+                            button.setDisabled(false);
+                        }
                     })
                 );
+
+            // Output container placed immediately after the execute setting (single reusable block)
+            const executeResultEl = containerEl.createEl('div', {
+                cls: 'ai-execute-result',
+            });
 
             // Embeddings section
             containerEl.createEl('h3', { text: 'Embeddings' });

@@ -1,9 +1,8 @@
 import {
     IAIHandler,
     IAIProvider,
-    IAIProvidersExecuteParams,
-    IChunkHandler,
     IAIProvidersEmbedParams,
+    IAIProvidersExecuteParams,
     IAIProvidersPluginSettings,
 } from '@obsidian-ai-providers/sdk';
 import { Ollama } from 'ollama';
@@ -115,16 +114,34 @@ export class OllamaHandler implements IAIHandler {
         }
     }
 
-    async fetchModels(provider: IAIProvider): Promise<string[]> {
+    async fetchModels({
+        provider,
+        abortController,
+    }: {
+        provider: IAIProvider;
+        abortController?: AbortController;
+    }): Promise<string[]> {
+        if (abortController?.signal.aborted) {
+            throw new Error('Aborted');
+        }
         const operation = async (
             fetchImpl: typeof electronFetch | typeof obsidianFetch
         ) => {
+            if (abortController?.signal.aborted) {
+                throw new Error('Aborted');
+            }
             const ollama = this.getClient(provider, fetchImpl);
+            abortController?.signal.addEventListener('abort', () => {
+                ollama.abort();
+            });
             const models = await ollama.list();
             return models.models.map(model => model.name);
         };
-
-        return this.fetchSelector.request(provider, operation);
+        const result = await this.fetchSelector.request(provider, operation);
+        if (abortController?.signal.aborted) {
+            throw new Error('Aborted');
+        }
+        return result;
     }
 
     private optimizeContext(
@@ -239,13 +256,9 @@ export class OllamaHandler implements IAIHandler {
     private async executeOllamaGeneration(
         params: IAIProvidersExecuteParams,
         ollama: any,
-        handlers: {
-            data: ((chunk: string, accumulatedText: string) => void)[];
-            end: ((fullText: string) => void)[];
-            error: ((error: Error) => void)[];
-        },
-        isAborted: () => boolean
-    ): Promise<void> {
+        onProgress?: (chunk: string, accumulatedText: string) => void,
+        abortController?: AbortController
+    ): Promise<string> {
         const modelInfo = await this.getCachedModelInfo(
             params.provider,
             params.provider.model || ''
@@ -334,20 +347,18 @@ export class OllamaHandler implements IAIHandler {
             stream: true,
             options: {
                 ...requestOptions,
-                ...params.options,
             },
         });
 
         let fullText = '';
         for await (const chunk of response) {
-            if (isAborted()) {
-                break;
+            if (abortController?.signal.aborted) {
+                throw new Error('Aborted');
             }
-
             const content = chunk.message?.content;
             if (content) {
                 fullText += content;
-                handlers.data.forEach(handler => handler(content, fullText));
+                onProgress && onProgress(content, fullText);
             }
 
             // Update context length from response
@@ -359,10 +370,7 @@ export class OllamaHandler implements IAIHandler {
                 );
             }
         }
-
-        if (!isAborted()) {
-            handlers.end.forEach(handler => handler(fullText));
-        }
+        return fullText;
     }
 
     async embed(params: IAIProvidersEmbedParams): Promise<number[][]> {
@@ -370,6 +378,12 @@ export class OllamaHandler implements IAIHandler {
 
         if (!inputText) {
             throw new Error('Either input or text parameter must be provided');
+        }
+
+        const abortController: AbortController | undefined = (params as any)
+            .abortController;
+        if (abortController?.signal.aborted) {
+            throw new Error('Aborted');
         }
 
         const modelInfo = await this.getCachedModelInfo(
@@ -400,12 +414,18 @@ export class OllamaHandler implements IAIHandler {
             fetchImpl: typeof electronFetch | typeof obsidianFetch
         ) => {
             const ollama = this.getClient(params.provider, fetchImpl);
+            abortController?.signal.addEventListener('abort', () => {
+                ollama.abort();
+            });
 
             const inputs = Array.isArray(inputText) ? inputText : [inputText];
             const embeddings: number[][] = [];
             const processedChunks: string[] = [];
 
             for (const input of inputs) {
+                if (abortController?.signal.aborted) {
+                    throw new Error('Aborted');
+                }
                 const response = await ollama.embed({
                     model: params.provider.model || '',
                     input: input,
@@ -416,6 +436,10 @@ export class OllamaHandler implements IAIHandler {
 
                 processedChunks.push(input);
                 params.onProgress && params.onProgress([...processedChunks]);
+
+                if (abortController?.signal.aborted) {
+                    throw new Error('Aborted');
+                }
             }
 
             return embeddings;
@@ -424,52 +448,51 @@ export class OllamaHandler implements IAIHandler {
         return this.fetchSelector.request(params.provider, operation);
     }
 
-    async execute(params: IAIProvidersExecuteParams): Promise<IChunkHandler> {
-        const controller = new AbortController();
-        let isAborted = false;
+    async execute(params: IAIProvidersExecuteParams): Promise<string> {
+        const unsafe = params as any; // access optional callbacks/abortController
+        const externalAbort: AbortController | undefined =
+            unsafe.abortController;
+        const onProgress = unsafe.onProgress as
+            | ((c: string, acc: string) => void)
+            | undefined;
 
-        const handlers = {
-            data: [] as ((chunk: string, accumulatedText: string) => void)[],
-            end: [] as ((fullText: string) => void)[],
-            error: [] as ((error: Error) => void)[],
-        };
+        if (externalAbort?.signal.aborted) {
+            return Promise.reject(new Error('Aborted'));
+        }
 
-        (async () => {
-            if (isAborted) return;
-
-            try {
-                const operation = async (
+        try {
+            return await this.fetchSelector.execute(
+                params.provider,
+                async (
                     fetchImpl: typeof electronFetch | typeof obsidianFetch
                 ) => {
                     const ollama = this.getClient(params.provider, fetchImpl);
-                    await this.executeOllamaGeneration(
+                    externalAbort?.signal.addEventListener('abort', () => {
+                        ollama.abort();
+                    });
+                    if (externalAbort?.signal.aborted) {
+                        throw new Error('Aborted');
+                    }
+
+                    return this.executeOllamaGeneration(
                         params,
                         ollama,
-                        handlers,
-                        () => isAborted
+                        (chunk, acc) => {
+                            onProgress && onProgress(chunk, acc);
+                            if (externalAbort?.signal.aborted) {
+                                throw new Error('Aborted');
+                            }
+                        },
+                        externalAbort
                     );
-                };
-
-                await this.fetchSelector.execute(params.provider, operation);
-            } catch (error) {
-                handlers.error.forEach(handler => handler(error as Error));
+                }
+            );
+        } catch (e) {
+            const error = e as Error;
+            if (error.message === 'Aborted') {
+                return Promise.reject(error);
             }
-        })();
-
-        return {
-            onData(callback: (chunk: string, accumulatedText: string) => void) {
-                handlers.data.push(callback);
-            },
-            onEnd(callback: (fullText: string) => void) {
-                handlers.end.push(callback);
-            },
-            onError(callback: (error: Error) => void) {
-                handlers.error.push(callback);
-            },
-            abort() {
-                isAborted = true;
-                controller.abort();
-            },
-        };
+            throw error;
+        }
     }
 }

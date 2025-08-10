@@ -12,6 +12,13 @@ npm install @obsidian-ai-providers/sdk
 
 ## Usage
 
+### Migration Guides
+If you are upgrading from older versions, see:
+- [execute() streaming change: IChunkHandler → Promise + onProgress (since 1.4.0)](./migrations/execute-streaming-migration.md)
+
+### Version Notes
+SDK 1.4.0 (Service API v3) changes `execute()` to return a `Promise<string>` and introduces inline streaming via `onProgress` plus cancellation via `AbortController`. The old chainable `IChunkHandler` object is now deprecated and only returned when neither `onProgress` nor `abortController` are passed.
+
 ### 1. Wait for AI Providers plugin in your plugin
 Any plugin can not be loaded instantly, so you need to wait for AI Providers plugin to be loaded.
 ```typescript
@@ -41,7 +48,7 @@ aiProviders.providers;
 // It will be changed when the user changes the AI Provider in settings.
 ```
 
-### 2. Show fallback settings tab
+### 2. Fallback settings tab
 Before AI Providers plugin is loaded and activated, you need to show fallback settings tab.  
 `initAI` function takes care of showing fallback settings tab and runs callback when AI Providers plugin is loaded and activated.
 
@@ -73,7 +80,7 @@ initAI(this.app, this, async ()=>{
 ### 3. Import SDK styles
 Don't forget to import the SDK styles for fallback settings tab in your plugin.
 ```css
-@import '@obsidian-ai-providers/sdk/style.css';
+@import '@obsidian-ai-providers/sdk/styles.css';
 ```
 Make sure that there is loader for `.css` files in your esbuild config.
 ```typescript
@@ -85,7 +92,7 @@ export default {
 	},
 }
 ```
-Alternatively you can use the content of `@obsidian-ai-providers/sdk/style.css` in your plugin.
+Alternatively you can copy the content of `@obsidian-ai-providers/sdk/styles.css` into your own stylesheet.
 
 ### 4. Migrate existing provider
 If you want to add providers to the AI Providers plugin, you can use the `migrateProvider` method.
@@ -117,63 +124,73 @@ if (migratedOrExistingProvider === false) {
 ```
 
 ### Execute prompt
-You can use just the list of providers and selected models but you can also make requests to AI Providers using `execute` method.
+
+`execute` returns a `Promise<string>` resolving to the final accumulated text. You can optionally pass a single streaming callback:
+
+- `onProgress(chunk, accumulatedText)` – fires for each streamed piece.
+
+Completion & errors:
+- Success: promise resolves with the full text (no separate onEnd needed).
+- Failure / abort: promise rejects (no onError callback). Catch the rejection.
+
+Cancellation: pass an `AbortController` via `abortController`. Calling `abort()` rejects the promise with `Error('Aborted')`.
+
+Removed (simplified API): `onEnd` and `onError` callbacks. Use promise resolve/reject instead. Legacy chainable handler remains deprecated.
 
 ```typescript
-// Simple prompt-based request
-const chunkHandler = await aiProviders.execute({
+// Simple prompt-based request with streaming (returns final full text)
+const fullText = await aiProviders.execute({
     provider: aiProviders.providers[0],
     prompt: "What is the capital of Great Britain?",
+    onProgress: (chunk, accumulatedText) => {
+        console.log(accumulatedText);
+    }
 });
+console.log('Returned:', fullText);
 
-// Using messages format (more flexible, allowing multiple messages and different roles)
-const chunkHandlerWithMessages = await aiProviders.execute({
+// Messages format (multiple roles)
+const finalFromMessages = await aiProviders.execute({
     provider: aiProviders.providers[0],
     messages: [
         { role: "system", content: "You are a helpful geography assistant." },
         { role: "user", content: "What is the capital of Great Britain?" }
-    ]
+    ],
+    onProgress: (_chunk, text) => console.log(text)
 });
 
-// Working with images (basic approach)
-const chunkHandlerWithImage = await aiProviders.execute({
-    provider: aiProviders.providers[0],
-    prompt: "Describe what you see in this image",
-    images: ["data:image/jpeg;base64,/9j/4AAQSkZ..."] // Base64 encoded image
-});
-
-// Working with images using messages format
-const chunkHandlerWithContentBlocks = await aiProviders.execute({
+// Images (messages content blocks)
+const imageBlocksResult = await aiProviders.execute({
     provider: aiProviders.providers[0],
     messages: [
         { role: "system", content: "You are a helpful image analyst." },
-        { 
-            role: "user", 
+        {
+            role: "user",
             content: [
                 { type: "text", text: "Describe what you see in this image" },
                 { type: "image_url", image_url: { url: "data:image/jpeg;base64,/9j/4AAQSkZ..." } }
             ]
         }
-    ]
+    ],
+    onProgress: (_c, t) => console.log(t)
 });
 
-// Handle chunk in stream mode
-chunkHandler.onData((chunk, accumulatedText) => {
-    console.log(accumulatedText);
-});
-
-// Handle end of stream
-chunkHandler.onEnd((fullText) => {
-    console.log(fullText);
-});
-
-// Handle error
-chunkHandler.onError((error) => {
-    console.error(error);
-});
-
-// Abort request if you need to
-chunkHandler.abort();
+// Abort example (optional)
+const abortController = new AbortController();
+try {
+    const final = await aiProviders.execute({
+        provider: aiProviders.providers[0],
+        prompt: "Stream something...",
+        abortController,
+    onProgress: (_c, t) => {
+            console.log(t);
+            if (t.length > 50) abortController.abort();
+        }
+    });
+    console.log('Completed:', final);
+} catch (e) {
+    if ((e as Error).message === 'Aborted') console.log('Generation aborted intentionally');
+    else console.error(e);
+}
 ```
 
 ### Embed text
@@ -364,15 +381,15 @@ try {
 ```
 
 ```typescript
-const chunkHandler = await aiProviders.execute({
-    provider: aiProviders.providers[0],
-    prompt: "What is the capital of Great Britain?",
-});
-
-// Only `execute` method passes errors to the onError callback
-chunkHandler.onError((error) => {
-    console.error(error);
-});
+try {
+	await aiProviders.execute({
+		provider: aiProviders.providers[0],
+		prompt: "What is the capital of Great Britain?",
+		onProgress: (c, full) => {/* optional */}
+	});
+} catch (error) {
+	console.error(error);
+}
 ```
 
 If you have any questions, please contact me via Telegram [@pavel_frankov](https://t.me/pavel_frankov).

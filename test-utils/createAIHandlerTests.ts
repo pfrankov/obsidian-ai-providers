@@ -1,4 +1,4 @@
-import { IAIHandler, IAIProvider, IChunkHandler, IAIProvidersExecuteParams, IAIProvidersEmbedParams } from '@obsidian-ai-providers/sdk';
+import { IAIHandler, IAIProvider, IAIProvidersExecuteParams, IAIProvidersEmbedParams } from '@obsidian-ai-providers/sdk';
 
 export type IMockResponse = {
     choices: Array<{
@@ -82,7 +82,7 @@ export interface ICreateAIHandlerTestsOptions {
         name: string;
         executeParams: Partial<IExecuteParams>;
         setup?: (mockClient: IMockClient) => void;
-        verify?: (result: IChunkHandler, mockClient: IMockClient) => void;
+    verify?: (resultText: string, mockClient: IMockClient) => void;
     }>;
     embeddingOptions?: {
         mockEmbeddingResponse?: number[][];
@@ -148,7 +148,7 @@ export const createAIHandlerTests = (
         describe('Model Management', () => {
             describe('fetchModels', () => {
                 it('should successfully fetch available models', async () => {
-                    const result = await handler.fetchModels(mockProvider);
+                    const result = await handler.fetchModels({ provider: mockProvider });
 
                     if (mockClient.models?.list) {
                         expect(result).toEqual(['model1', 'model2']);
@@ -193,9 +193,11 @@ export const createAIHandlerTests = (
                 // Verify appropriate API was called
                 if ((mockClient as any).embeddings?.create) {
                     expect((mockClient as any).embeddings.create).toHaveBeenCalled();
-                    expect((mockClient as any).embeddings.create).toHaveBeenCalledWith({
+                    // Allow optional second argument (options with signal)
+                    const callArgs = (mockClient as any).embeddings.create.mock.calls[0];
+                    expect(callArgs[0]).toEqual({
                         model: mockProvider.model,
-                        input: ["test text for embedding"]
+                        input: ["test text for embedding"],
                     });
                 } else if ((mockClient as any).embed) {
                     expect((mockClient as any).embed).toHaveBeenCalled();
@@ -238,9 +240,11 @@ export const createAIHandlerTests = (
                 
                 // Verify that text parameter was properly converted to input in the API call
                 if ((mockClient as any).embeddings?.create) {
-                    expect((mockClient as any).embeddings.create).toHaveBeenCalledWith({
+                    const call = (mockClient as any).embeddings.create.mock.calls.find((c: any[]) => c[0].input?.[0] === 'test text for embedding');
+                    expect(call).toBeDefined();
+                    expect(call[0]).toEqual({
                         model: mockProvider.model,
-                        input: ["test text for embedding"]
+                        input: ["test text for embedding"],
                     });
                 } else if ((mockClient as any).embed) {
                     expect((mockClient as any).embed).toHaveBeenCalledWith({
@@ -324,20 +328,16 @@ export const createAIHandlerTests = (
                         options: {}
                     };
 
-                    const result = await handler.execute(executeParams);
-
-                    const onDataMock = jest.fn();
-                    const onEndMock = jest.fn();
-
-                    result.onData(onDataMock);
-                    result.onEnd(onEndMock);
-
-                    await flushPromises();
+                    const onProgressMock = jest.fn();
+                    const fullText = await handler.execute({
+                        ...executeParams,
+                        onProgress: onProgressMock as any,
+                    });
 
                     const expectedContent = extractContent(mockResponse);
                     
-                    expect(onDataMock).toHaveBeenCalledWith(expectedContent, expectedContent);
-                    expect(onEndMock).toHaveBeenCalledWith(expectedContent);
+                    expect(onProgressMock).toHaveBeenCalledWith(expectedContent, expectedContent);
+                    expect(fullText).toBe(expectedContent);
 
                     verifyApiCallsFn({ mockClient, executeParams });
                 });
@@ -356,20 +356,16 @@ export const createAIHandlerTests = (
                         options: {}
                     };
 
-                    const result = await handler.execute(executeParams);
-
-                    const onDataMock = jest.fn();
-                    const onEndMock = jest.fn();
-
-                    result.onData(onDataMock);
-                    result.onEnd(onEndMock);
-
-                    await flushPromises();
+                    const onProgressMock = jest.fn();
+                    const fullText = await handler.execute({
+                        ...executeParams,
+                        onProgress: onProgressMock as any,
+                    });
 
                     const expectedContent = extractContent(mockResponse);
                     
-                    expect(onDataMock).toHaveBeenCalledWith(expectedContent, expectedContent);
-                    expect(onEndMock).toHaveBeenCalledWith(expectedContent);
+                    expect(onProgressMock).toHaveBeenCalledWith(expectedContent, expectedContent);
+                    expect(fullText).toBe(expectedContent);
 
                     verifyApiCallsFn({ mockClient, executeParams });
                 });
@@ -397,25 +393,14 @@ export const createAIHandlerTests = (
                         (mockClient as any).chat.mockResolvedValue(mockStream);
                     }
 
-                    const result = await handler.execute({
+                    await expect(handler.execute({
                         provider: mockProvider,
                         messages: [
                             { role: 'system' as const, content: 'You are a helpful assistant' },
                             { role: 'user' as const, content: 'Hello' }
                         ],
-                        options: {}
-                    });
-
-                    const onErrorMock = jest.fn();
-                    result.onError(onErrorMock);
-
-                    while (!errorThrown) {
-                        await flushPromises();
-                    }
-
-                    await flushPromises();
-
-                    expect(onErrorMock).toHaveBeenCalledWith(mockError);
+                        options: {},
+                    })).rejects.toThrow('Test error');
                 });
             });
 
@@ -440,29 +425,19 @@ export const createAIHandlerTests = (
                         (mockClient as any).chat.mockResolvedValue(mockStream);
                     }
 
-                    const chunkHandler = await handler.execute({
-                        provider: mockProvider,
-                        messages: [
-                            { role: 'user' as const, content: 'test prompt' }
-                        ],
-                        options: {}
-                    });
-
+                    const abortController = new AbortController();
                     const chunks: string[] = [];
-                    chunkHandler.onData((chunk) => {
-                        chunks.push(chunk);
-                        if (chunks.length === 2) {
-                            chunkHandler.abort();
+                    await expect(handler.execute({
+                        provider: mockProvider,
+                        messages: [ { role: 'user' as const, content: 'test prompt' } ],
+                        options: {},
+                        abortController,
+                        onProgress: (chunk: string) => {
+                            chunks.push(chunk);
+                            if (chunks.length === 2) abortController.abort();
                         }
-                    });
-
-                    // Wait for all promises to resolve
-                    await flushPromises();
-                    await flushPromises();
-                    await flushPromises();
-
-                    expect(chunks.length).toBeGreaterThan(0);
-                    expect(chunks.length).toBeLessThan(5);
+                    })).rejects.toThrow('Aborted');
+                    expect(chunks.length).toBe(2);
                 });
             });
         });
@@ -719,15 +694,11 @@ export const createAIHandlerTests = (
                         options: {}
                     };
 
-                    const result = await handler.execute(executeParams);
-
-                    const onDataMock = jest.fn();
-                    const onEndMock = jest.fn();
-
-                    result.onData(onDataMock);
-                    result.onEnd(onEndMock);
-
-                    await flushPromises();
+                    const onProgressMock = jest.fn();
+                    const fullText = await handler.execute({
+                        ...executeParams,
+                        onProgress: onProgressMock as any,
+                    });
 
                     let expectedContent = '';
                     if ('response' in mockResponse) {
@@ -738,8 +709,8 @@ export const createAIHandlerTests = (
                         expectedContent = mockResponse.choices[0].delta.content;
                     }
                     
-                    expect(onDataMock).toHaveBeenCalledWith(expectedContent, expectedContent);
-                    expect(onEndMock).toHaveBeenCalledWith(expectedContent);
+                    expect(onProgressMock).toHaveBeenCalledWith(expectedContent, expectedContent);
+                    expect(fullText).toBe(expectedContent);
 
                     // Verify API calls for image handling
                     verifyApiCallsFn({ mockClient, executeParams });
