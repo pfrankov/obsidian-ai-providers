@@ -11,7 +11,7 @@ import {
     openRouterIcon,
     lmstudioIcon,
     groqIcon,
-    ai320Icon,
+    ai302Icon,
 } from './utils/icons';
 
 export default class AIProvidersPlugin extends Plugin {
@@ -27,7 +27,7 @@ export default class AIProvidersPlugin extends Plugin {
         addIcon('ai-providers-openrouter', openRouterIcon);
         addIcon('ai-providers-lmstudio', lmstudioIcon);
         addIcon('ai-providers-groq', groqIcon);
-        addIcon('ai-providers-ai320', ai320Icon);
+        addIcon('ai-providers-ai302', ai302Icon);
 
         const settingTab = new AIProvidersSettingTab(this.app, this);
         this.exposeAIProviders();

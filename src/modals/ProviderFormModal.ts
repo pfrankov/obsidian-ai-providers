@@ -41,9 +41,9 @@ const PROVIDER_CONFIGS: Record<AIProviderType, ProviderConfig> = {
         url: 'https://api.groq.com/openai/v1',
         name: 'Groq',
     },
-    ai320: {
+    ai302: {
         url: 'https://api.302.ai',
-        name: '320.AI',
+        name: '302.AI',
         options: { modelsFetching: false },
     },
 };

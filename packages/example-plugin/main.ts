@@ -116,9 +116,8 @@ class SampleSettingTab extends PluginSettingTab {
                 );
 
             // Output container placed immediately after the execute setting (single reusable block)
-            const executeResultEl = containerEl.createEl('div', {
-                cls: 'ai-execute-result',
-            });
+            const executeResultEl = containerEl.createEl('div');
+            executeResultEl.addClass('ai-execute-result');
 
             // Embeddings section
             containerEl.createEl('h3', { text: 'Embeddings' });

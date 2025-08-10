@@ -155,8 +155,8 @@ describe('ProviderFormModal', () => {
         expect(cancelModal.contentEl.children.length).toBe(0);
     });
 
-    it('should use text input for ai320 provider', () => {
-        provider.type = 'ai320';
+    it('should use text input for ai302 provider', () => {
+        provider.type = 'ai302';
         jest.spyOn(modal as any, 'hasModelFetching').mockReturnValue(false);
 
         modal.onOpen();
@@ -413,8 +413,8 @@ describe('ProviderFormModal', () => {
         expect(provider.name).toBe('Groq');
     });
 
-    it('should show text-only description for ai320 provider without link', () => {
-        provider.type = 'ai320';
+    it('should show text-only description for ai302 provider without link', () => {
+        provider.type = 'ai302';
         jest.spyOn(modal as any, 'hasModelFetching').mockReturnValue(false);
 
         modal.onOpen();

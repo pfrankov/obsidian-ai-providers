@@ -74,7 +74,7 @@ describe('initAI', () => {
         });
 
         expect(mockOnDone).toHaveBeenCalled();
-        expect(mockApp.aiProviders.checkCompatibility).toHaveBeenCalledWith(1);
+        expect(mockApp.aiProviders.checkCompatibility).toHaveBeenCalledWith(3);
     });
 
     it('should wait for AI providers and show fallback when disableFallback is not specified', async () => {
@@ -88,7 +88,7 @@ describe('initAI', () => {
         await initAI(mockApp, mockPlugin, mockOnDone);
 
         expect(mockOnDone).toHaveBeenCalled();
-        expect(mockApp.aiProviders.checkCompatibility).toHaveBeenCalledWith(1);
+        expect(mockApp.aiProviders.checkCompatibility).toHaveBeenCalledWith(3);
     });
 
     it('should handle AI providers not available when disableFallback is false', async () => {
