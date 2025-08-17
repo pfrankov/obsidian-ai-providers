@@ -1,0 +1,41 @@
+{
+  "provider": {
+    "embedding": {
+      "baseURL": "https://api.jina.ai/v1",
+      "apiKey": "",
+      "model": "jina-embeddings-v3"
+    },
+    "completion": {
+      "baseURL": "https://openrouter.ai/api/v1",
+      "apiKey": "",
+      "model": "openai/gpt-oss-20b"
+    },
+    "evaluation": {
+      "baseURL": "https://openrouter.ai/api/v1",
+      "apiKey": "",
+      "model": "openai/gpt-oss-20b"
+    }
+  },
+  "input": {
+    "documentsDir": "./benchmarks/data/docs",
+    "datasetFile": "./benchmarks/data/dataset.json"
+  },
+  "retrieval": {
+    "topK": 10
+  },
+  "evaluation": {
+    "method": "embedding",
+    "llmModel": "openai/gpt-oss-20b"
+  },
+  "concurrency": 1,
+  "simple": {
+    "maxDocs": 5,
+    "maxQueries": 3,
+    "topK": 10
+  },
+  "outputDir": "./benchmarks/reports",
+  "skipLLM": false,
+  "verboseLogging": true
+}
+
+

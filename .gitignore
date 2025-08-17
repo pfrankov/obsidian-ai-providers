@@ -24,3 +24,7 @@ coverage
 dist
 .kiro
 .github/copilot-instructions.md
+benchmarks/data
+benchmarks/.cache
+benchmarks/reports
+benchmarks/retrieve.config.json

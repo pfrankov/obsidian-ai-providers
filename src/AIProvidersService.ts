@@ -59,7 +59,8 @@ export class AIProvidersService implements IAIProvidersService {
      */
     async initEmbeddingsCache(): Promise<void> {
         try {
-            const vaultId = (this.app as any).appId || 'default';
+            const vaultId =
+                (this.app as unknown as { appId?: string }).appId || 'default';
             await embeddingsCache.init(vaultId);
         } catch (error) {
             logger.error('Failed to initialize embeddings cache:', error);
@@ -90,8 +91,7 @@ export class AIProvidersService implements IAIProvidersService {
                 throw new Error('Input is required for embedding');
             }
 
-            const abortController: AbortController | undefined = (params as any)
-                .abortController;
+            const abortController = params.abortController;
             if (abortController?.signal.aborted) {
                 throw new Error('Aborted');
             }
@@ -125,21 +125,22 @@ export class AIProvidersService implements IAIProvidersService {
             | IAIProvider
     ): Promise<string[]> {
         try {
-            const provider = (params as any).provider
-                ? (params as any).provider
-                : (params as IAIProvider);
-            const abortController: AbortController | undefined = (params as any)
-                .abortController;
+            const provider = 'provider' in params ? params.provider : params;
+            const abortController =
+                'abortController' in params
+                    ? params.abortController
+                    : undefined;
+
             if (abortController?.signal.aborted) {
                 throw new Error('Aborted');
             }
             const handler = this.getHandler(provider.type);
-            if (!handler) {
+            if (!handler || !handler.fetchModels) {
                 throw new Error(
-                    `Handler not found for provider type: ${provider.type}`
+                    `Handler not found or does not support fetchModels for provider type: ${provider.type}`
                 );
             }
-            return (handler as any).fetchModels({ provider, abortController });
+            return handler.fetchModels({ provider, abortController });
         } catch (error) {
             const message =
                 error instanceof Error
@@ -178,8 +179,13 @@ export class AIProvidersService implements IAIProvidersService {
             );
         }
 
-        const hasOnData = Boolean((params as any).onProgress);
-        const hasAbort = Boolean((params as any).abortController);
+        const extendedParams = params as IAIProvidersExecuteParams & {
+            onProgress?: (chunk: string, accumulatedText: string) => void;
+            abortController?: AbortController;
+        };
+
+        const hasOnData = Boolean(extendedParams.onProgress);
+        const hasAbort = Boolean(extendedParams.abortController);
         const useLegacyWrapper = !hasOnData && !hasAbort;
 
         if (!useLegacyWrapper) {
@@ -205,8 +211,10 @@ export class AIProvidersService implements IAIProvidersService {
             .then((full: string) => {
                 handlers.end.forEach(handler => handler(full));
             })
-            .catch((err: any) => {
-                handlers.error.forEach(handler => handler(err));
+            .catch((err: unknown) => {
+                const errorObj =
+                    err instanceof Error ? err : new Error(String(err));
+                handlers.error.forEach(handler => handler(errorObj));
             });
 
         const legacyHandler: IChunkHandler = {
@@ -270,8 +278,7 @@ export class AIProvidersService implements IAIProvidersService {
     async retrieve(
         params: IAIProvidersRetrievalParams
     ): Promise<IAIProvidersRetrievalResult[]> {
-        const abortController: AbortController | undefined = (params as any)
-            .abortController;
+        const abortController = params.abortController;
         if (abortController?.signal.aborted) {
             throw new Error('Aborted');
         }
@@ -310,17 +317,17 @@ export class AIProvidersService implements IAIProvidersService {
             processingType: 'embedding',
         });
 
-        // Generate embeddings for query and chunks in parallel
+        // Generate embeddings for query and chunks
         const [queryEmbedding, chunkEmbeddings] = await Promise.all([
             this.embed({
                 provider: params.embeddingProvider,
                 input: params.query,
-                abortController: (params as any).abortController,
-            } as any),
+                abortController: params.abortController,
+            }),
             this.embed({
                 provider: params.embeddingProvider,
                 input: chunks.map(chunk => chunk.content),
-                abortController: (params as any).abortController,
+                abortController: params.abortController,
                 onProgress: (processedChunkTexts: string[]) => {
                     if (abortController?.signal.aborted) {
                         return;
@@ -343,16 +350,37 @@ export class AIProvidersService implements IAIProvidersService {
                         processingType: 'embedding',
                     });
                 },
-            } as any),
+            }),
         ]).catch(error => {
-            if ((params as any).abortController?.signal?.aborted) {
+            if (params.abortController?.signal?.aborted) {
                 throw new Error('Aborted');
             }
             throw error;
         });
 
-        // Calculate similarity and rank chunks
-        return this.rankChunks(queryEmbedding[0], chunks, chunkEmbeddings);
+        // L2-normalize embeddings so dot product equals cosine similarity.
+        // Different providers can output vectors with very different lengths.
+        // Normalization keeps similarity stable; without it, a few large vectors may dominate the ranking.
+        const normQuery = this.l2Normalize(queryEmbedding[0]);
+        const normChunks = chunkEmbeddings.map(e => this.l2Normalize(e));
+
+        // No waiting for fuzzy: vector-only retrieval
+
+        // Report search progress
+        params.onProgress?.({
+            totalDocuments,
+            totalChunks,
+            processedDocuments: this.getProcessedDocs(
+                chunks,
+                documentChunkCounts,
+                params.documents
+            ),
+            processedChunks: chunks,
+            processingType: 'embedding',
+        });
+
+        // Perform vector-only search
+        return this.rankChunks(normQuery, chunks, normChunks);
     }
 
     private processDocuments(documents: IAIDocument[]) {
@@ -415,8 +443,9 @@ export class AIProvidersService implements IAIProvidersService {
         chunks: IAIProvidersRetrievalChunk[],
         chunkEmbeddings: number[][]
     ): IAIProvidersRetrievalResult[] {
+        // With L2-normalized vectors, dot product equals cosine similarity.
         const similarities = chunkEmbeddings.map(embedding =>
-            this.cosineSimilarity(queryEmbedding, embedding)
+            this.dotProduct(queryEmbedding, embedding)
         );
 
         return chunks
@@ -428,15 +457,16 @@ export class AIProvidersService implements IAIProvidersService {
             .sort((a, b) => b.score - a.score);
     }
 
-    private cosineSimilarity(vecA: number[], vecB: number[]): number {
-        const dotProduct = vecA.reduce((acc, val, i) => acc + val * vecB[i], 0);
-        const magnitudeA = Math.sqrt(
-            vecA.reduce((acc, val) => acc + val * val, 0)
-        );
-        const magnitudeB = Math.sqrt(
-            vecB.reduce((acc, val) => acc + val * val, 0)
-        );
-        return dotProduct / (magnitudeA * magnitudeB);
+    private dotProduct(vecA: number[], vecB: number[]): number {
+        return vecA.reduce((acc, val, i) => acc + val * vecB[i], 0);
+    }
+
+    private l2Normalize(vec: number[]): number[] {
+        // Different embedding models may output vectors with different magnitudes.
+        // Normalizing to unit length focuses similarity on direction (semantics);
+        // without it, large-norm vectors can overshadow better matches.
+        const norm = Math.sqrt(vec.reduce((s, v) => s + v * v, 0)) || 1;
+        return vec.map(v => v / norm);
     }
 
     /**

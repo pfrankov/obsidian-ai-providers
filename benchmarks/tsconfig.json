@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "obsidian": ["./obsidian-node-shim.ts"]
+    }
+  },
+  "include": [
+    "./**/*.ts"
+  ],
+  "exclude": []
+}
