@@ -21,6 +21,7 @@ import { embeddingsCache } from './cache/EmbeddingsCache';
 import { logger } from './utils/logger';
 import { preprocessContent, splitContent } from './utils/textProcessing';
 import { IAIProvidersRetrievalChunk } from '@obsidian-ai-providers/sdk/types';
+import { AnthropicHandler } from './handlers/AnthropicHandler';
 
 export class AIProvidersService implements IAIProvidersService {
     providers: IAIProvider[] = [];
@@ -45,6 +46,7 @@ export class AIProvidersService implements IAIProvidersService {
             lmstudio: new OpenAIHandler(plugin.settings),
             groq: new OpenAIHandler(plugin.settings),
             ai302: new OpenAIHandler(plugin.settings),
+            anthropic: new AnthropicHandler(plugin.settings),
         };
 
         // Initialize cached embeddings service

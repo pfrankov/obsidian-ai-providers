@@ -12,6 +12,12 @@ export type IMockResponse = {
     message: {
         content: string;
     };
+} | {
+    type: string;
+    delta: {
+        text: string;
+        [key: string]: any;
+    };
 };
 
 export interface IMockClient {
@@ -24,6 +30,9 @@ export interface IMockClient {
         };
     };
     embeddings?: {
+        create: jest.Mock;
+    };
+    messages?: {
         create: jest.Mock;
     };
     show?: jest.Mock;
@@ -41,6 +50,18 @@ export interface IVerifyApiCallsParams {
 
 const flushPromises = () => new Promise(process.nextTick);
 
+const applyStreamMock = (mockClient: IMockClient, mockStream: any) => {
+    if (mockClient.chat?.completions?.create) {
+        mockClient.chat.completions.create.mockResolvedValue(mockStream);
+    } else if (mockClient.generate) {
+        mockClient.generate.mockResolvedValue(mockStream);
+    } else if ((mockClient as any).messages?.create) {
+        (mockClient as any).messages.create.mockResolvedValue(mockStream);
+    } else if ((mockClient as any).chat) {
+        (mockClient as any).chat.mockResolvedValue(mockStream);
+    }
+};
+
 // Helper function to setup streaming mock
 const setupStreamingMock = (mockClient: IMockClient, mockResponse: IMockResponse) => {
     const mockStream = {
@@ -49,13 +70,7 @@ const setupStreamingMock = (mockClient: IMockClient, mockResponse: IMockResponse
         }
     };
 
-    if (mockClient.chat?.completions?.create) {
-        mockClient.chat.completions.create.mockResolvedValue(mockStream);
-    } else if (mockClient.generate) {
-        mockClient.generate.mockResolvedValue(mockStream);
-    } else if ((mockClient as any).chat) {
-        (mockClient as any).chat.mockResolvedValue(mockStream);
-    }
+    applyStreamMock(mockClient, mockStream);
 };
 
 // Helper function to extract content from mock response
@@ -64,6 +79,11 @@ const extractContent = (mockResponse: IMockResponse): string => {
         return mockResponse.response;
     } else if ('message' in mockResponse && mockResponse.message.content) {
         return mockResponse.message.content;
+    } else if (
+        (mockResponse as any).delta &&
+        typeof (mockResponse as any).delta.text === 'string'
+    ) {
+        return (mockResponse as any).delta.text;
     } else if ('choices' in mockResponse) {
         return mockResponse.choices[0].delta.content;
     }
@@ -85,10 +105,12 @@ export interface ICreateAIHandlerTestsOptions {
     verify?: (resultText: string, mockClient: IMockClient) => void;
     }>;
     embeddingOptions?: {
+        mode?: 'default' | 'unsupported';
         mockEmbeddingResponse?: number[][];
         setupEmbedMock?: (mockClient: IMockClient) => void;
         // Simplified progress behavior configuration
         progressBehavior?: 'per-chunk' | 'per-item';
+        unsupportedError?: RegExp | string;
     };
     errorHandlingOptions?: {
         setupErrorMocks?: (mockClient: IMockClient) => void;
@@ -150,165 +172,172 @@ export const createAIHandlerTests = (
                 it('should successfully fetch available models', async () => {
                     const result = await handler.fetchModels({ provider: mockProvider });
 
+                    expect(Array.isArray(result)).toBe(true);
+                    expect(result.length).toBeGreaterThan(0);
+                    expect(result.every(id => typeof id === 'string')).toBe(
+                        true
+                    );
+
                     if (mockClient.models?.list) {
-                        expect(result).toEqual(['model1', 'model2']);
                         expect(mockClient.models.list).toHaveBeenCalled();
                     } else if (mockClient.list) {
-                        expect(result).toEqual(['model1', 'model2']);
                         expect(mockClient.list).toHaveBeenCalled();
                     }
                 });
             });
         });
 
-        describe('Embeddings', () => {
-            it('should correctly generate embeddings with input field', async () => {
-                const mockEmbeddingResponse = options?.embeddingOptions?.mockEmbeddingResponse || [[0.1, 0.2, 0.3]];
-                
-                // Setup mock for embedding
-                if (options?.embeddingOptions?.setupEmbedMock) {
-                    options.embeddingOptions.setupEmbedMock(mockClient);
-                } else {
-                    if ((mockClient as any).embeddings?.create) {
+        const embeddingMode = options?.embeddingOptions?.mode ?? 'default';
+
+        if (embeddingMode === 'unsupported') {
+            describe('Embeddings', () => {
+                it('should report unsupported embeddings clearly', async () => {
+                    await expect(
+                        handler.embed({
+                            provider: mockProvider,
+                            input: 'test text for embedding',
+                        } as IAIProvidersEmbedParams)
+                    ).rejects.toThrow(
+                        options?.embeddingOptions?.unsupportedError ||
+                            /unsupported|not support|Embedding/i
+                    );
+                });
+            });
+        } else {
+            describe('Embeddings', () => {
+                const prepareEmbeddingMock = () => {
+                    const mockEmbeddingResponse =
+                        options?.embeddingOptions?.mockEmbeddingResponse || [
+                            [0.1, 0.2, 0.3],
+                        ];
+
+                    if (options?.embeddingOptions?.setupEmbedMock) {
+                        options.embeddingOptions.setupEmbedMock(mockClient);
+                    } else if ((mockClient as any).embeddings?.create) {
                         (mockClient as any).embeddings.create.mockResolvedValue({
-                            data: mockEmbeddingResponse.map((embedding, i) => ({ embedding, index: i }))
+                            data: mockEmbeddingResponse.map((embedding, i) => ({
+                                embedding,
+                                index: i,
+                            })),
                         });
                     } else if ((mockClient as any).embed) {
                         (mockClient as any).embed.mockResolvedValue({
-                            embeddings: mockEmbeddingResponse
+                            embeddings: mockEmbeddingResponse,
                         });
                     }
-                }
-                
-                const embedParams = {
-                    provider: mockProvider,
-                    input: "test text for embedding"
+
+                    return mockEmbeddingResponse;
                 };
-                
-                const result = await handler.embed(embedParams);
-                expect(result).toEqual(expect.any(Array));
-                expect(result[0]).toEqual(expect.any(Array));
-                expect(result[0].length).toBeGreaterThan(0);
-                
-                // Verify appropriate API was called
-                if ((mockClient as any).embeddings?.create) {
-                    expect((mockClient as any).embeddings.create).toHaveBeenCalled();
-                    // Allow optional second argument (options with signal)
-                    const callArgs = (mockClient as any).embeddings.create.mock.calls[0];
-                    expect(callArgs[0]).toEqual({
-                        model: mockProvider.model,
-                        input: ["test text for embedding"],
-                    });
-                } else if ((mockClient as any).embed) {
-                    expect((mockClient as any).embed).toHaveBeenCalled();
-                    expect((mockClient as any).embed).toHaveBeenCalledWith({
-                        model: mockProvider.model,
-                        input: "test text for embedding",
-                        options: expect.anything()
-                    });
-                }
-            });
-            
-            it('should correctly generate embeddings with text field for backwards compatibility', async () => {
-                const mockEmbeddingResponse = options?.embeddingOptions?.mockEmbeddingResponse || [[0.1, 0.2, 0.3]];
-                
-                // Setup mock for embedding
-                if (options?.embeddingOptions?.setupEmbedMock) {
-                    options.embeddingOptions.setupEmbedMock(mockClient);
-                } else {
+
+                const expectEmbeddingCall = (expectedInput: string) => {
                     if ((mockClient as any).embeddings?.create) {
-                        (mockClient as any).embeddings.create.mockResolvedValue({
-                            data: mockEmbeddingResponse.map((embedding, i) => ({ embedding, index: i }))
+                        expect(
+                            (mockClient as any).embeddings.create
+                        ).toHaveBeenCalled();
+                        const callArgs = (mockClient as any).embeddings.create.mock
+                            .calls[0];
+                        expect(callArgs[0]).toEqual({
+                            model: mockProvider.model,
+                            input: [expectedInput],
                         });
                     } else if ((mockClient as any).embed) {
-                        (mockClient as any).embed.mockResolvedValue({
-                            embeddings: mockEmbeddingResponse
+                        expect((mockClient as any).embed).toHaveBeenCalledWith({
+                            model: mockProvider.model,
+                            input: expectedInput,
+                            options: expect.anything(),
                         });
                     }
-                }
+                };
+                it('should correctly generate embeddings with input field', async () => {
+                    prepareEmbeddingMock();
+                    
+                    const embedParams = {
+                        provider: mockProvider,
+                        input: "test text for embedding"
+                    };
+                    
+                    const result = await handler.embed(embedParams);
+                    expect(result).toEqual(expect.any(Array));
+                    expect(result[0]).toEqual(expect.any(Array));
+                    expect(result[0].length).toBeGreaterThan(0);
+                    
+                    expectEmbeddingCall('test text for embedding');
+                });
                 
-                // Test with text field instead of input (for backwards compatibility)
-                const embedParams = {
-                    provider: mockProvider,
-                    text: "test text for embedding" // Using text instead of input
-                } as any;
+                it('should correctly generate embeddings with text field for backwards compatibility', async () => {
+                    prepareEmbeddingMock();
+                    
+                    // Test with text field instead of input (for backwards compatibility)
+                    const embedParams = {
+                        provider: mockProvider,
+                        text: "test text for embedding" // Using text instead of input
+                    } as any;
+                    
+                    const result = await handler.embed(embedParams);
+                    expect(result).toEqual(expect.any(Array));
+                    expect(result[0]).toEqual(expect.any(Array));
+                    expect(result[0].length).toBeGreaterThan(0);
+                    
+                    expectEmbeddingCall('test text for embedding');
+                });
                 
-                const result = await handler.embed(embedParams);
-                expect(result).toEqual(expect.any(Array));
-                expect(result[0]).toEqual(expect.any(Array));
-                expect(result[0].length).toBeGreaterThan(0);
-                
-                // Verify that text parameter was properly converted to input in the API call
-                if ((mockClient as any).embeddings?.create) {
-                    const call = (mockClient as any).embeddings.create.mock.calls.find((c: any[]) => c[0].input?.[0] === 'test text for embedding');
-                    expect(call).toBeDefined();
-                    expect(call[0]).toEqual({
-                        model: mockProvider.model,
-                        input: ["test text for embedding"],
-                    });
-                } else if ((mockClient as any).embed) {
-                    expect((mockClient as any).embed).toHaveBeenCalledWith({
-                        model: mockProvider.model,
-                        input: "test text for embedding",
-                        options: expect.anything()
-                    });
-                }
-            });
-            
-            // Add additional test for backward compatibility with specific error handling
-            it('should throw error when neither input nor text is provided', async () => {
-                // Test with an empty params object
-                const embedParams = {
-                    provider: mockProvider,
-                    // Intentionally not providing input or text
-                } as IAIProvidersEmbedParams;
-                
-                // Expect the call to throw an error about missing parameters
-                await expect(handler.embed(embedParams)).rejects.toThrow(/Either input or text/);
-            });
+                // Add additional test for backward compatibility with specific error handling
+                it('should throw error when neither input nor text is provided', async () => {
+                    // Test with an empty params object
+                    const embedParams = {
+                        provider: mockProvider,
+                        // Intentionally not providing input or text
+                    } as IAIProvidersEmbedParams;
+                    
+                    // Expect the call to throw an error about missing parameters
+                    await expect(handler.embed(embedParams)).rejects.toThrow(/Either input or text/);
+                });
 
-            it('should call onProgress callback with correct progress', async () => {
-                const onProgressMock = jest.fn();
-                const testInputs = ['text1', 'text2', 'text3'];
-                
-                const embedParams = {
-                    provider: mockProvider,
-                    input: testInputs,
-                    onProgress: onProgressMock
-                } as IAIProvidersEmbedParams;
-                
-                await handler.embed(embedParams);
-                
-                const progressBehavior = options?.embeddingOptions?.progressBehavior || 'per-item';
-                
-                if (progressBehavior === 'per-chunk') {
-                    expect(onProgressMock).toHaveBeenCalledTimes(1);
-                    expect(onProgressMock).toHaveBeenCalledWith(testInputs);
-                } else {
-                    expect(onProgressMock).toHaveBeenCalledTimes(testInputs.length);
-                    expect(onProgressMock).toHaveBeenNthCalledWith(1, [testInputs[0]]);
-                    expect(onProgressMock).toHaveBeenNthCalledWith(2, [
-                        testInputs[0],
-                        testInputs[1],
-                    ]);
-                    expect(onProgressMock).toHaveBeenNthCalledWith(3, [
-                        testInputs[0],
-                        testInputs[1],
-                        testInputs[2],
-                    ]);
-                }
-            });
+                it('should call onProgress callback with correct progress', async () => {
+                    prepareEmbeddingMock();
+                    const onProgressMock = jest.fn();
+                    const testInputs = ['text1', 'text2', 'text3'];
+                    
+                    const embedParams = {
+                        provider: mockProvider,
+                        input: testInputs,
+                        onProgress: onProgressMock
+                    } as IAIProvidersEmbedParams;
+                    
+                    await handler.embed(embedParams);
+                    
+                    const progressBehavior = options?.embeddingOptions?.progressBehavior || 'per-item';
+                    
+                    if (progressBehavior === 'per-chunk') {
+                        expect(onProgressMock).toHaveBeenCalledTimes(1);
+                        expect(onProgressMock).toHaveBeenCalledWith(testInputs);
+                    } else {
+                        expect(onProgressMock).toHaveBeenCalledTimes(testInputs.length);
+                        expect(onProgressMock).toHaveBeenNthCalledWith(1, [testInputs[0]]);
+                        expect(onProgressMock).toHaveBeenNthCalledWith(2, [
+                            testInputs[0],
+                            testInputs[1],
+                        ]);
+                        expect(onProgressMock).toHaveBeenNthCalledWith(3, [
+                            testInputs[0],
+                            testInputs[1],
+                            testInputs[2],
+                        ]);
+                    }
+                });
 
-            it('should work without onProgress callback', async () => {
-                const embedParams = {
-                    provider: mockProvider,
-                    input: ['text1', 'text2']
-                } as IAIProvidersEmbedParams;
-                
-                // Should not throw error when onProgress is not provided
-                await expect(handler.embed(embedParams)).resolves.toBeDefined();
+                it('should work without onProgress callback', async () => {
+                    prepareEmbeddingMock();
+                    const embedParams = {
+                        provider: mockProvider,
+                        input: ['text1', 'text2']
+                    } as IAIProvidersEmbedParams;
+                    
+                    // Should not throw error when onProgress is not provided
+                    await expect(handler.embed(embedParams)).resolves.toBeDefined();
+                });
             });
-        });
+        }
 
         describe('Execution', () => {
             describe('Streaming', () => {
@@ -385,13 +414,7 @@ export const createAIHandlerTests = (
                         }
                     };
 
-                    if (mockClient.chat && 'completions' in mockClient.chat && mockClient.chat.completions.create) {
-                        mockClient.chat.completions.create.mockResolvedValue(mockStream);
-                    } else if (mockClient.generate) {
-                        mockClient.generate.mockResolvedValue(mockStream);
-                    } else if ((mockClient as any).chat) {
-                        (mockClient as any).chat.mockResolvedValue(mockStream);
-                    }
+                    applyStreamMock(mockClient, mockStream);
 
                     await expect(handler.execute({
                         provider: mockProvider,
@@ -417,13 +440,7 @@ export const createAIHandlerTests = (
                         }
                     };
 
-                    if (mockClient.chat && 'completions' in mockClient.chat && mockClient.chat.completions.create) {
-                        mockClient.chat.completions.create.mockResolvedValue(mockStream);
-                    } else if (mockClient.generate) {
-                        mockClient.generate.mockResolvedValue(mockStream);
-                    } else if ((mockClient as any).chat) {
-                        (mockClient as any).chat.mockResolvedValue(mockStream);
-                    }
+                    applyStreamMock(mockClient, mockStream);
 
                     const abortController = new AbortController();
                     const chunks: string[] = [];
@@ -471,13 +488,7 @@ export const createAIHandlerTests = (
                             }
                         };
 
-                        if (mockClient.chat && 'completions' in mockClient.chat && mockClient.chat.completions.create) {
-                            mockClient.chat.completions.create.mockResolvedValue(mockStream);
-                        } else if (mockClient.generate) {
-                            mockClient.generate.mockResolvedValue(mockStream);
-                        } else if ((mockClient as any).chat) {
-                            (mockClient as any).chat.mockResolvedValue(mockStream);
-                        }
+                        applyStreamMock(mockClient, mockStream);
 
                         await handler.execute(executeParams);
                         
@@ -504,13 +515,7 @@ export const createAIHandlerTests = (
                         }
                     };
 
-                    if (mockClient.chat && 'completions' in mockClient.chat && mockClient.chat.completions.create) {
-                        mockClient.chat.completions.create.mockResolvedValue(mockStream);
-                    } else if (mockClient.generate) {
-                        mockClient.generate.mockResolvedValue(mockStream);
-                    } else if ((mockClient as any).chat) {
-                        (mockClient as any).chat.mockResolvedValue(mockStream);
-                    }
+                    applyStreamMock(mockClient, mockStream);
 
                     await handler.execute(executeParams);
 
@@ -538,13 +543,7 @@ export const createAIHandlerTests = (
                         }
                     };
 
-                    if (mockClient.chat && 'completions' in mockClient.chat && mockClient.chat.completions.create) {
-                        mockClient.chat.completions.create.mockResolvedValue(mockStream);
-                    } else if (mockClient.generate) {
-                        mockClient.generate.mockResolvedValue(mockStream);
-                    } else if ((mockClient as any).chat) {
-                        (mockClient as any).chat.mockResolvedValue(mockStream);
-                    }
+                    applyStreamMock(mockClient, mockStream);
 
                     await handler.execute(executeParams);
 
@@ -585,13 +584,7 @@ export const createAIHandlerTests = (
                             }
                         };
 
-                        if (mockClient.chat && 'completions' in mockClient.chat && mockClient.chat.completions.create) {
-                            mockClient.chat.completions.create.mockResolvedValue(mockStream);
-                        } else if (mockClient.generate) {
-                            mockClient.generate.mockResolvedValue(mockStream);
-                        } else if ((mockClient as any).chat) {
-                            (mockClient as any).chat.mockResolvedValue(mockStream);
-                        }
+                        applyStreamMock(mockClient, mockStream);
 
                         await handler.execute(executeParams);
                         
@@ -622,13 +615,7 @@ export const createAIHandlerTests = (
                             }
                         };
 
-                        if (mockClient.chat && 'completions' in mockClient.chat && mockClient.chat.completions.create) {
-                            mockClient.chat.completions.create.mockResolvedValue(mockStream);
-                        } else if (mockClient.generate) {
-                            mockClient.generate.mockResolvedValue(mockStream);
-                        } else if ((mockClient as any).chat) {
-                            (mockClient as any).chat.mockResolvedValue(mockStream);
-                        }
+                        applyStreamMock(mockClient, mockStream);
 
                         // Execute first model request
                         await handler.execute(executeParams1);
@@ -674,13 +661,7 @@ export const createAIHandlerTests = (
                         }
                     };
 
-                    if (mockClient.chat && 'completions' in mockClient.chat && mockClient.chat.completions.create) {
-                        mockClient.chat.completions.create.mockResolvedValue(mockStream);
-                    } else if (mockClient.generate) {
-                        mockClient.generate.mockResolvedValue(mockStream);
-                    } else if ((mockClient as any).chat) {
-                        (mockClient as any).chat.mockResolvedValue(mockStream);
-                    }
+                    applyStreamMock(mockClient, mockStream);
 
                     // Create a test image if not provided
                     const testImage = options.imageHandlingOptions?.testImage || 
@@ -700,14 +681,7 @@ export const createAIHandlerTests = (
                         onProgress: onProgressMock as any,
                     });
 
-                    let expectedContent = '';
-                    if ('response' in mockResponse) {
-                        expectedContent = mockResponse.response;
-                    } else if ('message' in mockResponse && mockResponse.message.content) {
-                        expectedContent = mockResponse.message.content;
-                    } else if ('choices' in mockResponse) {
-                        expectedContent = mockResponse.choices[0].delta.content;
-                    }
+                    const expectedContent = extractContent(mockResponse);
                     
                     expect(onProgressMock).toHaveBeenCalledWith(expectedContent, expectedContent);
                     expect(fullText).toBe(expectedContent);

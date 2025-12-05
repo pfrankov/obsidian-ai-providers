@@ -1,11 +1,14 @@
 import { requestUrl, RequestUrlParam, RequestUrlResponse } from 'obsidian';
 import { logger } from './logger';
+import { normalizeHeaders } from './normalizeHeaders';
 
 export const obsidianFetch = async (
     url: string,
     options: RequestInit = {}
 ): Promise<Response> => {
-    delete (options.headers as Record<string, string>)['content-length'];
+    // Convert headers to plain object and remove content-length
+    const headers = normalizeHeaders(options.headers);
+    delete headers['content-length'];
 
     // Unfortunatelly, requestUrl doesn't support abort controller
     //
@@ -17,14 +20,14 @@ export const obsidianFetch = async (
     logger.debug('obsidianFetch request:', {
         url,
         method: options.method || 'GET',
-        headers: options.headers,
+        headers,
         hasBody: !!options.body,
     });
 
     const requestParams: RequestUrlParam = {
         url,
         method: options.method || 'GET',
-        headers: options.headers as Record<string, string>,
+        headers,
     };
 
     if (options.body) {
@@ -51,7 +54,7 @@ export const obsidianFetch = async (
 
         return new Response(obsidianResponse.text, responseInit);
     } catch (error) {
-        logger.error('Request failed:', error);
+        logger.error('Request failed:', error, { headers });
         throw error;
     }
 };

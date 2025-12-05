@@ -2,12 +2,16 @@
 import { remote, IncomingMessage } from 'electron';
 import { Platform } from 'obsidian';
 import { logger } from './logger';
+import { normalizeHeaders } from './normalizeHeaders';
 
 export async function electronFetch(
     url: string,
     options: RequestInit = {}
 ): Promise<Response> {
-    delete (options.headers as Record<string, string>)['content-length'];
+    // Convert headers to plain object and remove content-length
+    const headers = normalizeHeaders(options.headers);
+    delete headers['content-length'];
+
     const params: { controller?: AbortController } = {};
 
     if (this && 'controller' in this) {
@@ -20,7 +24,7 @@ export async function electronFetch(
     logger.debug('electronFetch request:', {
         url,
         method: options.method || 'GET',
-        headers: options.headers,
+        headers,
         hasBody: !!options.body,
         platform: Platform.isMobileApp ? 'mobile' : 'desktop',
     });
@@ -44,11 +48,9 @@ export async function electronFetch(
             method: options.method || 'GET',
         });
 
-        if (options.headers) {
-            Object.entries(options.headers).forEach(([key, value]) => {
-                request.setHeader(key, value);
-            });
-        }
+        Object.entries(headers).forEach(([key, value]) => {
+            request.setHeader(key, value);
+        });
 
         if (signal?.aborted) {
             logger.debug('Request aborted before start');
@@ -92,7 +94,10 @@ export async function electronFetch(
                 try {
                     await writer.ready;
                     await writer.write(chunk);
-                    logger.debug('Chunk received:', { size: chunk.length });
+                    logger.debug('Chunk received:', {
+                        size: chunk.length,
+                        text: chunk.toString('utf-8'),
+                    });
                 } catch (error) {
                     logger.error('Error writing chunk:', error);
                     cleanup();

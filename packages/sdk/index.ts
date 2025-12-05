@@ -221,4 +221,5 @@ export type {
     IAIDocument,
     IAIProvidersRetrievalParams,
     IAIProvidersRetrievalResult,
+    IContentBlock,
 } from './types';

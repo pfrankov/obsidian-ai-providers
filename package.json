@@ -39,6 +39,7 @@
     "author": "Pavel Frankov",
     "license": "MIT",
     "dependencies": {
+        "@anthropic-ai/sdk": "^0.71.0",
         "idb": "^8.0.0",
         "ollama": "0.5.10",
         "openai": "4.73.1"

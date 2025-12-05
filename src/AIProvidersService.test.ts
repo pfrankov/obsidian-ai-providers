@@ -11,6 +11,7 @@ import {
 // Mock the handlers
 jest.mock('./handlers/OpenAIHandler');
 jest.mock('./handlers/OllamaHandler');
+jest.mock('./handlers/AnthropicHandler');
 
 // Mock the cache
 jest.mock('./cache/EmbeddingsCache', () => ({

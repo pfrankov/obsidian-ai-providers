@@ -46,6 +46,10 @@ const PROVIDER_CONFIGS: Record<AIProviderType, ProviderConfig> = {
         name: '302.AI',
         options: { modelsFetching: false },
     },
+    anthropic: {
+        url: 'https://api.anthropic.com',
+        name: 'Anthropic',
+    },
 };
 
 // Providers that don't support model fetching are now handled via PROVIDER_CONFIGS options

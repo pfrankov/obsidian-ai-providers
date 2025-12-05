@@ -12,6 +12,7 @@ import {
     lmstudioIcon,
     groqIcon,
     ai302Icon,
+    anthropicIcon,
 } from './utils/icons';
 
 export default class AIProvidersPlugin extends Plugin {
@@ -28,6 +29,7 @@ export default class AIProvidersPlugin extends Plugin {
         addIcon('ai-providers-lmstudio', lmstudioIcon);
         addIcon('ai-providers-groq', groqIcon);
         addIcon('ai-providers-ai302', ai302Icon);
+        addIcon('ai-providers-anthropic', anthropicIcon);
 
         const settingTab = new AIProvidersSettingTab(this.app, this);
         this.exposeAIProviders();
