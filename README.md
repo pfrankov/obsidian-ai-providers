@@ -16,13 +16,26 @@ Think of it like a control panel where you can:
 - [Local GPT](https://github.com/pfrankov/obsidian-local-gpt)
 
 ## Supported providers
-- Ollama
 - OpenAI
-- OpenAI compatible API
 - OpenRouter
+- Anthropic
 - Google Gemini
-- LM Studio
+- Mistral AI
+- Together AI
+- Fireworks AI
+- Perplexity AI
+- DeepSeek
+- xAI (Grok)
+- Cerebras
+- Z.AI
 - Groq
+- 302.AI
+- Novita AI
+- DeepInfra
+- SambaNova
+- LM Studio
+- Ollama (and Open WebUI)
+- OpenAI compatible API
 
 ## Features
 - Fully encapsulated API for working with AI providers

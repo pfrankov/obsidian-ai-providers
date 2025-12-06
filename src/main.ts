@@ -13,6 +13,17 @@ import {
     groqIcon,
     ai302Icon,
     anthropicIcon,
+    mistralIcon,
+    togetherIcon,
+    fireworksIcon,
+    perplexityIcon,
+    deepseekIcon,
+    xaiIcon,
+    novitaIcon,
+    deepinfraIcon,
+    sambanovaIcon,
+    cerebrasIcon,
+    zaiIcon,
 } from './utils/icons';
 
 export default class AIProvidersPlugin extends Plugin {
@@ -30,6 +41,17 @@ export default class AIProvidersPlugin extends Plugin {
         addIcon('ai-providers-groq', groqIcon);
         addIcon('ai-providers-ai302', ai302Icon);
         addIcon('ai-providers-anthropic', anthropicIcon);
+        addIcon('ai-providers-mistral', mistralIcon);
+        addIcon('ai-providers-together', togetherIcon);
+        addIcon('ai-providers-fireworks', fireworksIcon);
+        addIcon('ai-providers-perplexity', perplexityIcon);
+        addIcon('ai-providers-deepseek', deepseekIcon);
+        addIcon('ai-providers-xai', xaiIcon);
+        addIcon('ai-providers-novita', novitaIcon);
+        addIcon('ai-providers-deepinfra', deepinfraIcon);
+        addIcon('ai-providers-sambanova', sambanovaIcon);
+        addIcon('ai-providers-cerebras', cerebrasIcon);
+        addIcon('ai-providers-zai', zaiIcon);
 
         const settingTab = new AIProvidersSettingTab(this.app, this);
         this.exposeAIProviders();

@@ -42,13 +42,57 @@ const PROVIDER_CONFIGS: Record<AIProviderType, ProviderConfig> = {
         name: 'Groq',
     },
     ai302: {
-        url: 'https://api.302.ai',
+        url: 'https://api.302.ai/v1',
         name: '302.AI',
         options: { modelsFetching: false },
     },
     anthropic: {
         url: 'https://api.anthropic.com',
         name: 'Anthropic',
+    },
+    mistral: {
+        url: 'https://api.mistral.ai/v1',
+        name: 'Mistral AI',
+    },
+    together: {
+        url: 'https://api.together.xyz/v1',
+        name: 'Together AI',
+    },
+    fireworks: {
+        url: 'https://api.fireworks.ai/inference/v1',
+        name: 'Fireworks AI',
+    },
+    perplexity: {
+        url: 'https://api.perplexity.ai',
+        name: 'Perplexity AI',
+    },
+    deepseek: {
+        url: 'https://api.deepseek.com',
+        name: 'DeepSeek',
+    },
+    xai: {
+        url: 'https://api.x.ai/v1',
+        name: 'xAI (Grok)',
+    },
+    novita: {
+        url: 'https://api.novita.ai/openai/v1',
+        name: 'Novita AI',
+    },
+    deepinfra: {
+        url: 'https://api.deepinfra.com/v1/openai',
+        name: 'DeepInfra',
+    },
+    sambanova: {
+        url: 'https://api.sambanova.ai/v1',
+        name: 'SambaNova',
+    },
+    cerebras: {
+        url: 'https://api.cerebras.ai/v1',
+        name: 'Cerebras',
+    },
+    zai: {
+        url: 'https://api.z.ai/api/paas/v4/',
+        name: 'Z.AI',
     },
 };
 
