@@ -47,6 +47,17 @@ export class AIProvidersService implements IAIProvidersService {
             groq: new OpenAIHandler(plugin.settings),
             ai302: new OpenAIHandler(plugin.settings),
             anthropic: new AnthropicHandler(plugin.settings),
+            mistral: new OpenAIHandler(plugin.settings),
+            together: new OpenAIHandler(plugin.settings),
+            fireworks: new OpenAIHandler(plugin.settings),
+            perplexity: new OpenAIHandler(plugin.settings),
+            deepseek: new OpenAIHandler(plugin.settings),
+            xai: new OpenAIHandler(plugin.settings),
+            novita: new OpenAIHandler(plugin.settings),
+            deepinfra: new OpenAIHandler(plugin.settings),
+            sambanova: new OpenAIHandler(plugin.settings),
+            cerebras: new OpenAIHandler(plugin.settings),
+            zai: new OpenAIHandler(plugin.settings),
         };
 
         // Initialize cached embeddings service
