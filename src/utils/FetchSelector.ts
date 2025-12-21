@@ -160,42 +160,6 @@ export class FetchSelector {
     }
 
     /**
-     * Get the appropriate fetch function for a provider based on settings, platform, and CORS status
-     * @deprecated Use getFetch() for API requests or getStreamingFetch() for streaming operations instead
-     */
-    getFetchFunction(provider: IAIProvider): FetchFunction {
-        const providerName = provider.name;
-
-        // Priority 1: Use obsidianFetch for CORS-blocked providers
-        if (this.isBlocked(provider)) {
-            logger.debug(
-                'Using obsidianFetch for CORS-blocked provider:',
-                providerName
-            );
-            return obsidianFetch;
-        }
-
-        // Priority 2: Use obsidianFetch on mobile platform (electronFetch not available)
-        if (this.isMobilePlatform()) {
-            logger.debug(
-                'Using obsidianFetch for mobile platform:',
-                providerName
-            );
-            return obsidianFetch;
-        }
-
-        // Priority 3: Use native fetch if enabled in settings
-        if (this.shouldUseNativeFetch()) {
-            logger.debug('Using native fetch for provider:', providerName);
-            return globalThis.fetch;
-        }
-
-        // Default: Use electronFetch on desktop
-        logger.debug('Using electronFetch for provider:', providerName);
-        return electronFetch;
-    }
-
-    /**
      * Check if an error is CORS-related
      */
     isCorsError(error: Error): boolean {

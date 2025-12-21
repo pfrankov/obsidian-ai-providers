@@ -29,7 +29,7 @@ export class AnthropicHandler implements IAIHandler {
         this.fetchSelector = new FetchSelector(settings);
     }
 
-    private throwIfAborted(abortController?: AbortController) {
+    private ensureNotAborted(abortController?: AbortController) {
         if (abortController?.signal.aborted) {
             throw new Error('Aborted');
         }
@@ -233,18 +233,18 @@ export class AnthropicHandler implements IAIHandler {
         provider: IAIProvider;
         abortController?: AbortController;
     }): Promise<string[]> {
-        this.throwIfAborted(abortController);
+        this.ensureNotAborted(abortController);
 
         const result = await this.fetchSelector.request(
             provider,
             async (fetchImpl: FetchFunction) => {
-                this.throwIfAborted(abortController);
+                this.ensureNotAborted(abortController);
                 const client = this.getClient(provider, fetchImpl);
 
                 const ids: string[] = [];
 
                 for await (const model of client.models.list()) {
-                    this.throwIfAborted(abortController);
+                    this.ensureNotAborted(abortController);
                     if (model?.id) {
                         ids.push(model.id);
                     }
@@ -253,7 +253,7 @@ export class AnthropicHandler implements IAIHandler {
             }
         );
 
-        this.throwIfAborted(abortController);
+        this.ensureNotAborted(abortController);
         return result;
     }
 
@@ -286,7 +286,7 @@ export class AnthropicHandler implements IAIHandler {
         let fullText = '';
 
         for await (const event of stream as any as AsyncIterable<RawMessageStreamEvent>) {
-            this.throwIfAborted(abortController);
+            this.ensureNotAborted(abortController);
             const textChunk = this.extractTextFromEvent(event);
             if (textChunk) {
                 fullText += textChunk;
@@ -305,7 +305,7 @@ export class AnthropicHandler implements IAIHandler {
             | ((chunk: string, acc: string) => void)
             | undefined;
 
-        this.throwIfAborted(abortController);
+        this.ensureNotAborted(abortController);
 
         try {
             return await this.fetchSelector.execute(
@@ -317,7 +317,7 @@ export class AnthropicHandler implements IAIHandler {
                         client,
                         (chunk, acc) => {
                             onProgress && onProgress(chunk, acc);
-                            this.throwIfAborted(abortController);
+                            this.ensureNotAborted(abortController);
                         },
                         abortController
                     );

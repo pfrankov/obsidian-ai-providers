@@ -1,8 +1,9 @@
+import type { Mock } from 'vitest';
 import { EmbeddingsCache } from './EmbeddingsCache';
 import { openDB } from 'idb';
 
 // Mock idb
-jest.mock('idb');
+vi.mock('idb');
 
 describe('EmbeddingsCache', () => {
     let cache: EmbeddingsCache;
@@ -15,17 +16,17 @@ describe('EmbeddingsCache', () => {
 
         // Mock database
         mockDb = {
-            get: jest.fn(),
-            put: jest.fn(),
-            clear: jest.fn(),
-            close: jest.fn(),
+            get: vi.fn(),
+            put: vi.fn(),
+            clear: vi.fn(),
+            close: vi.fn(),
         };
 
-        (openDB as jest.Mock).mockResolvedValue(mockDb);
+        (openDB as Mock).mockResolvedValue(mockDb);
     });
 
     afterEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     it('should return the same instance', () => {
@@ -35,6 +36,14 @@ describe('EmbeddingsCache', () => {
     });
 
     it('should initialize database with vault ID', async () => {
+        const createObjectStore = vi.fn();
+        (openDB as Mock).mockImplementationOnce(
+            async (_name, _version, opts) => {
+                opts.upgrade({ createObjectStore });
+                return mockDb;
+            }
+        );
+
         await cache.init('test-vault-id');
 
         expect(openDB).toHaveBeenCalledWith(
@@ -42,6 +51,28 @@ describe('EmbeddingsCache', () => {
             1,
             expect.any(Object)
         );
+        expect(createObjectStore).toHaveBeenCalledWith('embeddings');
+    });
+
+    it('should skip reinitialization for the same vault', async () => {
+        await cache.init('test-vault');
+        await cache.init('test-vault');
+
+        expect(openDB).toHaveBeenCalledTimes(1);
+    });
+
+    it('should close and reinitialize when vault changes', async () => {
+        await cache.init('vault-a');
+        await cache.init('vault-b');
+
+        expect(mockDb.close).toHaveBeenCalled();
+        expect(openDB).toHaveBeenCalledTimes(2);
+    });
+
+    it('handles init failures without throwing', async () => {
+        (openDB as Mock).mockRejectedValueOnce(new Error('boom'));
+        await cache.init('bad-vault');
+        expect(cache.isInitialized()).toBe(false);
     });
 
     it('should get and set embeddings', async () => {
@@ -68,8 +99,53 @@ describe('EmbeddingsCache', () => {
         expect(result).toEqual(mockCacheItem);
     });
 
+    it('returns undefined when cache is not initialized', async () => {
+        const result = await cache.getEmbeddings('test-key');
+        expect(result).toBeUndefined();
+    });
+
+    it('returns early when clearing embeddings without db', async () => {
+        await cache.clearEmbeddings();
+        expect(mockDb.clear).not.toHaveBeenCalled();
+    });
+
+    it('returns undefined when getEmbeddings fails', async () => {
+        await cache.init('test-vault');
+        mockDb.get.mockRejectedValueOnce(new Error('read error'));
+        const result = await cache.getEmbeddings('test-key');
+        expect(result).toBeUndefined();
+    });
+
+    it('ignores setEmbeddings when cache is not initialized', async () => {
+        await cache.setEmbeddings('test-key', {
+            providerId: 'test',
+            providerModel: 'model',
+            chunks: [],
+        });
+        expect(mockDb.put).not.toHaveBeenCalled();
+    });
+
+    it('handles setEmbeddings errors without throwing', async () => {
+        await cache.init('test-vault');
+        mockDb.put.mockRejectedValueOnce(new Error('write error'));
+        await cache.setEmbeddings('test-key', {
+            providerId: 'test',
+            providerModel: 'model',
+            chunks: [],
+        });
+        expect(mockDb.put).toHaveBeenCalled();
+    });
+
     it('should clear embeddings', async () => {
         await cache.init('test-vault');
+        await cache.clearEmbeddings();
+        expect(mockDb.clear).toHaveBeenCalledWith('embeddings');
+    });
+
+    it('handles clearEmbeddings errors without throwing', async () => {
+        await cache.init('test-vault');
+        mockDb.clear.mockRejectedValueOnce(new Error('clear error'));
+
         await cache.clearEmbeddings();
         expect(mockDb.clear).toHaveBeenCalledWith('embeddings');
     });

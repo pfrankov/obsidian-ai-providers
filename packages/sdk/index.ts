@@ -30,7 +30,7 @@ async function waitForAIProviders(app: ExtendedApp, plugin: Plugin) {
     }
 
     const abortController = new AbortController();
-    let aiProvidersReady: () => void = () => {};
+    let aiProvidersReady!: () => void;
 
     const result = {
         promise: new Promise<IAIProvidersService>((resolve, reject) => {
@@ -208,6 +208,11 @@ class AIProvidersFallbackSettingsTab extends PluginSettingTab {
         );
     }
 }
+
+export const __testing__ = {
+    resetManager: () => AIProvidersManager.reset(),
+    waitForAIProviders,
+};
 
 export type {
     IAIProvider,

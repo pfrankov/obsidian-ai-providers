@@ -1,17 +1,19 @@
+import type { Mock } from 'vitest';
 import { App, Plugin, PluginSettingTab } from 'obsidian';
 import AIProvidersExamplePlugin from './main';
 import { initAI, waitForAI } from '@obsidian-ai-providers/sdk';
 import manifest from './manifest.json';
 
 // Mock AI integration
-jest.mock('@obsidian-ai-providers/sdk', () => ({
-    initAI: jest.fn((app, plugin, callback) => callback()),
-    waitForAI: jest.fn(),
+vi.mock('@obsidian-ai-providers/sdk', () => ({
+    initAI: vi.fn((app, plugin, callback) => callback()),
+    waitForAI: vi.fn(),
 }));
 
 // Mock Obsidian components that aren't available in test environment
-jest.mock('obsidian', () => {
-    const originalModule = jest.requireActual('obsidian');
+vi.mock('obsidian', async () => {
+    const originalModule =
+        await vi.importActual<typeof import('obsidian')>('obsidian');
     return {
         ...originalModule,
         Modal: class MockModal {
@@ -22,7 +24,7 @@ jest.mock('obsidian', () => {
     };
 });
 
-jest.mock('./RAGSearchComponent', () => ({
+vi.mock('./RAGSearchComponent', () => ({
     RAGSearchComponent: class {
         render(containerEl: any) {
             containerEl.createEl('h3', { text: '🔍 RAG Search Demo' });
@@ -43,9 +45,9 @@ const createMockProvider = (id: string, name: string, model?: string) => ({
 
 const createMockAIResolver = (
     providers: any[] = [],
-    execute = jest.fn(),
-    embed = jest.fn(),
-    retrieve = jest.fn()
+    execute = vi.fn(),
+    embed = vi.fn(),
+    retrieve = vi.fn()
 ) => ({
     promise: Promise.resolve({
         providers,
@@ -66,7 +68,7 @@ describe('AIProvidersExamplePlugin', () => {
     });
 
     afterEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     it('should initialize plugin correctly', () => {
@@ -82,7 +84,7 @@ describe('AIProvidersExamplePlugin', () => {
 
     describe('initAI functionality', () => {
         it('should call initAI with callback function', async () => {
-            const mockCallback = jest.fn();
+            const mockCallback = vi.fn();
             await initAI(app, plugin, mockCallback);
 
             expect(initAI).toHaveBeenCalledWith(app, plugin, mockCallback);
@@ -90,7 +92,7 @@ describe('AIProvidersExamplePlugin', () => {
         });
 
         it('should support options parameter', async () => {
-            const mockCallback = jest.fn();
+            const mockCallback = vi.fn();
             const options = { disableFallback: true };
 
             await initAI(app, plugin, mockCallback, options);
@@ -112,9 +114,7 @@ describe('AIProvidersExamplePlugin', () => {
         });
 
         it('should display settings with no providers', async () => {
-            (waitForAI as jest.Mock).mockResolvedValueOnce(
-                createMockAIResolver([])
-            );
+            (waitForAI as Mock).mockResolvedValueOnce(createMockAIResolver([]));
 
             await settingsTab.display();
 
@@ -139,7 +139,7 @@ describe('AIProvidersExamplePlugin', () => {
                 createMockProvider('provider2', 'Provider 2', 'Model X'),
             ];
 
-            (waitForAI as jest.Mock).mockResolvedValueOnce(
+            (waitForAI as Mock).mockResolvedValueOnce(
                 createMockAIResolver(mockProviders)
             );
 
@@ -166,9 +166,9 @@ describe('AIProvidersExamplePlugin', () => {
 
         it('should show execute button when provider is selected', async () => {
             const mockProvider = createMockProvider('provider1', 'Provider 1');
-            const mockExecute = jest.fn().mockResolvedValue('London');
+            const mockExecute = vi.fn().mockResolvedValue('London');
 
-            (waitForAI as jest.Mock).mockResolvedValueOnce(
+            (waitForAI as Mock).mockResolvedValueOnce(
                 createMockAIResolver([mockProvider], mockExecute)
             );
 
@@ -185,9 +185,9 @@ describe('AIProvidersExamplePlugin', () => {
 
         it('should handle AI execution correctly (stream API)', async () => {
             const mockProvider = createMockProvider('provider1', 'Provider 1');
-            const mockExecute = jest.fn().mockResolvedValue('London');
+            const mockExecute = vi.fn().mockResolvedValue('London');
 
-            (waitForAI as jest.Mock).mockResolvedValueOnce(
+            (waitForAI as Mock).mockResolvedValueOnce(
                 createMockAIResolver([mockProvider], mockExecute)
             );
 
@@ -216,9 +216,7 @@ describe('AIProvidersExamplePlugin', () => {
         });
 
         it('should clear container before displaying settings', async () => {
-            (waitForAI as jest.Mock).mockResolvedValueOnce(
-                createMockAIResolver([])
-            );
+            (waitForAI as Mock).mockResolvedValueOnce(createMockAIResolver([]));
 
             // Add some content to container
             settingsTab.containerEl.createEl('div', { text: 'Test content' });
@@ -232,7 +230,7 @@ describe('AIProvidersExamplePlugin', () => {
         it('should display embeddings section when provider is selected', async () => {
             const mockProvider = createMockProvider('provider1', 'Provider 1');
 
-            (waitForAI as jest.Mock).mockResolvedValueOnce(
+            (waitForAI as Mock).mockResolvedValueOnce(
                 createMockAIResolver([mockProvider])
             );
 
@@ -263,7 +261,7 @@ describe('AIProvidersExamplePlugin', () => {
         it('should show generate embeddings button when file is selected', async () => {
             const mockProvider = createMockProvider('provider1', 'Provider 1');
 
-            (waitForAI as jest.Mock).mockResolvedValueOnce(
+            (waitForAI as Mock).mockResolvedValueOnce(
                 createMockAIResolver([mockProvider])
             );
 
@@ -282,12 +280,12 @@ describe('AIProvidersExamplePlugin', () => {
 
         it('should handle embeddings generation correctly', async () => {
             const mockProvider = createMockProvider('provider1', 'Provider 1');
-            const mockEmbed = jest
+            const mockEmbed = vi
                 .fn()
                 .mockResolvedValue([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]]);
 
-            (waitForAI as jest.Mock).mockResolvedValueOnce(
-                createMockAIResolver([mockProvider], jest.fn(), mockEmbed)
+            (waitForAI as Mock).mockResolvedValueOnce(
+                createMockAIResolver([mockProvider], vi.fn(), mockEmbed)
             );
 
             (settingsTab as any).selectedProvider = 'provider1';
@@ -316,10 +314,10 @@ describe('AIProvidersExamplePlugin', () => {
         it('should display embedding results correctly', async () => {
             const mockProvider = createMockProvider('provider1', 'Provider 1');
             const mockEmbeddings = [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]];
-            const mockEmbed = jest.fn().mockResolvedValue(mockEmbeddings);
+            const mockEmbed = vi.fn().mockResolvedValue(mockEmbeddings);
 
-            (waitForAI as jest.Mock).mockResolvedValueOnce(
-                createMockAIResolver([mockProvider], jest.fn(), mockEmbed)
+            (waitForAI as Mock).mockResolvedValueOnce(
+                createMockAIResolver([mockProvider], vi.fn(), mockEmbed)
             );
 
             (settingsTab as any).selectedProvider = 'provider1';
@@ -368,12 +366,12 @@ describe('AIProvidersExamplePlugin', () => {
 
         it('should handle embedding errors correctly', async () => {
             const mockProvider = createMockProvider('provider1', 'Provider 1');
-            const mockEmbed = jest
+            const mockEmbed = vi
                 .fn()
                 .mockRejectedValue(new Error('Embedding failed'));
 
-            (waitForAI as jest.Mock).mockResolvedValueOnce(
-                createMockAIResolver([mockProvider], jest.fn(), mockEmbed)
+            (waitForAI as Mock).mockResolvedValueOnce(
+                createMockAIResolver([mockProvider], vi.fn(), mockEmbed)
             );
 
             (settingsTab as any).selectedProvider = 'provider1';
@@ -404,7 +402,7 @@ describe('AIProvidersExamplePlugin', () => {
         it('should handle file not found error', async () => {
             const mockProvider = createMockProvider('provider1', 'Provider 1');
 
-            (waitForAI as jest.Mock).mockResolvedValueOnce(
+            (waitForAI as Mock).mockResolvedValueOnce(
                 createMockAIResolver([mockProvider])
             );
 
@@ -436,7 +434,7 @@ describe('AIProvidersExamplePlugin', () => {
         it('should display RAG search demo section when provider is selected', async () => {
             const mockProvider = createMockProvider('provider1', 'Provider 1');
 
-            (waitForAI as jest.Mock).mockResolvedValueOnce(
+            (waitForAI as Mock).mockResolvedValueOnce(
                 createMockAIResolver([mockProvider])
             );
 

@@ -2,8 +2,20 @@
     "root": true,
     "parser": "@typescript-eslint/parser",
     "env": { "node": true },
+    "globals": {
+      "describe": "readonly",
+      "it": "readonly",
+      "test": "readonly",
+      "expect": "readonly",
+      "beforeEach": "readonly",
+      "afterEach": "readonly",
+      "beforeAll": "readonly",
+      "afterAll": "readonly",
+      "vi": "readonly"
+    },
     "plugins": [
-      "@typescript-eslint"
+      "@typescript-eslint",
+      "sonarjs"
     ],
     "extends": [
       "eslint:recommended",
@@ -18,6 +30,15 @@
       "@typescript-eslint/no-unused-vars": ["error", { "args": "none" }],
       "@typescript-eslint/ban-ts-comment": "off",
       "no-prototype-builtins": "off",
-      "@typescript-eslint/no-empty-function": "off"
-    } 
+      "@typescript-eslint/no-empty-function": "off",
+      "sonarjs/cognitive-complexity": ["error", 10]
+    },
+    "overrides": [
+      {
+        "files": ["**/*.test.ts", "**/*.spec.ts", "test-utils/**/*.ts"],
+        "rules": {
+          "sonarjs/cognitive-complexity": "off"
+        }
+      }
+    ]
   }

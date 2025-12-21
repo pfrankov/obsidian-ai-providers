@@ -4,6 +4,7 @@ import {
     IAIProvidersEmbedParams,
     IAIProvidersExecuteParams,
     IAIProvidersPluginSettings,
+    IContentBlock,
 } from '@obsidian-ai-providers/sdk';
 import { Ollama } from 'ollama';
 import { electronFetch } from '../utils/electronFetch';
@@ -21,6 +22,8 @@ const SYMBOLS_PER_TOKEN = 2.5;
 const DEFAULT_CONTEXT_LENGTH = 2048;
 const EMBEDDING_CONTEXT_LENGTH = 2048;
 const CONTEXT_BUFFER_MULTIPLIER = 1.2; // 20% buffer
+type TextContentBlock = Extract<IContentBlock, { type: 'text' }>;
+type ImageContentBlock = Extract<IContentBlock, { type: 'image_url' }>;
 
 export class OllamaHandler implements IAIHandler {
     private modelInfoCache: Map<string, ModelInfo>;
@@ -29,6 +32,12 @@ export class OllamaHandler implements IAIHandler {
     constructor(private settings: IAIProvidersPluginSettings) {
         this.modelInfoCache = new Map();
         this.fetchSelector = new FetchSelector(settings);
+    }
+
+    private ensureNotAborted(abortController?: AbortController) {
+        if (abortController?.signal.aborted) {
+            throw new Error('Aborted');
+        }
     }
 
     private getClient(
@@ -121,15 +130,11 @@ export class OllamaHandler implements IAIHandler {
         provider: IAIProvider;
         abortController?: AbortController;
     }): Promise<string[]> {
-        if (abortController?.signal.aborted) {
-            throw new Error('Aborted');
-        }
+        this.ensureNotAborted(abortController);
         const operation = async (
             fetchImpl: typeof electronFetch | typeof obsidianFetch
         ) => {
-            if (abortController?.signal.aborted) {
-                throw new Error('Aborted');
-            }
+            this.ensureNotAborted(abortController);
             const ollama = this.getClient(provider, fetchImpl);
             abortController?.signal.addEventListener('abort', () => {
                 ollama.abort();
@@ -138,18 +143,21 @@ export class OllamaHandler implements IAIHandler {
             return models.models.map(model => model.name);
         };
         const result = await this.fetchSelector.request(provider, operation);
-        if (abortController?.signal.aborted) {
-            throw new Error('Aborted');
-        }
+        this.ensureNotAborted(abortController);
         return result;
     }
 
-    private optimizeContext(
-        inputLength: number,
-        lastContextLength: number,
-        defaultContextLength: number,
-        limit: number
-    ): { num_ctx?: number; shouldUpdate: boolean } {
+    private optimizeContext({
+        inputLength,
+        lastContextLength,
+        defaultContextLength,
+        limit,
+    }: {
+        inputLength: number;
+        lastContextLength: number;
+        defaultContextLength: number;
+        limit: number;
+    }): { num_ctx?: number; shouldUpdate: boolean } {
         const estimatedTokens = Math.ceil(inputLength / SYMBOLS_PER_TOKEN);
 
         // If current context is smaller than last used,
@@ -181,6 +189,107 @@ export class OllamaHandler implements IAIHandler {
         };
     }
 
+    private applyContextOptimization({
+        provider,
+        modelName,
+        inputLength,
+        modelInfo,
+        defaultContextLength,
+    }: {
+        provider: IAIProvider;
+        modelName: string;
+        inputLength: number;
+        modelInfo: ModelInfo;
+        defaultContextLength: number;
+    }): number | undefined {
+        const { num_ctx, shouldUpdate } = this.optimizeContext({
+            inputLength,
+            lastContextLength:
+                modelInfo.lastContextLength || defaultContextLength,
+            defaultContextLength,
+            limit: modelInfo.contextLength || defaultContextLength,
+        });
+
+        if (shouldUpdate) {
+            this.setModelInfoLastContextLength(provider, modelName, num_ctx);
+        }
+
+        return num_ctx;
+    }
+
+    private normalizeImages(images: string[]): string[] {
+        return images.map(image =>
+            image.replace(/^data:image\/(.*?);base64,/, '')
+        );
+    }
+
+    private applyImagesToChatMessages(
+        chatMessages: { role: string; content: string; images?: string[] }[],
+        images: string[]
+    ) {
+        if (images.length === 0) {
+            return;
+        }
+
+        const lastUserMessageIndex = chatMessages
+            .map(msg => msg.role)
+            .lastIndexOf('user');
+
+        const targetIndex =
+            lastUserMessageIndex !== -1
+                ? lastUserMessageIndex
+                : chatMessages.length - 1;
+
+        if (targetIndex >= 0) {
+            chatMessages[targetIndex] = {
+                ...chatMessages[targetIndex],
+                images,
+            };
+            return;
+        }
+
+        chatMessages.push({
+            role: 'user',
+            content: '',
+            images,
+        });
+    }
+
+    private async streamOllamaResponse({
+        response,
+        provider,
+        modelName,
+        onProgress,
+        abortController,
+    }: {
+        response: AsyncIterable<any>;
+        provider: IAIProvider;
+        modelName: string;
+        onProgress?: (chunk: string, accumulatedText: string) => void;
+        abortController?: AbortController;
+    }): Promise<string> {
+        let fullText = '';
+
+        for await (const chunk of response) {
+            this.ensureNotAborted(abortController);
+            const content = chunk.message?.content;
+            if (content) {
+                fullText += content;
+                onProgress?.(content, fullText);
+            }
+
+            if (chunk.done && chunk.total_duration > 0) {
+                this.setModelInfoLastContextLength(
+                    provider,
+                    modelName,
+                    chunk.context?.length
+                );
+            }
+        }
+
+        return fullText;
+    }
+
     private prepareChatMessages(params: IAIProvidersExecuteParams): {
         chatMessages: any[];
         extractedImages: string[];
@@ -204,18 +313,21 @@ export class OllamaHandler implements IAIHandler {
                 } else {
                     // Extract text content from content blocks
                     const textContent = msg.content
-                        .filter(block => block.type === 'text')
-                        .map(block => (block.type === 'text' ? block.text : ''))
+                        .filter(
+                            (block): block is TextContentBlock =>
+                                block.type === 'text'
+                        )
+                        .map(block => block.text)
                         .join('\n');
 
                     // Extract image URLs from content blocks
                     msg.content
-                        .filter(block => block.type === 'image_url')
+                        .filter(
+                            (block): block is ImageContentBlock =>
+                                block.type === 'image_url'
+                        )
                         .forEach(block => {
-                            if (
-                                block.type === 'image_url' &&
-                                block.image_url?.url
-                            ) {
+                            if (block.image_url?.url) {
                                 extractedImages.push(block.image_url.url);
                             }
                         });
@@ -253,124 +365,72 @@ export class OllamaHandler implements IAIHandler {
         return { chatMessages, extractedImages };
     }
 
-    private async executeOllamaGeneration(
-        params: IAIProvidersExecuteParams,
-        ollama: any,
-        onProgress?: (chunk: string, accumulatedText: string) => void,
-        abortController?: AbortController
-    ): Promise<string> {
+    private async executeOllamaGeneration({
+        params,
+        ollama,
+        onProgress,
+        abortController,
+    }: {
+        params: IAIProvidersExecuteParams;
+        ollama: Ollama;
+        onProgress?: (chunk: string, accumulatedText: string) => void;
+        abortController?: AbortController;
+    }): Promise<string> {
+        const modelName = params.provider.model || '';
         const modelInfo = await this.getCachedModelInfo(
             params.provider,
-            params.provider.model || ''
+            modelName
         ).catch(error => {
             logger.error('Failed to get model info:', error);
             return null;
         });
+        const effectiveModelInfo = modelInfo || this.getDefaultModelInfo();
 
         const { chatMessages, extractedImages } =
             this.prepareChatMessages(params);
+        const processedImages = this.normalizeImages(extractedImages);
 
-        // Process images for Ollama format (remove data URL prefix)
-        const processedImages =
-            extractedImages.length > 0
-                ? extractedImages.map(image =>
-                      image.replace(/^data:image\/(.*?);base64,/, '')
-                  )
-                : undefined;
+        const requestOptions: Record<string, any> = {
+            ...(params.options || {}),
+        };
 
-        // Prepare request options
-        const requestOptions: Record<string, any> = {};
-
-        // Optimize context for text-based conversations
-        if (!processedImages?.length) {
+        if (processedImages.length === 0) {
             const inputLength = chatMessages.reduce(
                 (acc, msg) => acc + msg.content.length,
                 0
             );
 
-            const { num_ctx, shouldUpdate } = this.optimizeContext(
+            const num_ctx = this.applyContextOptimization({
+                provider: params.provider,
+                modelName,
                 inputLength,
-                modelInfo?.lastContextLength || DEFAULT_CONTEXT_LENGTH,
-                DEFAULT_CONTEXT_LENGTH,
-                modelInfo?.contextLength || DEFAULT_CONTEXT_LENGTH
-            );
+                modelInfo: effectiveModelInfo,
+                defaultContextLength: DEFAULT_CONTEXT_LENGTH,
+            });
 
             if (num_ctx) {
                 requestOptions.num_ctx = num_ctx;
             }
-
-            if (shouldUpdate) {
-                this.setModelInfoLastContextLength(
-                    params.provider,
-                    params.provider.model || '',
-                    num_ctx
-                );
-            }
         }
 
-        // Add any additional options from params
-        if (params.options) {
-            Object.assign(requestOptions, params.options);
-        }
-
-        // Add images to the last user message if present
-        if (processedImages?.length) {
-            const lastUserMessageIndex = chatMessages
-                .map(msg => msg.role)
-                .lastIndexOf('user');
-
-            if (lastUserMessageIndex !== -1) {
-                chatMessages[lastUserMessageIndex] = {
-                    ...chatMessages[lastUserMessageIndex],
-                    images: processedImages,
-                };
-            } else if (chatMessages.length > 0) {
-                chatMessages[chatMessages.length - 1] = {
-                    ...chatMessages[chatMessages.length - 1],
-                    images: processedImages,
-                };
-            } else {
-                chatMessages.push({
-                    role: 'user',
-                    content: '',
-                    images: processedImages,
-                });
-            }
-        }
+        this.applyImagesToChatMessages(chatMessages, processedImages);
 
         logger.debug('Sending chat request to Ollama');
 
-        // Using Ollama chat API instead of generate
         const response = await ollama.chat({
-            model: params.provider.model || '',
+            model: modelName,
             messages: chatMessages,
             stream: true,
-            options: {
-                ...requestOptions,
-            },
+            options: requestOptions,
         });
 
-        let fullText = '';
-        for await (const chunk of response) {
-            if (abortController?.signal.aborted) {
-                throw new Error('Aborted');
-            }
-            const content = chunk.message?.content;
-            if (content) {
-                fullText += content;
-                onProgress && onProgress(content, fullText);
-            }
-
-            // Update context length from response
-            if (chunk.done && chunk.total_duration > 0) {
-                this.setModelInfoLastContextLength(
-                    params.provider,
-                    params.provider.model || '',
-                    chunk.context?.length
-                );
-            }
-        }
-        return fullText;
+        return this.streamOllamaResponse({
+            response,
+            provider: params.provider,
+            modelName,
+            onProgress,
+            abortController,
+        });
     }
 
     async embed(params: IAIProvidersEmbedParams): Promise<number[][]> {
@@ -382,33 +442,25 @@ export class OllamaHandler implements IAIHandler {
 
         const abortController: AbortController | undefined = (params as any)
             .abortController;
-        if (abortController?.signal.aborted) {
-            throw new Error('Aborted');
-        }
+        this.ensureNotAborted(abortController);
 
+        const modelName = params.provider.model || '';
         const modelInfo = await this.getCachedModelInfo(
             params.provider,
-            params.provider.model || ''
+            modelName
         );
 
         const maxInputLength = Array.isArray(inputText)
             ? Math.max(...inputText.map(text => text.length))
             : inputText.length;
 
-        const { num_ctx, shouldUpdate } = this.optimizeContext(
-            maxInputLength,
-            modelInfo.lastContextLength || EMBEDDING_CONTEXT_LENGTH,
-            EMBEDDING_CONTEXT_LENGTH,
-            modelInfo.contextLength
-        );
-
-        if (shouldUpdate) {
-            this.setModelInfoLastContextLength(
-                params.provider,
-                params.provider.model || '',
-                num_ctx
-            );
-        }
+        const num_ctx = this.applyContextOptimization({
+            provider: params.provider,
+            modelName,
+            inputLength: maxInputLength,
+            modelInfo,
+            defaultContextLength: EMBEDDING_CONTEXT_LENGTH,
+        });
 
         const operation = async (
             fetchImpl: typeof electronFetch | typeof obsidianFetch
@@ -417,17 +469,19 @@ export class OllamaHandler implements IAIHandler {
             abortController?.signal.addEventListener('abort', () => {
                 ollama.abort();
             });
+            if (abortController?.signal.aborted) {
+                ollama.abort();
+                throw new Error('Aborted');
+            }
 
             const inputs = Array.isArray(inputText) ? inputText : [inputText];
             const embeddings: number[][] = [];
             const processedChunks: string[] = [];
 
             for (const input of inputs) {
-                if (abortController?.signal.aborted) {
-                    throw new Error('Aborted');
-                }
+                this.ensureNotAborted(abortController);
                 const response = await ollama.embed({
-                    model: params.provider.model || '',
+                    model: modelName,
                     input: input,
                     options: { num_ctx },
                 });
@@ -435,11 +489,9 @@ export class OllamaHandler implements IAIHandler {
                 logger.debug('Embed response:', response);
 
                 processedChunks.push(input);
-                params.onProgress && params.onProgress([...processedChunks]);
+                params.onProgress?.([...processedChunks]);
 
-                if (abortController?.signal.aborted) {
-                    throw new Error('Aborted');
-                }
+                this.ensureNotAborted(abortController);
             }
 
             return embeddings;
@@ -456,9 +508,7 @@ export class OllamaHandler implements IAIHandler {
             | ((c: string, acc: string) => void)
             | undefined;
 
-        if (externalAbort?.signal.aborted) {
-            return Promise.reject(new Error('Aborted'));
-        }
+        this.ensureNotAborted(externalAbort);
 
         try {
             return await this.fetchSelector.execute(
@@ -470,21 +520,17 @@ export class OllamaHandler implements IAIHandler {
                     externalAbort?.signal.addEventListener('abort', () => {
                         ollama.abort();
                     });
-                    if (externalAbort?.signal.aborted) {
-                        throw new Error('Aborted');
-                    }
+                    this.ensureNotAborted(externalAbort);
 
-                    return this.executeOllamaGeneration(
+                    return this.executeOllamaGeneration({
                         params,
                         ollama,
-                        (chunk, acc) => {
-                            onProgress && onProgress(chunk, acc);
-                            if (externalAbort?.signal.aborted) {
-                                throw new Error('Aborted');
-                            }
+                        onProgress: (chunk, acc) => {
+                            onProgress?.(chunk, acc);
+                            this.ensureNotAborted(externalAbort);
                         },
-                        externalAbort
-                    );
+                        abortController: externalAbort,
+                    });
                 }
             );
         } catch (e) {

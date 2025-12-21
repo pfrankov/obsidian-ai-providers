@@ -179,7 +179,7 @@ More content here.`;
                 const lines = chunk.trim().split('\n');
                 if (lines.length === 1 && /^#{1,6}\s+.+$/.test(lines[0])) {
                     // If chunk contains only a header, this is a problem
-                    fail(`Header-only chunk found: "${chunk}"`);
+                    throw new Error(`Header-only chunk found: "${chunk}"`);
                 }
             });
 
@@ -189,6 +189,93 @@ More content here.`;
             );
             expect(section2Chunk).toBeDefined();
             expect(section2Chunk).toContain('Some content for section 2');
+        });
+
+        it('splits oversized lines while preserving existing chunks', () => {
+            const longLine = 'a'.repeat(1200);
+            const content = `Intro line\n${longLine}`;
+
+            const result = splitContent(content);
+
+            expect(result[0]).toContain('Intro line');
+            result.forEach(chunk => {
+                expect(chunk.length).toBeLessThanOrEqual(1000);
+            });
+        });
+
+        it('starts a new chunk when combined line length exceeds max', () => {
+            const line = 'b'.repeat(600);
+            const content = `${line}\n${line}`;
+
+            const result = splitContent(content);
+
+            expect(result.length).toBeGreaterThan(1);
+            result.forEach(chunk => {
+                expect(chunk.length).toBeLessThanOrEqual(1000);
+            });
+        });
+
+        it('keeps pre-header text when splitting by headers', () => {
+            const filler = 'a'.repeat(1100);
+            const content = `Intro text before header
+${filler}
+
+# Header Title
+Body text`;
+
+            const result = splitContent(content);
+
+            expect(
+                result.some(chunk => chunk.includes('Intro text before header'))
+            ).toBe(true);
+        });
+
+        it('starts a new list chunk when near size limit', () => {
+            const longLine = 'x'.repeat(995);
+            const content = `${longLine}\n- item`;
+
+            const result = splitContent(content);
+
+            expect(result.some(chunk => chunk.includes('- item'))).toBe(true);
+            expect(
+                result.some(
+                    chunk =>
+                        chunk.includes(longLine) && chunk.includes('- item')
+                )
+            ).toBe(true);
+        });
+
+        it('handles oversized list items at the start', () => {
+            const longItem = `- ${'a'.repeat(1100)}`;
+            const result = splitContent(longItem);
+
+            expect(result.some(chunk => chunk.includes('-'))).toBe(true);
+        });
+
+        it('keeps lastNonListText when an empty line overflows chunk', () => {
+            const longLine = 'b'.repeat(1000);
+            const content = `${longLine}\n\nnext`;
+
+            const result = splitContent(content);
+
+            expect(result[0]).toContain(longLine);
+            expect(result.some(chunk => chunk.includes('next'))).toBe(true);
+        });
+
+        it('uses non-empty line as lastNonListText when chunk overflows', () => {
+            const longLine = 'c'.repeat(1000);
+            const content = `${longLine}\nword`;
+
+            const result = splitContent(content);
+
+            expect(result[0]).toContain(longLine);
+        });
+
+        it('splits long lines on whitespace boundaries when possible', () => {
+            const longLine = `${'a'.repeat(900)} ${'b'.repeat(200)}`;
+            const result = splitContent(longLine);
+
+            expect(result.length).toBeGreaterThan(1);
         });
     });
 });

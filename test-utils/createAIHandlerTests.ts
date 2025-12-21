@@ -1,4 +1,5 @@
 import { IAIHandler, IAIProvider, IAIProvidersExecuteParams, IAIProvidersEmbedParams } from '@obsidian-ai-providers/sdk';
+import type { Mock } from 'vitest';
 
 export type IMockResponse = {
     choices: Array<{
@@ -22,23 +23,23 @@ export type IMockResponse = {
 
 export interface IMockClient {
     models?: {
-        list: jest.Mock;
+        list: Mock;
     };
     chat?: {
         completions: {
-            create: jest.Mock;
+            create: Mock;
         };
     };
     embeddings?: {
-        create: jest.Mock;
+        create: Mock;
     };
     messages?: {
-        create: jest.Mock;
+        create: Mock;
     };
-    show?: jest.Mock;
-    list?: jest.Mock;
-    generate?: jest.Mock;
-    embed?: jest.Mock;
+    show?: Mock;
+    list?: Mock;
+    generate?: Mock;
+    embed?: Mock;
 }
 
 export type IExecuteParams = IAIProvidersExecuteParams;
@@ -164,7 +165,7 @@ export const createAIHandlerTests = (
             handler = createHandler();
             mockProvider = createMockProvider();
             mockClient = createMockClient();
-            jest.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+            vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
         });
 
         describe('Model Management', () => {
@@ -295,7 +296,7 @@ export const createAIHandlerTests = (
 
                 it('should call onProgress callback with correct progress', async () => {
                     prepareEmbeddingMock();
-                    const onProgressMock = jest.fn();
+                    const onProgressMock = vi.fn();
                     const testInputs = ['text1', 'text2', 'text3'];
                     
                     const embedParams = {
@@ -357,7 +358,7 @@ export const createAIHandlerTests = (
                         options: {}
                     };
 
-                    const onProgressMock = jest.fn();
+                    const onProgressMock = vi.fn();
                     const fullText = await handler.execute({
                         ...executeParams,
                         onProgress: onProgressMock as any,
@@ -385,7 +386,7 @@ export const createAIHandlerTests = (
                         options: {}
                     };
 
-                    const onProgressMock = jest.fn();
+                    const onProgressMock = vi.fn();
                     const fullText = await handler.execute({
                         ...executeParams,
                         onProgress: onProgressMock as any,
@@ -403,12 +404,9 @@ export const createAIHandlerTests = (
             describe('Error Handling', () => {
                 it('should properly handle and propagate errors', async () => {
                     const mockError = new Error('Test error');
-                    let errorThrown = false;
-
                     const mockStream = {
                         [Symbol.asyncIterator]: async function* () {
                             await flushPromises();
-                            errorThrown = true;
                             yield options?.mockStreamResponse || { choices: [{ delta: { content: '' } }] };
                             throw mockError;
                         }
@@ -675,7 +673,7 @@ export const createAIHandlerTests = (
                         options: {}
                     };
 
-                    const onProgressMock = jest.fn();
+                    const onProgressMock = vi.fn();
                     const fullText = await handler.execute({
                         ...executeParams,
                         onProgress: onProgressMock as any,

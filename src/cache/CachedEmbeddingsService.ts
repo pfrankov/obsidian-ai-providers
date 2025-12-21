@@ -1,7 +1,6 @@
 import { IAIProvidersEmbedParams } from '@obsidian-ai-providers/sdk';
 import { embeddingsCache } from './EmbeddingsCache';
 import { logger } from '../utils/logger';
-import { createCacheKeyHash } from '../utils/hashUtils';
 
 export interface EmbeddingChunk {
     content: string;

@@ -1,3 +1,5 @@
+dist/
+packages/*/dist/
+benchmarks/
+coverage/
 node_modules/
-
-main.js

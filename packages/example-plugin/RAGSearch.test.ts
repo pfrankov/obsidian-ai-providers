@@ -1,10 +1,10 @@
-import { App, TFile } from 'obsidian';
+import { App } from 'obsidian';
 import { RAGSearchComponent } from './RAGSearchComponent';
 import { IAIProvidersService, IAIProvider } from '@obsidian-ai-providers/sdk';
 
-jest.mock('obsidian', () => ({
-    ...jest.requireActual('obsidian'),
-    Notice: jest.fn(),
+vi.mock('obsidian', async () => ({
+    ...(await vi.importActual<typeof import('obsidian')>('obsidian')),
+    Notice: vi.fn(),
 }));
 
 const createMockApp = (): App => {
@@ -24,12 +24,12 @@ describe('RAGSearchComponent', () => {
         mockAIProviders = {
             version: 2,
             providers: [],
-            fetchModels: jest.fn(),
-            embed: jest.fn(),
-            execute: jest.fn(),
-            checkCompatibility: jest.fn(),
-            migrateProvider: jest.fn(),
-            retrieve: jest.fn().mockResolvedValue([]),
+            fetchModels: vi.fn(),
+            embed: vi.fn(),
+            execute: vi.fn(),
+            checkCompatibility: vi.fn(),
+            migrateProvider: vi.fn(),
+            retrieve: vi.fn().mockResolvedValue([]),
         };
     });
 

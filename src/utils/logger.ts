@@ -52,16 +52,6 @@ class Logger {
     error(...args: any[]) {
         this.log('error', ...args);
     }
-
-    time(label: string) {
-        if (!this.enabled) return;
-        console.time(`[AI Providers] ${label}`);
-    }
-
-    timeEnd(label: string) {
-        if (!this.enabled) return;
-        console.timeEnd(`[AI Providers] ${label}`);
-    }
 }
 
 export const logger = new Logger();

@@ -6,27 +6,44 @@ import {
     IMockClient,
 } from '../../test-utils/createAIHandlerTests';
 
-jest.mock('openai');
-jest.mock('obsidian', () => ({
+vi.mock('openai', () => ({
+    default: class OpenAI {
+        config: any;
+        constructor(config: any) {
+            this.config = config;
+        }
+        chat = {
+            completions: {
+                create: vi.fn(),
+            },
+        };
+        models = {
+            list: vi.fn(),
+        };
+    },
+}));
+vi.mock('obsidian', () => ({
     Platform: { isMobileApp: false },
 }));
 
 // Mock FetchSelector
-jest.mock('../utils/FetchSelector', () => {
-    const originalModule = jest.requireActual('../utils/FetchSelector');
+vi.mock('../utils/FetchSelector', async () => {
+    const originalModule = await vi.importActual<
+        typeof import('../utils/FetchSelector')
+    >('../utils/FetchSelector');
     return {
         ...originalModule,
-        FetchSelector: jest.fn().mockImplementation(settings => {
+        FetchSelector: vi.fn().mockImplementation(settings => {
             const instance = new originalModule.FetchSelector(settings);
-            instance.execute = jest
+            instance.execute = vi
                 .fn()
                 .mockImplementation(async (provider, operation) => {
-                    return operation(jest.fn());
+                    return operation(vi.fn());
                 });
-            instance.request = jest
+            instance.request = vi
                 .fn()
                 .mockImplementation(async (provider, operation) => {
-                    return operation(jest.fn());
+                    return operation(vi.fn());
                 });
             return instance;
         }),
@@ -51,33 +68,29 @@ const createMockProvider = (): IAIProvider => ({
 
 const createMockClient = (): IMockClient => ({
     models: {
-        list: jest.fn().mockResolvedValue({
+        list: vi.fn().mockResolvedValue({
             data: [{ id: 'model1' }, { id: 'model2' }],
         }),
     },
     chat: {
         completions: {
-            create: jest
-                .fn()
-                .mockImplementation(async (_params, { signal }) => {
-                    const responseStream = {
-                        async *[Symbol.asyncIterator]() {
-                            for (let i = 0; i < 3; i++) {
-                                if (signal?.aborted) break;
-                                yield {
-                                    choices: [
-                                        { delta: { content: `chunk${i}` } },
-                                    ],
-                                };
-                            }
-                        },
-                    };
-                    return responseStream;
-                }),
+            create: vi.fn().mockImplementation(async (_params, { signal }) => {
+                const responseStream = {
+                    async *[Symbol.asyncIterator]() {
+                        for (let i = 0; i < 3; i++) {
+                            if (signal?.aborted) break;
+                            yield {
+                                choices: [{ delta: { content: `chunk${i}` } }],
+                            };
+                        }
+                    },
+                };
+                return responseStream;
+            }),
         },
     },
     embeddings: {
-        create: jest.fn().mockResolvedValue({
+        create: vi.fn().mockResolvedValue({
             data: [{ embedding: [0.1, 0.2, 0.3], index: 0 }],
         }),
     },
@@ -123,7 +136,7 @@ createAIHandlerTests(
             progressBehavior: 'per-chunk',
             setupEmbedMock: mockClient => {
                 (mockClient as any).embeddings = {
-                    create: jest.fn().mockResolvedValue({
+                    create: vi.fn().mockResolvedValue({
                         data: [{ embedding: [0.1, 0.2, 0.3], index: 0 }],
                     }),
                 };
@@ -131,6 +144,136 @@ createAIHandlerTests(
         },
     }
 );
+
+describe('OpenAIHandler message mapping', () => {
+    it('maps content blocks to OpenAI content parts', async () => {
+        const handler = createHandler();
+        const mockClient = createMockClient();
+        const mockProvider = createMockProvider();
+        vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+
+        await handler.execute({
+            provider: mockProvider,
+            messages: [
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: 'hello' },
+                        {
+                            type: 'image_url',
+                            image_url: { url: 'data:image/png;base64,abc' },
+                        },
+                    ],
+                },
+            ],
+        } as any);
+
+        const [payload] = (mockClient.chat?.completions.create as any).mock
+            .calls[0];
+        expect(payload.messages[0].content).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ type: 'text' }),
+                expect.objectContaining({
+                    type: 'image_url',
+                    image_url: expect.anything(),
+                }),
+            ])
+        );
+    });
+
+    it('throws when no messages or prompt are provided', async () => {
+        const handler = createHandler();
+        const mockClient = createMockClient();
+        const mockProvider = createMockProvider();
+        vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+
+        await expect(
+            handler.execute({ provider: mockProvider } as any)
+        ).rejects.toThrow('Either messages or prompt must be provided');
+    });
+
+    it('builds clients with correct baseURL for different providers', () => {
+        const handler = createHandler();
+        const fetchFn = vi.fn() as any;
+        const openaiProvider = createMockProvider();
+        const openRouterProvider = {
+            ...createMockProvider(),
+            type: 'openrouter',
+            url: '',
+        } as IAIProvider;
+
+        const openaiClient = (handler as any).getClient(
+            { ...openaiProvider, url: '' },
+            fetchFn
+        );
+        const openRouterClient = (handler as any).getClient(
+            openRouterProvider,
+            fetchFn
+        );
+
+        expect(openaiClient).toBeDefined();
+        expect(openRouterClient).toBeDefined();
+        expect(openaiClient.config.baseURL).toBeUndefined();
+        expect(openRouterClient.config.baseURL).toBe(
+            'http://localhost:1234/v1'
+        );
+    });
+
+    it('uses placeholder apiKey when provider apiKey is missing', () => {
+        const handler = createHandler();
+        const fetchFn = vi.fn() as any;
+        const provider = { ...createMockProvider(), apiKey: '' };
+
+        const client = (handler as any).getClient(provider, fetchFn);
+
+        expect(client.config.apiKey).toBe('placeholder-key');
+    });
+
+    it('falls back to empty model for embeddings and execute', async () => {
+        const handler = createHandler();
+        const mockClient = createMockClient();
+        const provider = { ...createMockProvider(), model: '' };
+        vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+
+        await handler.embed({
+            provider,
+            input: 'test',
+        } as any);
+
+        expect(mockClient.embeddings?.create).toHaveBeenCalledWith(
+            expect.objectContaining({ model: '' }),
+            expect.anything()
+        );
+
+        await handler.execute({
+            provider,
+            prompt: 'hi',
+        } as any);
+
+        expect(mockClient.chat?.completions.create).toHaveBeenCalledWith(
+            expect.objectContaining({ model: '' }),
+            expect.anything()
+        );
+    });
+
+    it('passes abort signals to embedding requests', async () => {
+        const handler = createHandler();
+        const mockClient = createMockClient();
+        const abortController = new AbortController();
+        vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+
+        await handler.embed({
+            provider: createMockProvider(),
+            input: 'test',
+            abortController,
+        } as any);
+
+        expect(mockClient.embeddings?.create).toHaveBeenCalledWith(
+            expect.anything(),
+            { signal: abortController.signal }
+        );
+    });
+});
 
 // Basic CORS retry test
 describe('OpenAI CORS Handling', () => {
@@ -140,7 +283,7 @@ describe('OpenAI CORS Handling', () => {
     beforeEach(() => {
         handler = createHandler();
         mockProvider = createMockProvider();
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     it('should handle CORS errors in fetchModels', async () => {
@@ -151,19 +294,16 @@ describe('OpenAI CORS Handling', () => {
             .models!.list.mockRejectedValueOnce(corsError)
             .mockResolvedValueOnce({ data: [{ id: 'model1' }] });
 
-        jest.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
-        jest.spyOn(
-            (handler as any).fetchSelector,
-            'request'
-        ).mockImplementation(
+        vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+        vi.spyOn((handler as any).fetchSelector, 'request').mockImplementation(
             async (
                 provider: IAIProvider,
                 operation: (client: any) => Promise<any>
             ) => {
                 try {
-                    return await operation(jest.fn());
+                    return await operation(vi.fn());
                 } catch (error) {
-                    return await operation(jest.fn());
+                    return await operation(vi.fn());
                 }
             }
         );
@@ -174,14 +314,14 @@ describe('OpenAI CORS Handling', () => {
 
     it('should support new object param form for fetchModels', async () => {
         const mockClient = createMockClient();
-        jest.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+        vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
         const result = await handler.fetchModels({ provider: mockProvider });
         expect(result).toEqual(expect.any(Array));
     });
 
     it('should abort with new object param form', async () => {
         const mockClient = createMockClient();
-        jest.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+        vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
         const abortController = new AbortController();
         abortController.abort();
         await expect(
@@ -191,7 +331,7 @@ describe('OpenAI CORS Handling', () => {
 
     it('should abort embedding when abortController is aborted', async () => {
         const mockClient = createMockClient();
-        jest.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+        vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
         const abortController = new AbortController();
         abortController.abort();
 

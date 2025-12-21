@@ -7,7 +7,7 @@ import {
 // Mock crypto globally for these tests
 const mockCrypto = {
     subtle: {
-        digest: jest.fn(),
+        digest: vi.fn(),
     },
 };
 
@@ -18,7 +18,7 @@ Object.defineProperty(global, 'crypto', {
 
 describe('hashUtils', () => {
     beforeEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
         // Default mock - fill buffer with 42
         mockCrypto.subtle.digest.mockImplementation(() => {
             const buffer = new ArrayBuffer(32);
@@ -67,5 +67,38 @@ describe('hashUtils', () => {
 
         expect(dbHash).toHaveLength(16);
         expect(cacheHash).toHaveLength(20);
+    });
+
+    it('should throw when crypto.subtle is unavailable', async () => {
+        const originalCrypto = global.crypto;
+        Object.defineProperty(global, 'crypto', {
+            value: undefined,
+            writable: true,
+        });
+
+        await expect(createSecureHash('test')).rejects.toThrow(
+            'crypto.subtle is not available'
+        );
+
+        Object.defineProperty(global, 'crypto', {
+            value: originalCrypto,
+            writable: true,
+        });
+    });
+
+    it('wraps digest errors with a helpful message', async () => {
+        mockCrypto.subtle.digest.mockRejectedValueOnce(new Error('boom'));
+
+        await expect(createSecureHash('test')).rejects.toThrow(
+            'Failed to generate secure hash: boom'
+        );
+    });
+
+    it('wraps non-Error digest failures as unknown errors', async () => {
+        mockCrypto.subtle.digest.mockRejectedValueOnce('oops');
+
+        await expect(createSecureHash('test')).rejects.toThrow(
+            'Failed to generate secure hash: Unknown error'
+        );
     });
 });

@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { vi } from 'vitest';
 
 interface MockResponse {
     statusCode: number;
@@ -31,7 +32,7 @@ class MockRequest extends EventEmitter {
 
 export const remote = {
     net: {
-        request: jest.fn().mockImplementation(() => {
+        request: vi.fn().mockImplementation(() => {
             return new MockRequest();
         })
     }
