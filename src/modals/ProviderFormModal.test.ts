@@ -219,6 +219,23 @@ describe('ProviderFormModal', () => {
         expect(provider.url).toBe('https://api.openai.com/v1');
     });
 
+    it('should toggle api key input type on focus/blur', () => {
+        modal.onOpen();
+
+        const apiKeyInput = getElement<HTMLInputElement>(
+            modal.contentEl,
+            'input[placeholder="settings.apiKeyPlaceholder"]'
+        );
+
+        expect(apiKeyInput.type).toBe('password');
+
+        apiKeyInput.dispatchEvent(new Event('focus'));
+        expect(apiKeyInput.type).toBe('text');
+
+        apiKeyInput.dispatchEvent(new Event('blur'));
+        expect(apiKeyInput.type).toBe('password');
+    });
+
     it('should initialize defaults for new providers', () => {
         const testProvider: IAIProvider = {
             id: 'test-id',

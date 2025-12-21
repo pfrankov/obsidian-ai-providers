@@ -365,14 +365,23 @@ export class ProviderFormModal extends Modal {
         new Setting(contentEl)
             .setName(I18n.t('settings.apiKey'))
             .setDesc(I18n.t('settings.apiKeyDesc'))
-            .addText(text =>
-                text
-                    .setPlaceholder(I18n.t('settings.apiKeyPlaceholder'))
+            .addText(text => {
+                text.setPlaceholder(I18n.t('settings.apiKeyPlaceholder'))
                     .setValue(this.provider.apiKey || '')
                     .onChange(value => {
                         this.provider.apiKey = value;
-                    })
-            );
+                    });
+
+                text.inputEl.type = 'password';
+                text.inputEl.addEventListener('focus', () => {
+                    text.inputEl.type = 'text';
+                });
+                text.inputEl.addEventListener('blur', () => {
+                    text.inputEl.type = 'password';
+                });
+
+                return text;
+            });
 
         this.createModelSetting(contentEl);
 
