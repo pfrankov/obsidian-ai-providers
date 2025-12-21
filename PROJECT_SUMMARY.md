@@ -29,7 +29,7 @@ Obsidian plugin hub (v1.4.0) for configuring AI providers in one centralized pla
 ## ➤ Environment
 - Runtime → TypeScript 4.7.4, Node 16+, Obsidian API, desktop/mobile
 - Services → IndexedDB embeddings cache, i18n (en/de/ru/zh)
-- Build/CI → esbuild, jest+jsdom tests, npm workspaces, prettier
+- Build/CI → esbuild, vitest+jsdom tests, npm workspaces, prettier
 - Fetch strategies → FetchSelector manages: electronFetch (desktop-only), obsidianFetch (fallback), native fetch
 
 ## ➤ Interfaces

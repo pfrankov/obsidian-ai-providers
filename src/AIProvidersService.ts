@@ -371,13 +371,10 @@ export class AIProvidersService implements IAIProvidersService {
             throw error;
         });
 
-        // L2-normalize embeddings so dot product equals cosine similarity.
-        // Different providers can output vectors with very different lengths.
-        // Normalization keeps similarity stable; without it, a few large vectors may dominate the ranking.
+        // L2-normalize embeddings: with unit vectors, dot product equals cosine similarity.
+        // This keeps ranking stable regardless of provider-specific vector magnitudes.
         const normQuery = this.l2Normalize(queryEmbedding[0]);
         const normChunks = chunkEmbeddings.map(e => this.l2Normalize(e));
-
-        // No waiting for fuzzy: vector-only retrieval
 
         // Report search progress
         params.onProgress?.({
@@ -456,7 +453,6 @@ export class AIProvidersService implements IAIProvidersService {
         chunks: IAIProvidersRetrievalChunk[],
         chunkEmbeddings: number[][]
     ): IAIProvidersRetrievalResult[] {
-        // With L2-normalized vectors, dot product equals cosine similarity.
         const similarities = chunkEmbeddings.map(embedding =>
             this.dotProduct(queryEmbedding, embedding)
         );
@@ -475,9 +471,6 @@ export class AIProvidersService implements IAIProvidersService {
     }
 
     private l2Normalize(vec: number[]): number[] {
-        // Different embedding models may output vectors with different magnitudes.
-        // Normalizing to unit length focuses similarity on direction (semantics);
-        // without it, large-norm vectors can overshadow better matches.
         const norm = Math.sqrt(vec.reduce((s, v) => s + v * v, 0)) || 1;
         return vec.map(v => v / norm);
     }

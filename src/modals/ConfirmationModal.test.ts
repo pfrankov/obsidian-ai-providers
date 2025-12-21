@@ -1,7 +1,8 @@
+import type { Mock } from 'vitest';
 import { App } from 'obsidian';
 import { ConfirmationModal } from './ConfirmationModal';
 
-jest.mock('../i18n', () => ({
+vi.mock('../i18n', () => ({
     I18n: {
         t: (key: string) => key,
     },
@@ -10,11 +11,11 @@ jest.mock('../i18n', () => ({
 describe('ConfirmationModal', () => {
     let app: App;
     let modal: ConfirmationModal;
-    let onConfirmMock: jest.Mock;
+    let onConfirmMock: Mock;
 
     beforeEach(() => {
         app = new App();
-        onConfirmMock = jest.fn();
+        onConfirmMock = vi.fn();
         modal = new ConfirmationModal(app, 'Test message', onConfirmMock);
     });
 

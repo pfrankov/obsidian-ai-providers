@@ -1,9 +1,10 @@
+import type { Mock } from 'vitest';
 import { RequestUrlResponse } from 'obsidian';
 import { obsidianFetch } from './obsidianFetch';
 
-jest.mock('obsidian', () => {
+vi.mock('obsidian', () => {
     return {
-        requestUrl: jest.fn(),
+        requestUrl: vi.fn(),
     };
 });
 
@@ -27,11 +28,12 @@ if (typeof Response === 'undefined') {
 }
 
 describe('obsidianFetch', () => {
-    let requestUrlMock: jest.Mock;
+    let requestUrlMock: Mock;
 
-    beforeEach(() => {
-        jest.clearAllMocks();
-        requestUrlMock = jest.requireMock('obsidian').requestUrl;
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        const { requestUrl } = await import('obsidian');
+        requestUrlMock = requestUrl as Mock;
     });
 
     it('should make a GET request successfully', async () => {

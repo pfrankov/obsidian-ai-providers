@@ -24,7 +24,12 @@
         "esModuleInterop": true,
         "skipLibCheck": true,
         "noEmit": true,
-        "types": ["jest", "@testing-library/jest-dom", "node", "electron"],
+        "types": [
+            "vitest/globals",
+            "@testing-library/jest-dom",
+            "node",
+            "electron"
+        ],
         "resolveJsonModule": true
     },
     "include": [

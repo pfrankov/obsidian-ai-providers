@@ -8,10 +8,10 @@ import { obsidianFetch } from './obsidianFetch';
 import { Platform } from 'obsidian';
 
 // Mock dependencies
-jest.mock('./electronFetch');
-jest.mock('./obsidianFetch');
-jest.mock('./logger');
-jest.mock('obsidian', () => ({
+vi.mock('./electronFetch');
+vi.mock('./obsidianFetch');
+vi.mock('./logger');
+vi.mock('obsidian', () => ({
     Platform: {
         isMobileApp: false,
     },
@@ -39,34 +39,64 @@ describe('FetchSelector', () => {
         } as IAIProvidersPluginSettings;
 
         fetchSelector = new FetchSelector(mockSettings);
+        (Platform as any).isMobileApp = false;
     });
 
-    describe('getFetchFunction', () => {
-        it('should return electronFetch by default', () => {
-            const fetchFn = fetchSelector.getFetchFunction(mockProvider);
+    describe('getFetch and getStreamingFetch', () => {
+        it('uses obsidianFetch for API calls by default', () => {
+            const fetchFn = fetchSelector.getFetch(mockProvider);
+            expect(fetchFn).toBe(obsidianFetch);
+        });
+
+        it('defaults to obsidianFetch when useNativeFetch is undefined', () => {
+            mockSettings.useNativeFetch = undefined;
+            fetchSelector = new FetchSelector(mockSettings);
+
+            expect(fetchSelector.getFetch(mockProvider)).toBe(obsidianFetch);
+        });
+
+        it('uses electronFetch for streaming by default', () => {
+            const fetchFn = fetchSelector.getStreamingFetch(mockProvider);
             expect(fetchFn).toBe(electronFetch);
         });
 
-        it('should return native fetch when useNativeFetch is true', () => {
-            mockSettings.useNativeFetch = true;
-            const fetchFn = fetchSelector.getFetchFunction(mockProvider);
-            expect(fetchFn).toBe(globalThis.fetch);
-        });
-
-        it('should return obsidianFetch for CORS-blocked providers', () => {
-            fetchSelector.markBlocked(mockProvider);
-            const fetchFn = fetchSelector.getFetchFunction(mockProvider);
-            expect(fetchFn).toBe(obsidianFetch);
-        });
-
-        it('should return obsidianFetch on mobile platform', () => {
+        it('uses obsidianFetch on mobile platform', () => {
             (Platform as any).isMobileApp = true;
-            const fetchFn = fetchSelector.getFetchFunction(mockProvider);
-            expect(fetchFn).toBe(obsidianFetch);
+            expect(fetchSelector.getFetch(mockProvider)).toBe(obsidianFetch);
+            expect(fetchSelector.getStreamingFetch(mockProvider)).toBe(
+                obsidianFetch
+            );
+        });
+
+        it('uses native fetch when enabled', () => {
+            mockSettings.useNativeFetch = true;
+            expect(fetchSelector.getFetch(mockProvider)).toBe(globalThis.fetch);
+            expect(fetchSelector.getStreamingFetch(mockProvider)).toBe(
+                globalThis.fetch
+            );
+        });
+
+        it('uses obsidianFetch when provider is blocked', () => {
+            fetchSelector.markBlocked(mockProvider);
+            expect(fetchSelector.getFetch(mockProvider)).toBe(obsidianFetch);
+            expect(fetchSelector.getStreamingFetch(mockProvider)).toBe(
+                obsidianFetch
+            );
         });
     });
 
     describe('CORS Error Detection', () => {
+        it('returns false for undefined errors', () => {
+            expect(
+                fetchSelector.isCorsError(undefined as unknown as Error)
+            ).toBe(false);
+        });
+
+        it('returns false for empty error messages', () => {
+            const error = { message: '', name: '' } as Error;
+            expect(fetchSelector.isCorsError(error)).toBe(false);
+        });
+
         it('should detect CORS errors', () => {
             const corsErrors = [
                 new Error('CORS policy blocked the request'),
@@ -104,6 +134,95 @@ describe('FetchSelector', () => {
             fetchSelector.markBlocked(mockProvider);
             fetchSelector.clear();
             expect(fetchSelector.getBlockedProviderCount()).toBe(0);
+        });
+
+        it('generates provider key with unknown when url is missing', () => {
+            const providerWithoutUrl = { ...mockProvider, url: '' };
+            fetchSelector.markBlocked(providerWithoutUrl);
+            expect(fetchSelector.isBlocked(providerWithoutUrl)).toBe(true);
+        });
+    });
+
+    describe('execute and request', () => {
+        it('uses obsidianFetch for blocked providers', async () => {
+            fetchSelector.markBlocked(mockProvider);
+            const operation = vi.fn().mockResolvedValue('ok');
+
+            const result = await fetchSelector.execute(mockProvider, operation);
+
+            expect(result).toBe('ok');
+            expect(operation).toHaveBeenCalledWith(obsidianFetch);
+        });
+
+        it('uses obsidianFetch for blocked providers during request', async () => {
+            fetchSelector.markBlocked(mockProvider);
+            const operation = vi.fn().mockResolvedValue('ok');
+
+            const result = await fetchSelector.request(mockProvider, operation);
+
+            expect(result).toBe('ok');
+            expect(operation).toHaveBeenCalledWith(obsidianFetch);
+        });
+
+        it('returns result without retry when no CORS error in execute', async () => {
+            const operation = vi.fn().mockResolvedValue('ok');
+
+            const result = await fetchSelector.execute(mockProvider, operation);
+
+            expect(result).toBe('ok');
+            expect(operation).toHaveBeenCalledTimes(1);
+        });
+
+        it('retries with obsidianFetch on CORS errors', async () => {
+            const operation = vi.fn().mockImplementation((fetchFn: any) => {
+                if (fetchFn === electronFetch) {
+                    throw new Error('CORS error');
+                }
+                return Promise.resolve('ok');
+            });
+
+            const result = await fetchSelector.execute(mockProvider, operation);
+            expect(result).toBe('ok');
+            expect(operation).toHaveBeenCalledTimes(2);
+            expect(fetchSelector.isBlocked(mockProvider)).toBe(true);
+        });
+
+        it('rethrows non-CORS errors from execute', async () => {
+            const operation = vi.fn().mockRejectedValue(new Error('boom'));
+            await expect(
+                fetchSelector.execute(mockProvider, operation)
+            ).rejects.toThrow('boom');
+        });
+
+        it('returns result without retry when no CORS error in request', async () => {
+            const operation = vi.fn().mockResolvedValue('ok');
+
+            const result = await fetchSelector.request(mockProvider, operation);
+
+            expect(result).toBe('ok');
+            expect(operation).toHaveBeenCalledTimes(1);
+        });
+
+        it('retries with obsidianFetch on request CORS errors', async () => {
+            mockSettings.useNativeFetch = true;
+            const operation = vi.fn().mockImplementation((fetchFn: any) => {
+                if (fetchFn === obsidianFetch) {
+                    return Promise.resolve('ok');
+                }
+                throw new Error('CORS policy blocked the request');
+            });
+
+            const result = await fetchSelector.request(mockProvider, operation);
+            expect(result).toBe('ok');
+            expect(operation).toHaveBeenCalledTimes(2);
+            expect(fetchSelector.isBlocked(mockProvider)).toBe(true);
+        });
+
+        it('rethrows non-CORS errors from request', async () => {
+            const operation = vi.fn().mockRejectedValue(new Error('nope'));
+            await expect(
+                fetchSelector.request(mockProvider, operation)
+            ).rejects.toThrow('nope');
         });
     });
 });

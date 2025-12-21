@@ -4,12 +4,19 @@ import {
     IAIProvidersEmbedParams,
     IAIProvidersExecuteParams,
     IAIProvidersPluginSettings,
+    IContentBlock,
 } from '@obsidian-ai-providers/sdk';
 import { electronFetch } from '../utils/electronFetch';
 import OpenAI from 'openai';
 import { obsidianFetch } from '../utils/obsidianFetch';
 import { logger } from '../utils/logger';
 import { FetchSelector } from '../utils/FetchSelector';
+
+type ChatMessage = {
+    role: string;
+    content: string | IContentBlock[];
+    images?: string[];
+};
 
 export class OpenAIHandler implements IAIHandler {
     private fetchSelector: FetchSelector;
@@ -18,21 +25,114 @@ export class OpenAIHandler implements IAIHandler {
         this.fetchSelector = new FetchSelector(settings);
     }
 
-    private getClient(
-        provider: IAIProvider,
-        fetch?: typeof electronFetch | typeof obsidianFetch
-    ): OpenAI {
-        // Determine which fetch to use based on CORS status and settings
-        let actualFetch: typeof electronFetch | typeof obsidianFetch;
+    private ensureNotAborted(abortController?: AbortController) {
+        if (abortController?.signal.aborted) {
+            throw new Error('Aborted');
+        }
+    }
 
-        if (fetch) {
-            // Use provided fetch function
-            actualFetch = fetch;
-        } else {
-            // Use FetchSelector to determine the appropriate fetch function
-            actualFetch = this.fetchSelector.getFetchFunction(provider);
+    private buildContentParts(
+        blocks: IContentBlock[]
+    ): OpenAI.Chat.Completions.ChatCompletionContentPart[] {
+        return blocks.map(block => {
+            if (block.type === 'text') {
+                return { type: 'text', text: block.text };
+            }
+            return {
+                type: 'image_url',
+                image_url: { url: block.image_url.url },
+            } as OpenAI.Chat.Completions.ChatCompletionContentPartImage;
+        });
+    }
+
+    private mapMessageToOpenAIMessage(
+        message: ChatMessage
+    ): OpenAI.Chat.Completions.ChatCompletionMessageParam {
+        if (typeof message.content === 'string') {
+            return {
+                role: message.role as any,
+                content: message.content,
+            };
         }
 
+        return {
+            role: message.role as any,
+            content: this.buildContentParts(message.content),
+        };
+    }
+
+    private buildPromptContentParts(
+        prompt: string,
+        images?: string[]
+    ): OpenAI.Chat.Completions.ChatCompletionContentPart[] {
+        const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [
+            { type: 'text', text: prompt },
+        ];
+
+        images?.forEach(image => {
+            content.push({
+                type: 'image_url',
+                image_url: { url: image },
+            } as OpenAI.Chat.Completions.ChatCompletionContentPartImage);
+        });
+
+        return content;
+    }
+
+    private buildOpenAIMessages(
+        params: IAIProvidersExecuteParams
+    ): OpenAI.Chat.Completions.ChatCompletionMessageParam[] {
+        if ('messages' in params && params.messages) {
+            return params.messages.map(message =>
+                this.mapMessageToOpenAIMessage(message)
+            );
+        }
+
+        if ('prompt' in params) {
+            const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
+                [];
+
+            if (params.systemPrompt) {
+                messages.push({
+                    role: 'system',
+                    content: params.systemPrompt,
+                });
+            }
+
+            const userContent = params.images?.length
+                ? this.buildPromptContentParts(params.prompt, params.images)
+                : params.prompt;
+
+            messages.push({ role: 'user', content: userContent });
+            return messages;
+        }
+
+        throw new Error('Either messages or prompt must be provided');
+    }
+
+    private async streamChatResponse(
+        response: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>,
+        abortController?: AbortController,
+        onProgress?: (chunk: string, accumulatedText: string) => void
+    ): Promise<string> {
+        let fullText = '';
+
+        for await (const chunk of response) {
+            this.ensureNotAborted(abortController);
+            const content = chunk.choices[0]?.delta?.content;
+            if (content) {
+                fullText += content;
+                onProgress?.(content, fullText);
+            }
+        }
+
+        return fullText;
+    }
+
+    private getClient(
+        provider: IAIProvider,
+        fetch: typeof electronFetch | typeof obsidianFetch
+    ): OpenAI {
         const openai = new OpenAI({
             baseURL:
                 provider.url ||
@@ -41,7 +141,7 @@ export class OpenAIHandler implements IAIHandler {
                     : 'http://localhost:1234/v1'),
             apiKey: provider.apiKey || 'placeholder-key',
             dangerouslyAllowBrowser: true,
-            fetch: actualFetch as any,
+            fetch: fetch as any,
             defaultHeaders: {
                 'x-stainless-arch': null,
                 'x-stainless-lang': null,
@@ -64,23 +164,17 @@ export class OpenAIHandler implements IAIHandler {
         provider: IAIProvider;
         abortController?: AbortController;
     }): Promise<string[]> {
-        if (abortController?.signal.aborted) {
-            throw new Error('Aborted');
-        }
+        this.ensureNotAborted(abortController);
         const result = await this.fetchSelector.request(
             provider,
             async (fetchImpl: typeof electronFetch | typeof obsidianFetch) => {
-                if (abortController?.signal.aborted) {
-                    throw new Error('Aborted');
-                }
+                this.ensureNotAborted(abortController);
                 const openai = this.getClient(provider, fetchImpl);
                 const response = await openai.models.list();
                 return response.data.map(model => model.id);
             }
         );
-        if (abortController?.signal.aborted) {
-            throw new Error('Aborted');
-        }
+        this.ensureNotAborted(abortController);
         return result;
     }
 
@@ -114,9 +208,7 @@ export class OpenAIHandler implements IAIHandler {
         const processedChunks: string[] = [];
 
         for (const chunk of chunks) {
-            if (abortController?.signal.aborted) {
-                throw new Error('Aborted');
-            }
+            this.ensureNotAborted(abortController);
             const operation = async (
                 fetchImpl: typeof electronFetch | typeof obsidianFetch
             ) => {
@@ -139,82 +231,26 @@ export class OpenAIHandler implements IAIHandler {
             embeddings.push(...chunkEmbeddings);
 
             processedChunks.push(...chunk);
-            params.onProgress && params.onProgress([...processedChunks]);
+            params.onProgress?.([...processedChunks]);
 
-            if (abortController?.signal.aborted) {
-                throw new Error('Aborted');
-            }
+            this.ensureNotAborted(abortController);
         }
 
         return embeddings;
     }
 
-    private async executeOpenAIGeneration(
-        params: IAIProvidersExecuteParams,
-        openai: OpenAI,
-        onProgress?: (chunk: string, accumulatedText: string) => void,
-        abortController?: AbortController
-    ): Promise<string> {
-        let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
-
-        if ('messages' in params && params.messages) {
-            // Convert messages to OpenAI format
-            messages = params.messages.map(msg => {
-                // Handle simple text content
-                if (typeof msg.content === 'string') {
-                    return {
-                        role: msg.role as any, // Type as any to avoid role compatibility issues
-                        content: msg.content,
-                    };
-                }
-
-                // Handle content blocks (text and images)
-                const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] =
-                    [];
-
-                // Process each content block
-                msg.content.forEach(block => {
-                    if (block.type === 'text') {
-                        content.push({ type: 'text', text: block.text });
-                    } else if (block.type === 'image_url') {
-                        content.push({
-                            type: 'image_url',
-                            image_url: { url: block.image_url.url },
-                        } as OpenAI.Chat.Completions.ChatCompletionContentPartImage);
-                    }
-                });
-
-                return {
-                    role: msg.role as any,
-                    content,
-                };
-            });
-        } else if ('prompt' in params) {
-            // Legacy prompt-based API
-            if (params.systemPrompt) {
-                messages.push({ role: 'system', content: params.systemPrompt });
-            }
-
-            // Handle prompt with images
-            if (params.images?.length) {
-                const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] =
-                    [{ type: 'text', text: params.prompt }];
-
-                // Add images as content parts
-                params.images.forEach(image => {
-                    content.push({
-                        type: 'image_url',
-                        image_url: { url: image },
-                    } as OpenAI.Chat.Completions.ChatCompletionContentPartImage);
-                });
-
-                messages.push({ role: 'user', content });
-            } else {
-                messages.push({ role: 'user', content: params.prompt });
-            }
-        } else {
-            throw new Error('Either messages or prompt must be provided');
-        }
+    private async executeOpenAIGeneration({
+        params,
+        openai,
+        onProgress,
+        abortController,
+    }: {
+        params: IAIProvidersExecuteParams;
+        openai: OpenAI;
+        onProgress?: (chunk: string, accumulatedText: string) => void;
+        abortController?: AbortController;
+    }): Promise<string> {
+        const messages = this.buildOpenAIMessages(params);
 
         logger.debug('Sending chat request to OpenAI');
 
@@ -228,18 +264,7 @@ export class OpenAIHandler implements IAIHandler {
             { signal: abortController?.signal }
         );
 
-        let fullText = '';
-        for await (const chunk of response) {
-            if (abortController?.signal.aborted) {
-                throw new Error('Aborted');
-            }
-            const content = chunk.choices[0]?.delta?.content;
-            if (content) {
-                fullText += content;
-                onProgress && onProgress(content, fullText);
-            }
-        }
-        return fullText;
+        return this.streamChatResponse(response, abortController, onProgress);
     }
 
     async execute(params: IAIProvidersExecuteParams): Promise<string> {
@@ -257,26 +282,22 @@ export class OpenAIHandler implements IAIHandler {
             | ((c: string, a: string) => void)
             | undefined;
 
-        if (externalAbort?.signal.aborted) {
-            return Promise.reject(new Error('Aborted'));
-        }
+        this.ensureNotAborted(externalAbort);
 
         try {
             return await this.fetchSelector.execute(
                 params.provider,
                 async fetchImpl => {
                     const openai = this.getClient(params.provider, fetchImpl);
-                    return this.executeOpenAIGeneration(
+                    return this.executeOpenAIGeneration({
                         params,
                         openai,
-                        (chunk, acc) => {
-                            onProgress && onProgress(chunk, acc);
-                            if (externalAbort?.signal.aborted) {
-                                throw new Error('Aborted');
-                            }
+                        onProgress: (chunk, acc) => {
+                            onProgress?.(chunk, acc);
+                            this.ensureNotAborted(externalAbort);
                         },
-                        externalAbort
-                    );
+                        abortController: externalAbort,
+                    });
                 }
             );
         } catch (e) {

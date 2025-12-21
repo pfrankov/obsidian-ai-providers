@@ -1,3 +1,7 @@
+import '@testing-library/jest-dom/vitest';
+import { TextEncoder } from 'util';
+import { vi } from 'vitest';
+
 process.env.NODE_ENV = 'test';
 
 // Add missing DOM methods for Obsidian compatibility
@@ -50,18 +54,23 @@ Object.defineProperty(window, 'electronAPI', {
     writable: true,
     configurable: true,
     value: {
-        fetch: jest.fn(),
+        fetch: vi.fn(),
     },
 });
 
 // Mock Response for electronFetch tests
-if (typeof global.Response === 'undefined') {
-    global.Response = class {
-        constructor(body, init = {}) {
+if (typeof globalThis.Response === 'undefined') {
+    class MockResponse {
+        body: unknown;
+        status: number;
+        statusText: string;
+        headers: Record<string, string>;
+
+        constructor(body: unknown, init: ResponseInit = {}) {
             this.body = body;
             this.status = init.status || 200;
             this.statusText = init.statusText || 'OK';
-            this.headers = init.headers || {};
+            this.headers = (init.headers as Record<string, string>) || {};
         }
 
         async text() {
@@ -74,22 +83,22 @@ if (typeof global.Response === 'undefined') {
             const text = await this.text();
             return JSON.parse(text);
         }
-    };
+    }
+
+    (globalThis as any).Response = MockResponse;
 }
 
 // Mock crypto.subtle for hashUtils tests - global fallback for all tests
-const { TextEncoder } = require('util');
-
-Object.defineProperty(global, 'TextEncoder', {
+Object.defineProperty(globalThis, 'TextEncoder', {
     value: TextEncoder,
     writable: true,
 });
 
 // Minimal crypto mock - can be overridden by individual tests
-Object.defineProperty(global, 'crypto', {
+Object.defineProperty(globalThis, 'crypto', {
     value: {
         subtle: {
-            digest: jest.fn(() => {
+            digest: vi.fn(() => {
                 const buffer = new ArrayBuffer(32);
                 new Uint8Array(buffer).fill(42);
                 return Promise.resolve(buffer);

@@ -1,12 +1,21 @@
+import type { Mock } from 'vitest';
 import { App } from 'obsidian';
 import { ProviderFormModal } from './ProviderFormModal';
 import AIProvidersPlugin from '../main';
 import { IAIProvider } from '@obsidian-ai-providers/sdk';
 import { AIProvidersService } from '../AIProvidersService';
 
-jest.mock('../i18n', () => ({
+vi.mock('../i18n', () => ({
     I18n: {
-        t: (key: string) => key,
+        t: (key: string) => {
+            if (key === 'settings.modelDesc') {
+                return 'settings.modelDesc <a href="#">toggle</a>';
+            }
+            if (key === 'settings.modelTextDesc') {
+                return 'settings.modelTextDesc <a href="#">toggle</a>';
+            }
+            return key;
+        },
     },
 }));
 
@@ -23,7 +32,7 @@ describe('ProviderFormModal', () => {
     let app: App;
     let plugin: AIProvidersPlugin;
     let modal: ProviderFormModal;
-    let onSaveMock: jest.Mock;
+    let onSaveMock: Mock;
     let provider: IAIProvider;
 
     beforeEach(() => {
@@ -53,7 +62,7 @@ describe('ProviderFormModal', () => {
             model: 'gpt-4',
         };
 
-        onSaveMock = jest.fn();
+        onSaveMock = vi.fn();
         modal = new ProviderFormModal(app, plugin, provider, onSaveMock, true);
     });
 
@@ -96,7 +105,7 @@ describe('ProviderFormModal', () => {
 
     it('should handle model loading', async () => {
         const models = ['gpt-4', 'gpt-3.5-turbo'];
-        jest.spyOn(plugin.aiProviders, 'fetchModels').mockResolvedValue(models);
+        vi.spyOn(plugin.aiProviders, 'fetchModels').mockResolvedValue(models);
 
         modal.onOpen();
         const refreshButton = getElement<HTMLButtonElement>(
@@ -112,6 +121,23 @@ describe('ProviderFormModal', () => {
         );
         expect(dropdown.disabled).toBe(false);
         expect(dropdown.querySelectorAll('option')).toHaveLength(2);
+    });
+
+    it('sets first model after refresh when models are returned', async () => {
+        const models = ['gpt-4', 'gpt-3.5-turbo'];
+        vi.spyOn(plugin.aiProviders, 'fetchModels').mockResolvedValue(models);
+
+        await (modal as any).refreshModels();
+
+        expect(provider.model).toBe('gpt-4');
+    });
+
+    it('falls back to empty model when first model is empty', async () => {
+        vi.spyOn(plugin.aiProviders, 'fetchModels').mockResolvedValue(['']);
+
+        await (modal as any).refreshModels();
+
+        expect(provider.model).toBe('');
     });
 
     it('should update provider on type change', () => {
@@ -157,7 +183,7 @@ describe('ProviderFormModal', () => {
 
     it('should use text input for ai302 provider', () => {
         provider.type = 'ai302';
-        jest.spyOn(modal as any, 'hasModelFetching').mockReturnValue(false);
+        vi.spyOn(modal as any, 'hasModelFetching').mockReturnValue(false);
 
         modal.onOpen();
 
@@ -172,6 +198,21 @@ describe('ProviderFormModal', () => {
                 '[data-testid="refresh-models-button"]'
             )
         ).toBeFalsy();
+    });
+
+    it('updates model when using text input mode', () => {
+        provider.type = 'ai302';
+        vi.spyOn(modal as any, 'hasModelFetching').mockReturnValue(false);
+        modal.onOpen();
+
+        const modelInput = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-input"]'
+        );
+        modelInput.value = 'custom-model';
+        modelInput.dispatchEvent(new Event('input'));
+
+        expect(provider.model).toBe('custom-model');
     });
 
     it('should use dropdown for providers with model fetching', () => {
@@ -189,6 +230,34 @@ describe('ProviderFormModal', () => {
         expect(
             modal.contentEl.querySelector('[data-testid="model-input"]')
         ).toBeFalsy();
+    });
+
+    it('updates model when dropdown value changes', () => {
+        provider.availableModels = ['model-a', 'model-b'];
+        modal.onOpen();
+
+        const dropdown = getElement<HTMLSelectElement>(
+            modal.contentEl,
+            '[data-testid="model-dropdown"]'
+        );
+        dropdown.value = 'model-b';
+        dropdown.dispatchEvent(new Event('change'));
+
+        expect(provider.model).toBe('model-b');
+        expect(dropdown.title).toBe('model-b');
+    });
+
+    it('falls back to empty url when defaults are skipped', () => {
+        provider.url = '';
+        vi.spyOn(modal as any, 'initDefaults').mockImplementation(() => {});
+        modal.onOpen();
+
+        const urlInput = getElement<HTMLInputElement>(
+            modal.contentEl,
+            'input[data-field="provider-url"]'
+        );
+
+        expect(urlInput.value).toBe('');
     });
 
     it('should handle provider configuration methods correctly', () => {
@@ -236,6 +305,19 @@ describe('ProviderFormModal', () => {
         expect(apiKeyInput.type).toBe('password');
     });
 
+    it('updates provider apiKey on input', () => {
+        modal.onOpen();
+        const apiKeyInput = getElement<HTMLInputElement>(
+            modal.contentEl,
+            'input[placeholder="settings.apiKeyPlaceholder"]'
+        );
+
+        apiKeyInput.value = 'new-key';
+        apiKeyInput.dispatchEvent(new Event('input'));
+
+        expect(provider.apiKey).toBe('new-key');
+    });
+
     it('should initialize defaults for new providers', () => {
         const testProvider: IAIProvider = {
             id: 'test-id',
@@ -253,7 +335,7 @@ describe('ProviderFormModal', () => {
             onSaveMock,
             true
         );
-        const initDefaultsSpy = jest.spyOn(testModal as any, 'initDefaults');
+        const initDefaultsSpy = vi.spyOn(testModal as any, 'initDefaults');
 
         testModal.onOpen();
 
@@ -331,10 +413,10 @@ describe('ProviderFormModal', () => {
     });
 
     it('should handle model loading errors', async () => {
-        jest.spyOn(plugin.aiProviders, 'fetchModels').mockRejectedValue(
+        vi.spyOn(plugin.aiProviders, 'fetchModels').mockRejectedValue(
             new Error('Test error')
         );
-        jest.spyOn(console, 'error').mockImplementation(() => {});
+        vi.spyOn(console, 'error').mockImplementation(() => {});
 
         modal.onOpen();
         const refreshButton = getElement<HTMLButtonElement>(
@@ -432,7 +514,7 @@ describe('ProviderFormModal', () => {
 
     it('should show text-only description for ai302 provider without link', () => {
         provider.type = 'ai302';
-        jest.spyOn(modal as any, 'hasModelFetching').mockReturnValue(false);
+        vi.spyOn(modal as any, 'hasModelFetching').mockReturnValue(false);
 
         modal.onOpen();
 
@@ -454,6 +536,21 @@ describe('ProviderFormModal', () => {
 
         // Should not have a link for switching modes
         expect(description?.querySelector('a')).toBeFalsy();
+    });
+
+    it('toggles model input mode from description link', () => {
+        modal.onOpen();
+        const displaySpy = vi.spyOn(modal, 'display');
+
+        const link = modal.contentEl.querySelector(
+            '.setting-item-description a'
+        ) as HTMLAnchorElement | null;
+
+        expect(link).toBeTruthy();
+        link?.dispatchEvent(new MouseEvent('click'));
+
+        expect((modal as any).isTextMode).toBe(true);
+        expect(displaySpy).toHaveBeenCalled();
     });
 
     it('should sync provider name in UI when type changes for new providers', () => {
@@ -599,5 +696,57 @@ describe('ProviderFormModal', () => {
         modal.onOpen();
 
         expect((modal as any).urlModified).toBe(false);
+    });
+
+    it('recreates form when model fetching capability changes', () => {
+        modal.onOpen();
+        const displaySpy = vi.spyOn(modal, 'display');
+        const updateSpy = vi.spyOn(modal as any, 'updateFields');
+
+        const providerDropdown = getElement<HTMLSelectElement>(
+            modal.contentEl,
+            '[data-testid="provider-type-dropdown"]'
+        );
+        providerDropdown.value = 'ai302';
+        providerDropdown.dispatchEvent(new Event('change'));
+
+        expect(displaySpy).toHaveBeenCalled();
+        expect(updateSpy).not.toHaveBeenCalled();
+    });
+
+    it('updates fields when provider type changes without re-creating form', () => {
+        modal.onOpen();
+        provider.url = '';
+
+        const updateSpy = vi.spyOn(modal as any, 'updateFields');
+        const providerDropdown = getElement<HTMLSelectElement>(
+            modal.contentEl,
+            '[data-testid="provider-type-dropdown"]'
+        );
+
+        providerDropdown.value = 'openrouter';
+        providerDropdown.dispatchEvent(new Event('change'));
+
+        expect(updateSpy).toHaveBeenCalled();
+        (modal as any).updateFields();
+
+        const urlInput = getElement<HTMLInputElement>(
+            modal.contentEl,
+            'input[data-field="provider-url"]'
+        );
+        expect(urlInput.value).toBe(provider.url || '');
+    });
+
+    it('falls back to empty url when updating fields', () => {
+        modal.onOpen();
+        provider.url = '';
+
+        (modal as any).updateFields();
+
+        const urlInput = getElement<HTMLInputElement>(
+            modal.contentEl,
+            'input[data-field="provider-url"]'
+        );
+        expect(urlInput.value).toBe('');
     });
 });

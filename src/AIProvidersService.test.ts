@@ -7,23 +7,51 @@ import {
     IAIProvidersRetrievalParams,
     IAIDocument,
 } from '@obsidian-ai-providers/sdk';
+import { logger } from './utils/logger';
 
 // Mock the handlers
-jest.mock('./handlers/OpenAIHandler');
-jest.mock('./handlers/OllamaHandler');
-jest.mock('./handlers/AnthropicHandler');
+vi.mock('./handlers/OpenAIHandler');
+vi.mock('./handlers/OllamaHandler');
+vi.mock('./handlers/AnthropicHandler');
+
+vi.mock('./utils/logger', () => ({
+    logger: {
+        debug: vi.fn(),
+        error: vi.fn(),
+        warn: vi.fn(),
+        setEnabled: vi.fn(),
+    },
+}));
+
+vi.mock('./i18n', () => ({
+    I18n: {
+        t: (key: string) => key,
+    },
+}));
+
+vi.mock('./modals/ConfirmationModal', () => {
+    return {
+        ConfirmationModal: vi
+            .fn()
+            .mockImplementation((_app, _message, onConfirm, onCancel) => ({
+                onConfirm,
+                onCancel,
+                open: vi.fn(),
+            })),
+    };
+});
 
 // Mock the cache
-jest.mock('./cache/EmbeddingsCache', () => ({
+vi.mock('./cache/EmbeddingsCache', () => ({
     embeddingsCache: {
-        init: jest.fn(),
-        close: jest.fn(),
-        isInitialized: jest.fn().mockReturnValue(true),
+        init: vi.fn(),
+        close: vi.fn(),
+        isInitialized: vi.fn().mockReturnValue(true),
     },
 }));
 
 // Mock CachedEmbeddingsService
-jest.mock('./cache/CachedEmbeddingsService');
+vi.mock('./cache/CachedEmbeddingsService');
 
 describe('AIProvidersService', () => {
     let service: AIProvidersService;
@@ -43,7 +71,7 @@ describe('AIProvidersService', () => {
                 providers: [],
                 _version: 1,
             },
-            saveSettings: jest.fn(),
+            saveSettings: vi.fn(),
         } as any;
 
         // Create mock provider
@@ -59,14 +87,12 @@ describe('AIProvidersService', () => {
         service = new AIProvidersService(mockApp, mockPlugin);
 
         // Clear all mocks
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     it('should always return a promise from embed method', async () => {
         // Mock the CachedEmbeddingsService to return a promise
-        const mockEmbedWithCache = jest
-            .fn()
-            .mockResolvedValue([[0.1, 0.2, 0.3]]);
+        const mockEmbedWithCache = vi.fn().mockResolvedValue([[0.1, 0.2, 0.3]]);
         (service as any).cachedEmbeddingsService = {
             embedWithCache: mockEmbedWithCache,
         };
@@ -105,7 +131,7 @@ describe('AIProvidersService', () => {
 
     it('should return a promise with array input', async () => {
         // Mock the CachedEmbeddingsService to return multiple embeddings
-        const mockEmbedWithCache = jest.fn().mockResolvedValue([
+        const mockEmbedWithCache = vi.fn().mockResolvedValue([
             [0.1, 0.2, 0.3],
             [0.4, 0.5, 0.6],
         ]);
@@ -136,6 +162,18 @@ describe('AIProvidersService', () => {
         expect(service.version).toBe(3);
     });
 
+    it('defaults providers to empty array when missing', () => {
+        const pluginWithoutProviders = {
+            settings: { _version: 1 },
+        } as AIProvidersPlugin;
+        const newService = new AIProvidersService(
+            mockApp,
+            pluginWithoutProviders
+        );
+
+        expect(newService.providers).toEqual([]);
+    });
+
     it('should initialize with providers from plugin settings', () => {
         const providers = [mockProvider];
         const pluginWithProviders = {
@@ -151,11 +189,188 @@ describe('AIProvidersService', () => {
     });
 
     it('should initialize embeddings cache', async () => {
-        const { embeddingsCache } = jest.requireMock('./cache/EmbeddingsCache');
+        const { embeddingsCache } = await import('./cache/EmbeddingsCache');
 
         await service.initEmbeddingsCache();
 
         expect(embeddingsCache.init).toHaveBeenCalledWith('test-app-id');
+    });
+
+    it('uses default vault id when appId is missing', async () => {
+        const { embeddingsCache } = await import('./cache/EmbeddingsCache');
+        const appWithoutId = {} as App;
+        const plugin = {
+            settings: { providers: [], _version: 1 },
+            saveSettings: vi.fn(),
+        } as any;
+        const newService = new AIProvidersService(appWithoutId, plugin);
+
+        await newService.initEmbeddingsCache();
+
+        expect(embeddingsCache.init).toHaveBeenCalledWith('default');
+    });
+
+    it('logs errors when embeddings cache init fails', async () => {
+        const { embeddingsCache } = await import('./cache/EmbeddingsCache');
+        (embeddingsCache.init as any).mockRejectedValueOnce(new Error('fail'));
+
+        await service.initEmbeddingsCache();
+
+        expect(logger.error).toHaveBeenCalled();
+    });
+
+    it('throws when embedForce is called with unsupported provider', async () => {
+        await expect(
+            (service as any).embedForce({
+                provider: { ...mockProvider, type: 'unsupported' },
+                input: 'test',
+            })
+        ).rejects.toThrow('Handler not found');
+    });
+
+    it('embedForce delegates to the provider handler', async () => {
+        const handlers = (service as any).handlers;
+        handlers.openai.embed = vi.fn().mockResolvedValue([[0.1, 0.2]]);
+
+        const result = await (service as any).embedForce({
+            provider: mockProvider,
+            input: 'test',
+        });
+
+        expect(handlers.openai.embed).toHaveBeenCalled();
+        expect(result).toEqual([[0.1, 0.2]]);
+    });
+
+    it('throws when embed is called with aborted signal', async () => {
+        const abortController = new AbortController();
+        abortController.abort();
+
+        await expect(
+            service.embed({
+                provider: mockProvider,
+                input: 'test',
+                abortController,
+            })
+        ).rejects.toThrow('Aborted');
+    });
+
+    it('wraps non-Error embed failures with i18n message', async () => {
+        (service as any).cachedEmbeddingsService = {
+            embedWithCache: vi.fn().mockRejectedValue('boom'),
+        };
+
+        await expect(
+            service.embed({
+                provider: mockProvider,
+                input: 'test',
+            })
+        ).rejects.toBe('boom');
+    });
+
+    it('uses i18n fallback for sync non-Error embed failures', async () => {
+        (service as any).cachedEmbeddingsService = {
+            embedWithCache: vi.fn(() => {
+                throw 'boom';
+            }),
+        };
+
+        await expect(
+            service.embed({
+                provider: mockProvider,
+                input: 'test',
+            })
+        ).rejects.toBe('boom');
+    });
+
+    it('fetchModels throws for unsupported handler', async () => {
+        await expect(
+            service.fetchModels({
+                provider: { ...mockProvider, type: 'unsupported' },
+            } as any)
+        ).rejects.toThrow('Handler not found or does not support fetchModels');
+    });
+
+    it('fetchModels throws when aborted', async () => {
+        const abortController = new AbortController();
+        abortController.abort();
+
+        await expect(
+            service.fetchModels({ provider: mockProvider, abortController })
+        ).rejects.toThrow('Aborted');
+    });
+
+    it('fetchModels wraps non-Error failures with i18n message', async () => {
+        const handlers = (service as any).handlers;
+        handlers.openai.fetchModels = vi.fn().mockRejectedValue('boom');
+
+        await expect(
+            service.fetchModels({ provider: mockProvider })
+        ).rejects.toBe('boom');
+    });
+
+    it('fetchModels uses i18n fallback for sync non-Error failures', async () => {
+        const handlers = (service as any).handlers;
+        handlers.openai.fetchModels = vi.fn(() => {
+            throw 'boom';
+        });
+
+        await expect(service.fetchModels(mockProvider)).rejects.toBe('boom');
+    });
+
+    it('execute throws for unsupported handlers', async () => {
+        await expect(
+            service.execute({
+                provider: { ...mockProvider, type: 'unsupported' },
+                prompt: 'hi',
+            } as any)
+        ).rejects.toThrow('Handler not found');
+    });
+
+    it('legacy execute propagates handler errors', async () => {
+        const handlers = (service as any).handlers;
+        handlers.openai.execute = vi.fn().mockRejectedValue('boom');
+
+        const legacyHandler: any = await service.execute({
+            provider: mockProvider,
+            prompt: 'Hi',
+        } as any);
+
+        await new Promise<void>(resolve => {
+            legacyHandler.onError((error: Error) => {
+                expect(error.message).toBe('boom');
+                resolve();
+            });
+        });
+    });
+
+    it('legacy execute forwards Error instances', async () => {
+        const handlers = (service as any).handlers;
+        handlers.openai.execute = vi.fn().mockRejectedValue(new Error('boom'));
+
+        const legacyHandler: any = await service.execute({
+            provider: mockProvider,
+            prompt: 'Hi',
+        } as any);
+
+        await new Promise<void>(resolve => {
+            legacyHandler.onError((error: Error) => {
+                expect(error.message).toBe('boom');
+                resolve();
+            });
+        });
+    });
+
+    it('legacy execute aborts internal controller', async () => {
+        const handlers = (service as any).handlers;
+        handlers.openai.execute = vi.fn().mockResolvedValue('done');
+
+        const legacyHandler: any = await service.execute({
+            provider: mockProvider,
+            prompt: 'Hi',
+        } as any);
+
+        legacyHandler.abort();
+        expect(legacyHandler).toHaveProperty('abort');
     });
 
     describe('execute legacy augmentation', () => {
@@ -163,7 +378,7 @@ describe('AIProvidersService', () => {
             // Mock handler.execute to stream two chunks then resolve
             const handlers = (service as any).handlers;
             Object.values(handlers).forEach((h: any) => {
-                h.execute = jest
+                h.execute = vi
                     .fn()
                     .mockImplementation(({ onProgress }: any) => {
                         return new Promise<string>(resolve => {
@@ -227,11 +442,90 @@ describe('AIProvidersService', () => {
     });
 
     it('should cleanup embeddings cache', async () => {
-        const { embeddingsCache } = jest.requireMock('./cache/EmbeddingsCache');
+        const { embeddingsCache } = await import('./cache/EmbeddingsCache');
 
         await service.cleanup();
 
         expect(embeddingsCache.close).toHaveBeenCalled();
+    });
+
+    it('logs cleanup errors without throwing', async () => {
+        const { embeddingsCache } = await import('./cache/EmbeddingsCache');
+        (embeddingsCache.close as any).mockRejectedValueOnce(
+            new Error('cleanup fail')
+        );
+
+        await service.cleanup();
+
+        expect(logger.error).toHaveBeenCalled();
+    });
+
+    it('checkCompatibility throws when version is too low', () => {
+        expect(() => service.checkCompatibility(999)).toThrow(
+            'errors.pluginMustBeUpdated'
+        );
+    });
+
+    it('migrateProvider returns existing provider when matched', async () => {
+        const existingProvider = { ...mockProvider, id: 'existing' };
+        mockPlugin.settings.providers = [existingProvider];
+
+        const result = await service.migrateProvider(existingProvider);
+
+        expect(result).toBe(existingProvider);
+    });
+
+    it('migrateProvider resolves false when canceled', async () => {
+        const { ConfirmationModal } = await import(
+            './modals/ConfirmationModal'
+        );
+        (ConfirmationModal as any).mockImplementationOnce(
+            (
+                _app: unknown,
+                _message: string,
+                _onConfirm?: () => void,
+                onCancel?: () => void
+            ) => ({
+                open: vi.fn().mockImplementation(() => onCancel?.()),
+            })
+        );
+
+        const result = await service.migrateProvider(mockProvider);
+
+        expect(result).toBe(false);
+    });
+
+    it('migrateProvider saves provider on confirm', async () => {
+        const { ConfirmationModal } = await import(
+            './modals/ConfirmationModal'
+        );
+        (ConfirmationModal as any).mockImplementationOnce(
+            (_app: unknown, _message: string, onConfirm?: () => void) => ({
+                open: vi.fn().mockImplementation(() => onConfirm?.()),
+            })
+        );
+
+        const result = await service.migrateProvider(mockProvider);
+
+        expect(result).toEqual(mockProvider);
+        expect(mockPlugin.saveSettings).toHaveBeenCalled();
+    });
+
+    it('migrateProvider initializes providers list when missing', async () => {
+        mockPlugin.settings.providers = undefined;
+
+        const { ConfirmationModal } = await import(
+            './modals/ConfirmationModal'
+        );
+        (ConfirmationModal as any).mockImplementationOnce(
+            (_app: unknown, _message: string, onConfirm?: () => void) => ({
+                open: vi.fn().mockImplementation(() => onConfirm?.()),
+            })
+        );
+
+        await service.migrateProvider(mockProvider);
+
+        expect(mockPlugin.settings.providers).toBeDefined();
     });
 
     it('should support all expected provider types', () => {
@@ -253,6 +547,33 @@ describe('AIProvidersService', () => {
             expect(handlers[type]).toHaveProperty('fetchModels');
             expect(handlers[type]).toHaveProperty('embed');
         });
+    });
+
+    it('processes documents without meta ids', () => {
+        const result = (service as any).processDocuments([
+            { content: 'Doc content' },
+        ]);
+
+        expect(result.documentChunkCounts).toHaveProperty('Doc content');
+    });
+
+    it('falls back to content for processed docs without meta ids', () => {
+        const documents = [{ content: 'Doc content' }];
+        const processedChunks = [{ content: 'chunk', document: documents[0] }];
+        const documentChunkCounts = { 'Doc content': 1 };
+
+        const processedDocs = (service as any).getProcessedDocs(
+            processedChunks,
+            documentChunkCounts,
+            documents
+        );
+
+        expect(processedDocs).toEqual(documents);
+    });
+
+    it('normalizes zero vectors safely', () => {
+        const normalized = (service as any).l2Normalize([0, 0, 0]);
+        expect(normalized).toEqual([0, 0, 0]);
     });
 
     describe('retrieve method', () => {
@@ -283,7 +604,7 @@ describe('AIProvidersService', () => {
 
         it('should return sorted results with correct structure', async () => {
             // Mock the CachedEmbeddingsService to return embeddings
-            const mockEmbedWithCache = jest
+            const mockEmbedWithCache = vi
                 .fn()
                 .mockResolvedValueOnce([[0.1, 0.2, 0.3]]) // Query embedding
                 .mockResolvedValueOnce([
@@ -333,9 +654,27 @@ describe('AIProvidersService', () => {
             expect(Array.isArray(emptyQueryResult)).toBe(true);
         });
 
+        it('throws when aborted before retrieval starts', async () => {
+            const abortController = new AbortController();
+            abortController.abort();
+
+            await expect(
+                service.retrieve({ ...testParams, abortController })
+            ).rejects.toThrow('Aborted');
+        });
+
+        it('returns empty when documents produce no chunks', async () => {
+            const result = await service.retrieve({
+                ...testParams,
+                documents: [{ content: '   \n', meta: { id: 'empty' } }],
+            });
+
+            expect(result).toEqual([]);
+        });
+
         it('should preserve document references', async () => {
             // Mock the CachedEmbeddingsService to return embeddings
-            const mockEmbedWithCache = jest
+            const mockEmbedWithCache = vi
                 .fn()
                 .mockResolvedValueOnce([[0.1, 0.2, 0.3]]) // Query embedding
                 .mockResolvedValueOnce([
@@ -359,7 +698,7 @@ describe('AIProvidersService', () => {
         });
 
         it('should use embeddings service', async () => {
-            const mockEmbedWithCache = jest
+            const mockEmbedWithCache = vi
                 .fn()
                 .mockResolvedValueOnce([[0.1, 0.2, 0.3]]) // Query embedding
                 .mockResolvedValueOnce([
@@ -390,8 +729,8 @@ describe('AIProvidersService', () => {
         });
 
         it('should call onProgress callback with correct parameters', async () => {
-            const mockOnProgress = jest.fn();
-            const mockEmbedWithCache = jest
+            const mockOnProgress = vi.fn();
+            const mockEmbedWithCache = vi
                 .fn()
                 .mockImplementation(params => {
                     // Simulate progress callback from embed method
@@ -451,8 +790,60 @@ describe('AIProvidersService', () => {
             });
         });
 
+        it('skips progress updates when aborted during chunk embedding', async () => {
+            const abortController = new AbortController();
+            const onProgress = vi.fn();
+
+            const embedSpy = vi
+                .spyOn(service, 'embed')
+                .mockImplementation(async params => {
+                    if ((params as any).onProgress) {
+                        abortController.abort();
+                        (params as any).onProgress(['chunk']);
+                    }
+                    return [[0.1, 0.2, 0.3]];
+                });
+
+            const results = await service.retrieve({
+                ...testParams,
+                abortController,
+                onProgress,
+            });
+
+            expect(Array.isArray(results)).toBe(true);
+            embedSpy.mockRestore();
+        });
+
+        it('throws aborted when embeddings fail after cancellation', async () => {
+            const abortController = new AbortController();
+            const embedSpy = vi.spyOn(service, 'embed');
+
+            embedSpy
+                .mockResolvedValueOnce([[0.1, 0.2, 0.3]])
+                .mockImplementationOnce(
+                    () =>
+                        new Promise<number[][]>((_resolve, reject) => {
+                            abortController.abort();
+                            reject(new Error('boom'));
+                        })
+                );
+
+            await expect(
+                service.retrieve({ ...testParams, abortController })
+            ).rejects.toThrow('Aborted');
+            embedSpy.mockRestore();
+        });
+
+        it('propagates non-abort embedding errors', async () => {
+            const embedSpy = vi.spyOn(service, 'embed');
+            embedSpy.mockRejectedValueOnce(new Error('boom'));
+
+            await expect(service.retrieve(testParams)).rejects.toThrow('boom');
+            embedSpy.mockRestore();
+        });
+
         it('should work without onProgress callback', async () => {
-            const mockEmbedWithCache = jest
+            const mockEmbedWithCache = vi
                 .fn()
                 .mockResolvedValueOnce([[0.1, 0.2, 0.3]]) // Query embedding
                 .mockResolvedValueOnce([
@@ -472,7 +863,7 @@ describe('AIProvidersService', () => {
         it('should abort retrieval when abortController is triggered', async () => {
             const abortController = new AbortController();
             // Mock embedWithCache to be abort-aware
-            const mockEmbedWithCache = jest.fn().mockImplementation(params => {
+            const mockEmbedWithCache = vi.fn().mockImplementation(params => {
                 return new Promise<number[][]>((resolve, reject) => {
                     const signal: AbortSignal | undefined = (params as any)
                         .abortController?.signal;

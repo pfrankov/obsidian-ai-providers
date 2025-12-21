@@ -87,15 +87,6 @@ export class EmbeddingsCache {
         }
     }
 
-    async clearAll(): Promise<void> {
-        if (!this.db) return;
-        try {
-            await this.db.clear('embeddings');
-        } catch (error) {
-            console.error('Error clearing all caches:', error);
-        }
-    }
-
     async close(): Promise<void> {
         if (this.db) {
             this.db.close();
