@@ -344,3 +344,107 @@ describe('OpenAI CORS Handling', () => {
         ).rejects.toThrow(/Aborted/);
     });
 });
+
+describe('OpenAIHandler streaming reasoning', () => {
+    it('wraps streamed reasoning in <think>…</think> in output', async () => {
+        const handler = createHandler();
+        const provider = createMockProvider();
+        const mockClient = createMockClient();
+
+        mockClient.chat!.completions.create.mockImplementation(
+            async (_params, _options) => {
+                return {
+                    async *[Symbol.asyncIterator]() {
+                        yield { choices: [{ delta: { role: 'assistant' } }] };
+                        yield {
+                            choices: [
+                                {
+                                    delta: {
+                                        content: '',
+                                        reasoning: ' in',
+                                    },
+                                },
+                            ],
+                        };
+                        yield {
+                            choices: [
+                                {
+                                    delta: {
+                                        content: '',
+                                        reasoning: ' Markdown.',
+                                    },
+                                },
+                            ],
+                        };
+                        yield { choices: [{ delta: { content: 'Hello' } }] };
+                    },
+                };
+            }
+        );
+
+        vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+
+        const onProgress = vi.fn();
+        const result = await handler.execute({
+            provider,
+            prompt: 'hi',
+            onProgress,
+        } as any);
+
+        expect(result).toBe('<think> in Markdown.</think>Hello');
+        expect(onProgress).toHaveBeenCalledTimes(3);
+        expect(onProgress).toHaveBeenNthCalledWith(
+            1,
+            '<think> in',
+            '<think> in'
+        );
+        expect(onProgress).toHaveBeenNthCalledWith(
+            2,
+            ' Markdown.',
+            '<think> in Markdown.'
+        );
+        expect(onProgress).toHaveBeenNthCalledWith(
+            3,
+            '</think>Hello',
+            '<think> in Markdown.</think>Hello'
+        );
+    });
+
+    it('closes <think> at the end when only reasoning is streamed', async () => {
+        const handler = createHandler();
+        const provider = createMockProvider();
+        const mockClient = createMockClient();
+
+        mockClient.chat!.completions.create.mockImplementation(
+            async (_params, _options) => {
+                return {
+                    async *[Symbol.asyncIterator]() {
+                        yield {
+                            choices: [
+                                { delta: { content: '', reasoning: 'a' } },
+                            ],
+                        };
+                    },
+                };
+            }
+        );
+
+        vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+
+        const onProgress = vi.fn();
+        const result = await handler.execute({
+            provider,
+            prompt: 'hi',
+            onProgress,
+        } as any);
+
+        expect(result).toBe('<think>a</think>');
+        expect(onProgress).toHaveBeenCalledTimes(2);
+        expect(onProgress).toHaveBeenNthCalledWith(1, '<think>a', '<think>a');
+        expect(onProgress).toHaveBeenNthCalledWith(
+            2,
+            '</think>',
+            '<think>a</think>'
+        );
+    });
+});

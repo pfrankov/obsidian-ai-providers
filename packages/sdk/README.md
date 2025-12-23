@@ -129,6 +129,8 @@ if (migratedOrExistingProvider === false) {
 
 - `onProgress(chunk, accumulatedText)` – fires for each streamed piece.
 
+Note: Some OpenAI-compatible providers (e.g. OpenRouter) stream `delta.reasoning` chunks. These are included in the text output wrapped in `<think>...</think>`.
+
 Completion & errors:
 - Success: promise resolves with the full text (no separate onEnd needed).
 - Failure / abort: promise rejects (no onError callback). Catch the rejection.
