@@ -116,17 +116,62 @@ export class OpenAIHandler implements IAIHandler {
         onProgress?: (chunk: string, accumulatedText: string) => void
     ): Promise<string> {
         let fullText = '';
+        let isInThinkBlock = false;
 
         for await (const chunk of response) {
             this.ensureNotAborted(abortController);
-            const content = chunk.choices[0]?.delta?.content;
-            if (content) {
-                fullText += content;
-                onProgress?.(content, fullText);
+            const delta = chunk.choices[0]?.delta as any;
+            const result = this.buildStreamingAppend(delta, isInThinkBlock);
+            isInThinkBlock = result.isInThinkBlock;
+
+            if (result.appendText.length > 0) {
+                fullText += result.appendText;
+                onProgress?.(result.appendText, fullText);
             }
         }
 
+        if (isInThinkBlock) {
+            fullText += '</think>';
+            onProgress?.('</think>', fullText);
+        }
+
         return fullText;
+    }
+
+    private buildStreamingAppend(
+        delta: any,
+        isInThinkBlock: boolean
+    ): { appendText: string; isInThinkBlock: boolean } {
+        let content = '';
+        let reasoning = '';
+
+        if (typeof delta?.content === 'string') {
+            content = delta.content;
+        }
+
+        if (typeof delta?.reasoning === 'string') {
+            reasoning = delta.reasoning;
+        }
+
+        let appendText = '';
+
+        if (reasoning !== '') {
+            if (!isInThinkBlock) {
+                appendText += '<think>';
+                isInThinkBlock = true;
+            }
+            appendText += reasoning;
+        }
+
+        if (content !== '') {
+            if (isInThinkBlock) {
+                appendText += '</think>';
+                isInThinkBlock = false;
+            }
+            appendText += content;
+        }
+
+        return { appendText, isInThinkBlock };
     }
 
     private getClient(
