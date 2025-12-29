@@ -8,12 +8,6 @@ import { AIProvidersService } from '../AIProvidersService';
 vi.mock('../i18n', () => ({
     I18n: {
         t: (key: string) => {
-            if (key === 'settings.modelDesc') {
-                return 'settings.modelDesc <a href="#">toggle</a>';
-            }
-            if (key === 'settings.modelTextDesc') {
-                return 'settings.modelTextDesc <a href="#">toggle</a>';
-            }
             return key;
         },
     },
@@ -27,6 +21,8 @@ const getElement = <T extends HTMLElement>(
     if (!element) throw new Error(`Element "${selector}" not found`);
     return element as unknown as T;
 };
+
+const flushPromises = () => new Promise(resolve => setTimeout(resolve, 0));
 
 describe('ProviderFormModal', () => {
     let app: App;
@@ -77,7 +73,9 @@ describe('ProviderFormModal', () => {
             )
         ).toBeTruthy();
         expect(
-            modal.contentEl.querySelector('[data-testid="model-dropdown"]')
+            modal.contentEl.querySelector(
+                '[data-testid="model-combobox-input"]'
+            )
         ).toBeTruthy();
     });
 
@@ -114,13 +112,26 @@ describe('ProviderFormModal', () => {
         );
         refreshButton.click();
 
-        await new Promise(resolve => setTimeout(resolve, 0));
-        const dropdown = getElement<HTMLSelectElement>(
+        const loadingInput = getElement<HTMLInputElement>(
             modal.contentEl,
-            '[data-testid="model-dropdown"]'
+            '[data-testid="model-combobox-input"]'
         );
-        expect(dropdown.disabled).toBe(false);
-        expect(dropdown.querySelectorAll('option')).toHaveLength(2);
+        expect(loadingInput.disabled).toBe(true);
+        expect(loadingInput.placeholder).toBe('settings.loadingModels');
+
+        await flushPromises();
+        const input = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-combobox-input"]'
+        );
+        expect(input.disabled).toBe(false);
+        input.value = '';
+        input.dispatchEvent(new Event('input'));
+        await flushPromises();
+
+        expect(
+            modal.contentEl.querySelectorAll('[data-testid="model-suggestion"]')
+        ).toHaveLength(2);
     });
 
     it('sets first model after refresh when models are returned', async () => {
@@ -191,7 +202,9 @@ describe('ProviderFormModal', () => {
             modal.contentEl.querySelector('[data-testid="model-input"]')
         ).toBeTruthy();
         expect(
-            modal.contentEl.querySelector('[data-testid="model-dropdown"]')
+            modal.contentEl.querySelector(
+                '[data-testid="model-combobox-input"]'
+            )
         ).toBeFalsy();
         expect(
             modal.contentEl.querySelector(
@@ -215,12 +228,14 @@ describe('ProviderFormModal', () => {
         expect(provider.model).toBe('custom-model');
     });
 
-    it('should use dropdown for providers with model fetching', () => {
+    it('should use combobox for providers with model fetching', () => {
         provider.type = 'openai';
         modal.onOpen();
 
         expect(
-            modal.contentEl.querySelector('[data-testid="model-dropdown"]')
+            modal.contentEl.querySelector(
+                '[data-testid="model-combobox-input"]'
+            )
         ).toBeTruthy();
         expect(
             modal.contentEl.querySelector(
@@ -232,19 +247,189 @@ describe('ProviderFormModal', () => {
         ).toBeFalsy();
     });
 
-    it('updates model when dropdown value changes', () => {
+    it('updates model when combobox selection changes', async () => {
         provider.availableModels = ['model-a', 'model-b'];
+        provider.model = '';
         modal.onOpen();
 
-        const dropdown = getElement<HTMLSelectElement>(
+        const input = getElement<HTMLInputElement>(
             modal.contentEl,
-            '[data-testid="model-dropdown"]'
+            '[data-testid="model-combobox-input"]'
         );
-        dropdown.value = 'model-b';
-        dropdown.dispatchEvent(new Event('change'));
+        input.value = '';
+        input.dispatchEvent(new Event('input'));
+        await flushPromises();
+
+        const options = Array.from(
+            modal.contentEl.querySelectorAll('[data-testid="model-suggestion"]')
+        );
+        const target = options.find(
+            option => option.getAttribute('data-value') === 'model-b'
+        );
+        target?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
 
         expect(provider.model).toBe('model-b');
-        expect(dropdown.title).toBe('model-b');
+        expect(input.title).toBe('model-b');
+    });
+
+    it('closes model suggest when modal closes', () => {
+        provider.availableModels = ['model-a'];
+        provider.model = '';
+        modal.onOpen();
+
+        const suggest = (modal as any).modelSuggest;
+        const closeSpy = vi.spyOn(suggest, 'close');
+        modal.onClose();
+
+        expect(closeSpy).toHaveBeenCalled();
+        expect((modal as any).modelSuggest).toBeUndefined();
+    });
+
+    it('recreates model suggest when form rerenders', () => {
+        provider.availableModels = ['model-a'];
+        provider.model = '';
+        modal.onOpen();
+
+        const suggest = (modal as any).modelSuggest;
+        const closeSpy = vi.spyOn(suggest, 'close');
+        modal.display();
+
+        expect(closeSpy).toHaveBeenCalled();
+        expect((modal as any).modelSuggest).not.toBe(suggest);
+    });
+
+    it('suppresses suggestion refresh right after selection', async () => {
+        provider.availableModels = ['model-a', 'model-b'];
+        provider.model = '';
+        modal.onOpen();
+
+        const input = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-combobox-input"]'
+        );
+        input.value = 'mo';
+        input.dispatchEvent(new Event('input'));
+        await flushPromises();
+
+        const option = getElement<HTMLElement>(
+            modal.contentEl,
+            '[data-testid="model-suggestion"]'
+        );
+        option.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+
+        const suggest = (modal as any).modelSuggest;
+        expect(suggest.getSuggestions('mo')).toHaveLength(0);
+        expect(suggest.getSuggestions('mo').length).toBeGreaterThan(0);
+    });
+
+    it('filters models with fuzzy search and highlights matches', async () => {
+        provider.availableModels = ['gpt-4', 'gpt-3.5-turbo', 'claude-3'];
+        provider.model = '';
+        modal.onOpen();
+
+        const input = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-combobox-input"]'
+        );
+        input.value = 'pt';
+        input.dispatchEvent(new Event('input'));
+        await flushPromises();
+
+        expect(
+            modal.contentEl.querySelectorAll('[data-testid="model-suggestion"]')
+                .length
+        ).toBeGreaterThan(0);
+        expect(
+            modal.contentEl.querySelector('.suggestion-highlight')
+        ).toBeTruthy();
+        expect(provider.model).toBe('pt');
+    });
+
+    it('uses quick filtering for short queries without highlighting', async () => {
+        provider.availableModels = ['alpha', 'beta'];
+        provider.model = '';
+        modal.onOpen();
+
+        const input = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-combobox-input"]'
+        );
+        input.value = 'a';
+        input.dispatchEvent(new Event('input'));
+        await flushPromises();
+
+        expect(
+            modal.contentEl.querySelectorAll('[data-testid="model-suggestion"]')
+                .length
+        ).toBeGreaterThan(0);
+        expect(
+            modal.contentEl.querySelector('.suggestion-highlight')
+        ).toBeFalsy();
+    });
+
+    it('limits short query results to the suggestion limit', async () => {
+        provider.availableModels = Array.from(
+            { length: 60 },
+            (_, index) => `alpha-${index}`
+        );
+        provider.model = '';
+        modal.onOpen();
+
+        const input = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-combobox-input"]'
+        );
+        input.value = 'a';
+        input.dispatchEvent(new Event('input'));
+        await flushPromises();
+
+        expect(
+            modal.contentEl.querySelectorAll('[data-testid="model-suggestion"]')
+        ).toHaveLength(50);
+    });
+
+    it('reuses matches when the query is extended', async () => {
+        provider.availableModels = ['gpt-4', 'gpt-3.5-turbo', 'claude-3'];
+        provider.model = '';
+        modal.onOpen();
+
+        const input = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-combobox-input"]'
+        );
+        input.value = 'gp';
+        input.dispatchEvent(new Event('input'));
+        await flushPromises();
+        expect(
+            modal.contentEl.querySelectorAll('[data-testid="model-suggestion"]')
+                .length
+        ).toBeGreaterThan(0);
+
+        input.value = 'gpt';
+        input.dispatchEvent(new Event('input'));
+        await flushPromises();
+        expect(
+            modal.contentEl.querySelectorAll('[data-testid="model-suggestion"]')
+                .length
+        ).toBeGreaterThan(0);
+    });
+
+    it('hides suggestions when no model matches query', async () => {
+        provider.availableModels = ['model-a'];
+        provider.model = '';
+        modal.onOpen();
+
+        const input = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-combobox-input"]'
+        );
+        input.value = 'zzz';
+        input.dispatchEvent(new Event('input'));
+        await flushPromises();
+
+        expect(
+            modal.contentEl.querySelectorAll('[data-testid="model-suggestion"]')
+        ).toHaveLength(0);
     });
 
     it('falls back to empty url when defaults are skipped', () => {
@@ -397,19 +582,25 @@ describe('ProviderFormModal', () => {
         expect((modal as any).nameModified).toBe(false);
     });
 
-    it('should switch between text and dropdown modes', () => {
-        provider.availableModels = ['gpt-4', 'gpt-3.5-turbo'];
+    it('should show model description without toggle link', () => {
+        provider.availableModels = ['gpt-4'];
         modal.onOpen();
 
-        expect(
-            modal.contentEl.querySelector('[data-testid="model-dropdown"]')
-        ).toBeTruthy();
+        const modelSettings = Array.from(
+            modal.contentEl.querySelectorAll('.setting-item')
+        );
+        const modelSetting = modelSettings.find(
+            setting =>
+                setting.querySelector('.setting-item-name')?.textContent ===
+                'settings.model'
+        );
 
-        (modal as any).isTextMode = true;
-        modal.display();
-        expect(
-            modal.contentEl.querySelector('[data-testid="model-input"]')
-        ).toBeTruthy();
+        expect(modelSetting).toBeTruthy();
+        const description = modelSetting?.querySelector(
+            '.setting-item-description'
+        );
+        expect(description?.textContent).toBe('settings.modelDesc');
+        expect(description?.querySelector('a')).toBeFalsy();
     });
 
     it('should handle model loading errors', async () => {
@@ -426,12 +617,12 @@ describe('ProviderFormModal', () => {
         refreshButton.click();
 
         await new Promise(resolve => setTimeout(resolve, 0));
-        const dropdown = getElement<HTMLSelectElement>(
+        const input = getElement<HTMLInputElement>(
             modal.contentEl,
-            '[data-testid="model-dropdown"]'
+            '[data-testid="model-combobox-input"]'
         );
-        expect(dropdown.disabled).toBe(true);
-        expect(dropdown.querySelector('option')?.value).toBe('none');
+        expect(input.disabled).toBe(true);
+        expect(input.placeholder).toBe('settings.noModelsAvailable');
     });
 
     it('should populate provider dropdown from configuration', () => {
@@ -536,21 +727,6 @@ describe('ProviderFormModal', () => {
 
         // Should not have a link for switching modes
         expect(description?.querySelector('a')).toBeFalsy();
-    });
-
-    it('toggles model input mode from description link', () => {
-        modal.onOpen();
-        const displaySpy = vi.spyOn(modal, 'display');
-
-        const link = modal.contentEl.querySelector(
-            '.setting-item-description a'
-        ) as HTMLAnchorElement | null;
-
-        expect(link).toBeTruthy();
-        link?.dispatchEvent(new MouseEvent('click'));
-
-        expect((modal as any).isTextMode).toBe(true);
-        expect(displaySpy).toHaveBeenCalled();
     });
 
     it('should sync provider name in UI when type changes for new providers', () => {

@@ -1,4 +1,14 @@
-import { App, Modal, Setting, Notice, sanitizeHTMLToDom } from 'obsidian';
+import {
+    App,
+    Modal,
+    Setting,
+    Notice,
+    AbstractInputSuggest,
+    TextComponent,
+    prepareFuzzySearch,
+    sanitizeHTMLToDom,
+} from 'obsidian';
+import type { SearchMatches } from 'obsidian';
 import { I18n } from '../i18n';
 import { IAIProvider, AIProviderType } from '@obsidian-ai-providers/sdk';
 import { logger } from '../utils/logger';
@@ -98,11 +108,137 @@ const PROVIDER_CONFIGS: Record<AIProviderType, ProviderConfig> = {
 
 // Providers that don't support model fetching are now handled via PROVIDER_CONFIGS options
 
+interface ModelSuggestOptions {
+    models: string[];
+    onSelect: (value: string) => void;
+}
+
+class ModelSuggest extends AbstractInputSuggest<string> {
+    private models: string[];
+    private onSelectValue: (value: string) => void;
+    private matchCache = new Map<string, SearchMatches>();
+    private lastQuery = '';
+    private lastMatches: string[] = [];
+    private minQueryLength = 2;
+    private suppressNextUpdate = false;
+
+    constructor(
+        app: App,
+        inputEl: HTMLInputElement,
+        options: ModelSuggestOptions
+    ) {
+        super(app, inputEl);
+        this.models = options.models;
+        this.onSelectValue = options.onSelect;
+        this.limit = 50;
+        this.onSelect(value => {
+            this.onSelectValue(value);
+        });
+    }
+
+    selectSuggestion(value: string, evt: MouseEvent | KeyboardEvent): void {
+        this.suppressNextUpdate = true;
+        super.selectSuggestion(value, evt);
+        this.close();
+    }
+
+    getSuggestions(query: string): string[] {
+        if (this.suppressNextUpdate) {
+            this.suppressNextUpdate = false;
+            return [];
+        }
+
+        const trimmedQuery = query.trim();
+        this.matchCache.clear();
+
+        if (!trimmedQuery) {
+            this.lastQuery = '';
+            this.lastMatches = this.models;
+            return this.models.slice(0, this.limit);
+        }
+
+        if (trimmedQuery.length < this.minQueryLength) {
+            const matches: string[] = [];
+            const lowerQuery = trimmedQuery.toLowerCase();
+            for (const model of this.models) {
+                if (model.toLowerCase().includes(lowerQuery)) {
+                    matches.push(model);
+                    if (matches.length >= this.limit) {
+                        break;
+                    }
+                }
+            }
+            this.lastQuery = trimmedQuery;
+            this.lastMatches = matches;
+            return matches;
+        }
+
+        const reuseCandidates =
+            this.lastQuery.length >= this.minQueryLength &&
+            trimmedQuery.startsWith(this.lastQuery);
+        const candidates = reuseCandidates ? this.lastMatches : this.models;
+        const fuzzySearch = prepareFuzzySearch(trimmedQuery);
+        const matches: {
+            model: string;
+            matches: SearchMatches;
+            score: number;
+        }[] = [];
+
+        candidates.forEach(model => {
+            const match = fuzzySearch(model);
+            if (!match) return;
+            matches.push({
+                model,
+                matches: match.matches,
+                score: match.score,
+            });
+        });
+
+        matches.sort((a, b) => b.score - a.score);
+        this.lastQuery = trimmedQuery;
+        this.lastMatches = matches.map(item => item.model);
+
+        const limited = matches.slice(0, this.limit);
+        limited.forEach(item => {
+            this.matchCache.set(item.model, item.matches);
+        });
+        return limited.map(item => item.model);
+    }
+
+    renderSuggestion(value: string, el: HTMLElement): void {
+        el.setAttribute('data-testid', 'model-suggestion');
+        el.setAttribute('data-value', value);
+
+        const matches = this.matchCache.get(value);
+        if (!matches || matches.length === 0) {
+            el.textContent = value;
+            return;
+        }
+
+        const orderedMatches = [...matches].sort(
+            ([startA], [startB]) => startA - startB
+        );
+        let lastIndex = 0;
+        orderedMatches.forEach(([start, end]) => {
+            if (start > lastIndex) {
+                el.appendText(value.slice(lastIndex, start));
+            }
+            const highlight = el.createSpan('suggestion-highlight');
+            highlight.textContent = value.slice(start, end);
+            lastIndex = end;
+        });
+
+        if (lastIndex < value.length) {
+            el.appendText(value.slice(lastIndex));
+        }
+    }
+}
+
 export class ProviderFormModal extends Modal {
     private nameModified = false;
     private urlModified = false;
-    private isTextMode = false;
     private isLoadingModels = false;
+    private modelSuggest?: ModelSuggest;
 
     constructor(
         app: App,
@@ -119,13 +255,11 @@ export class ProviderFormModal extends Modal {
         return config.options?.modelsFetching !== false;
     }
 
-    private getModelDescription(useText: boolean, forceText: boolean): string {
+    private getModelDescription(forceText: boolean): string {
         if (forceText) {
             return I18n.t('settings.modelTextOnlyDesc');
         }
-        return useText
-            ? I18n.t('settings.modelTextDesc')
-            : I18n.t('settings.modelDesc');
+        return I18n.t('settings.modelDesc');
     }
 
     private getDefaultName(type: AIProviderType): string {
@@ -150,20 +284,19 @@ export class ProviderFormModal extends Modal {
 
     private createModelSetting(contentEl: HTMLElement) {
         const forceTextMode = !this.hasModelFetching(this.provider.type);
-        const useTextMode = this.isTextMode || forceTextMode;
 
         const modelSetting = new Setting(contentEl)
             .setName(I18n.t('settings.model'))
-            .setDesc(this.getModelDescription(useTextMode, forceTextMode));
+            .setDesc(this.getModelDescription(forceTextMode));
 
-        if (useTextMode) {
+        if (forceTextMode) {
             this.createTextInput(modelSetting);
         } else {
-            this.createDropdown(modelSetting);
+            this.createComboBox(modelSetting);
             this.createRefresh(modelSetting);
         }
 
-        this.setupDescription(modelSetting, useTextMode, forceTextMode);
+        this.setupDescription(modelSetting, forceTextMode);
         return modelSetting;
     }
 
@@ -177,50 +310,50 @@ export class ProviderFormModal extends Modal {
         });
     }
 
-    private createDropdown(modelSetting: Setting) {
-        modelSetting.addDropdown(dropdown => {
-            this.populateDropdown(dropdown);
-            this.setupDropdown(dropdown);
-            return dropdown;
-        });
-    }
+    private createComboBox(modelSetting: Setting) {
+        const models = this.provider.availableModels || [];
+        const hasModels = models.length > 0;
+        const isDisabled = this.isLoadingModels || !hasModels;
+        const placeholder = this.isLoadingModels
+            ? I18n.t('settings.loadingModels')
+            : hasModels
+              ? I18n.t('settings.modelSearchPlaceholder')
+              : I18n.t('settings.noModelsAvailable');
 
-    private populateDropdown(dropdown: any) {
-        if (this.isLoadingModels) {
-            dropdown.addOption('loading', I18n.t('settings.loadingModels'));
-            dropdown.setDisabled(true);
-            return;
-        }
+        this.modelSuggest?.close();
+        this.modelSuggest = undefined;
 
-        const models = this.provider.availableModels;
-        if (!models || models.length === 0) {
-            dropdown.addOption('none', I18n.t('settings.noModelsAvailable'));
-            dropdown.setDisabled(true);
-            return;
-        }
-
-        models.forEach(model => {
-            dropdown.addOption(model, model);
-            const options = dropdown.selectEl.options;
-            const lastOption = options[options.length - 1];
-            lastOption.title = model;
-        });
-        dropdown.setDisabled(false);
-    }
-
-    private setupDropdown(dropdown: any) {
-        dropdown
-            .setValue(this.provider.model || '')
-            .onChange((value: string) => {
-                this.provider.model = value;
-                dropdown.selectEl.title = value;
-            });
-
-        dropdown.selectEl.setAttribute('data-testid', 'model-dropdown');
-        dropdown.selectEl.title = this.provider.model || '';
-        dropdown.selectEl.parentElement?.addClass(
-            'ai-providers-model-dropdown'
+        modelSetting.controlEl.addClass('ai-providers-model-control');
+        const inputWrapper = modelSetting.controlEl.createDiv(
+            'ai-providers-model-input'
         );
+        const input = new TextComponent(inputWrapper);
+
+        input.setPlaceholder(placeholder);
+        input.setValue(this.provider.model || '');
+        input.setDisabled(isDisabled);
+        input.onChange(value => {
+            this.provider.model = value;
+            input.inputEl.title = value;
+        });
+
+        input.inputEl.setAttribute('data-testid', 'model-combobox-input');
+        input.inputEl.setAttribute('role', 'combobox');
+        input.inputEl.setAttribute('aria-autocomplete', 'list');
+        input.inputEl.title = this.provider.model || '';
+
+        if (isDisabled) {
+            return;
+        }
+
+        this.modelSuggest = new ModelSuggest(this.app, input.inputEl, {
+            models,
+            onSelect: value => {
+                this.provider.model = value;
+                input.setValue(value);
+                input.inputEl.title = value;
+            },
+        });
     }
 
     private createRefresh(modelSetting: Setting) {
@@ -269,28 +402,12 @@ export class ProviderFormModal extends Modal {
         }
     }
 
-    private setupDescription(
-        modelSetting: Setting,
-        useText: boolean,
-        forceText: boolean
-    ) {
+    private setupDescription(modelSetting: Setting, forceText: boolean) {
         const descEl = modelSetting.descEl;
         descEl.empty();
         descEl.appendChild(
-            sanitizeHTMLToDom(this.getModelDescription(useText, forceText))
+            sanitizeHTMLToDom(this.getModelDescription(forceText))
         );
-
-        // Add click handler for the link (only if not forced to text mode)
-        if (!forceText) {
-            const link = descEl.querySelector('a');
-            if (link) {
-                link.addEventListener('click', e => {
-                    e.preventDefault();
-                    this.isTextMode = !this.isTextMode;
-                    this.display();
-                });
-            }
-        }
     }
 
     onOpen() {
@@ -408,6 +525,8 @@ export class ProviderFormModal extends Modal {
 
     onClose() {
         const { contentEl } = this;
+        this.modelSuggest?.close();
+        this.modelSuggest = undefined;
         contentEl.empty();
     }
 

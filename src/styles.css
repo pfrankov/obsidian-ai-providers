@@ -49,11 +49,18 @@
     line-height: var(--line-height-tight);
 }
 
-.ai-providers-model-dropdown {
-    max-width: 65%;
+.ai-providers-model-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
-.ai-providers-model-dropdown select {
+.ai-providers-model-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.ai-providers-model-input input {
     width: 100%;
     text-overflow: ellipsis;
 }
