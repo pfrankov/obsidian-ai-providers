@@ -276,6 +276,150 @@ export class TextComponent {
         this.inputEl.placeholder = placeholder;
         return this;
     }
+
+    setDisabled(disabled: boolean): this {
+        this.inputEl.disabled = disabled;
+        return this;
+    }
+}
+
+export class SearchComponent {
+    inputEl: HTMLInputElement;
+    clearButtonEl: HTMLElement;
+
+    constructor(containerEl: HTMLElement) {
+        const wrapper = containerEl.createDiv('search-input-container');
+        this.inputEl = document.createElement('input');
+        this.inputEl.type = 'search';
+        wrapper.appendChild(this.inputEl as any);
+
+        this.clearButtonEl = document.createElement('button');
+        wrapper.appendChild(this.clearButtonEl as any);
+
+        this.clearButtonEl.addEventListener('click', () => {
+            this.inputEl.value = '';
+            this.inputEl.dispatchEvent(new Event('input'));
+        });
+    }
+
+    setValue(value: string): this {
+        this.inputEl.value = value;
+        return this;
+    }
+
+    getValue(): string {
+        return this.inputEl.value;
+    }
+
+    onChange(cb: (value: string) => any): this {
+        this.inputEl.addEventListener('input', () => cb(this.inputEl.value));
+        return this;
+    }
+
+    setPlaceholder(placeholder: string): this {
+        this.inputEl.placeholder = placeholder;
+        return this;
+    }
+
+    setDisabled(disabled: boolean): this {
+        this.inputEl.disabled = disabled;
+        return this;
+    }
+}
+
+export class PopoverSuggest<T> {
+    app: App;
+    scope: any;
+    protected suggestEl: HTMLElement;
+
+    constructor(app: App, _scope?: any) {
+        this.app = app;
+        this.suggestEl = document.createElement('div');
+        this.suggestEl.className = 'suggestion-container';
+        this.suggestEl.hidden = true;
+    }
+
+    open(): void {
+        this.suggestEl.hidden = false;
+    }
+
+    close(): void {
+        this.suggestEl.hidden = true;
+    }
+
+    renderSuggestion(_value: T, _el: HTMLElement): void {
+        // Implement in subclasses
+    }
+
+    selectSuggestion(_value: T, _evt: MouseEvent | KeyboardEvent): void {
+        // Implement in subclasses
+    }
+}
+
+export abstract class AbstractInputSuggest<T> extends PopoverSuggest<T> {
+    limit = 100;
+    private textInputEl: HTMLInputElement | HTMLDivElement;
+    private onSelectCallbacks: Array<
+        (value: T, evt: MouseEvent | KeyboardEvent) => any
+    > = [];
+
+    constructor(app: App, textInputEl: HTMLInputElement | HTMLDivElement) {
+        super(app);
+        this.textInputEl = textInputEl;
+
+        const container = textInputEl.parentElement || document.body;
+        container.appendChild(this.suggestEl);
+
+        this.textInputEl.addEventListener('input', () => {
+            this.renderSuggestions();
+        });
+    }
+
+    setValue(value: string): void {
+        if (this.textInputEl instanceof HTMLInputElement) {
+            this.textInputEl.value = value;
+        }
+    }
+
+    getValue(): string {
+        if (this.textInputEl instanceof HTMLInputElement) {
+            return this.textInputEl.value;
+        }
+        return '';
+    }
+
+    onSelect(
+        callback: (value: T, evt: MouseEvent | KeyboardEvent) => any
+    ): this {
+        this.onSelectCallbacks.push(callback);
+        return this;
+    }
+
+    selectSuggestion(value: T, evt: MouseEvent | KeyboardEvent): void {
+        this.setValue(String(value));
+        this.onSelectCallbacks.forEach(cb => cb(value, evt));
+        this.close();
+    }
+
+    protected abstract getSuggestions(query: string): T[] | Promise<T[]>;
+
+    private async renderSuggestions() {
+        this.suggestEl.empty();
+        const suggestions = await this.getSuggestions(this.getValue());
+        if (suggestions.length === 0) {
+            this.close();
+            return;
+        }
+        this.open();
+        suggestions.forEach(value => {
+            const itemEl = this.suggestEl.createDiv('suggestion-item');
+            this.renderSuggestion(value, itemEl);
+            itemEl.addEventListener('mousedown', event => {
+                event.preventDefault();
+                this.selectSuggestion(value, event);
+            });
+        });
+    }
 }
 
 export class DropdownComponent {
@@ -392,6 +536,26 @@ export class Modal {
     }
 }
 
+export interface SearchResult {
+    score: number;
+    matches: [number, number][];
+}
+
+export function prepareFuzzySearch(query: string) {
+    const normalizedQuery = query.toLowerCase();
+    return (text: string): SearchResult | null => {
+        const normalizedText = text.toLowerCase();
+        const index = normalizedText.indexOf(normalizedQuery);
+        if (index === -1) {
+            return null;
+        }
+        return {
+            score: normalizedQuery.length,
+            matches: [[index, index + normalizedQuery.length]],
+        };
+    };
+}
+
 // Add helper methods for HTMLElement
 declare global {
     interface HTMLElement {
@@ -400,6 +564,7 @@ declare global {
         createEl(tag: string, attrs?: { text?: string }, cls?: string): HTMLElement;
         createSpan(className?: string): HTMLElement;
         addClass(className: string): void;
+        appendText(val: string): void;
     }
 }
 
@@ -446,6 +611,10 @@ HTMLElement.prototype.createSpan = function(cls?: string) {
     }
     this.appendChild(span as unknown as Node);
     return span;
+};
+
+HTMLElement.prototype.appendText = function(text: string): void {
+    this.appendChild(document.createTextNode(text));
 };
 
 // Add addClass method to HTMLElement prototype
