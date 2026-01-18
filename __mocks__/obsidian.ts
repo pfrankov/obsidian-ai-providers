@@ -368,7 +368,7 @@ export abstract class AbstractInputSuggest<T> extends PopoverSuggest<T> {
         this.textInputEl = textInputEl;
 
         const container = textInputEl.parentElement || document.body;
-        container.appendChild(this.suggestEl);
+        container.appendChild(this.suggestEl as any);
 
         this.textInputEl.addEventListener('input', () => {
             this.renderSuggestions();

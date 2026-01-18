@@ -1,6 +1,6 @@
 {
     "name": "@obsidian-ai-providers/sdk",
-    "version": "1.5.2",
+    "version": "1.6.0",
     "private": false,
     "scripts": {
         "build": "tsc -p tsconfig.json && node esbuild.config.mjs production",
