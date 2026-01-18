@@ -1,6 +1,6 @@
 {
     "settings": {
-        "notice": "This plugin provides AI Provider integrations for other plugins. Configure your providers below.",
+        "notice": "This plugin is a configuration hub for AI providers. It does nothing by itself, but <a href=\"https://github.com/pfrankov/obsidian-ai-providers#required-by-plugins\">other plugins</a> can use it to avoid duplicated configuration.",
         "configuredProviders": "AI providers",
         "addNewProvider": "Add new provider",
         "addProvider": "Add provider",

@@ -34,12 +34,12 @@
         "noModelsAvailable": "Keine Modelle verfügbar",
         "noModelMatches": "Keine passenden Modelle",
         "editProvider": "Anbieter bearbeiten",
-        "developerSettings": "Für entwickler",
+        "developerSettings": "Für Entwickler",
         "developerSettingsDesc": "Zusätzliche Einstellungen für Entwicklung und Debugging aktivieren",
         "debugLogging": "Debug-protokollierung",
         "debugLoggingDesc": "Detaillierte Protokollierung in der Konsole aktivieren",
         "useNativeFetch": "Nativen fetch verwenden",
-        "useNativeFetchDesc": "Verwendet Fetch API anstelle von Obsidian für besseres Debugging der Anfragen in DevTools"
+        "useNativeFetchDesc": "Native Fetch API anstelle der Electron-Implementierung verwenden (kann bei CORS-Problemen helfen)"
     },
     "modals": {
         "confirm": "Bestätigen",

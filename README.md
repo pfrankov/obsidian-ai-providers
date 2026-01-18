@@ -41,7 +41,7 @@ Think of it like a control panel where you can:
 - Fully encapsulated API for working with AI providers
 - Develop AI plugins faster without dealing directly with provider-specific APIs
 - Easily extend support for additional AI providers in your plugin
-- Available in 4 languages: English, Chinese, German, and Russian (more languages coming soon)
+- Available in 11 languages: English, Spanish, French, Italian, Portuguese, German, Russian, Chinese, Japanese, Korean, and Dutch
 
 ## Installation
 ### Obsidian plugin store (recommended)
@@ -130,10 +130,10 @@ Removed callbacks: onEnd / onError — promise resolve/reject covers them (only 
 - [x] Russian translations
 - [x] Groq Provider support
 - [x] Passing messages instead of one prompt
-- [ ] Anthropic Provider support
+- [x] Anthropic Provider support
 - [x] Shared embeddings to avoid re-embedding the same documents multiple times
-- [ ] Spanish, Italian, French, Dutch, Portuguese, Japanese, Korean translations
-- [ ] Incapsulated basic RAG search with optional BM25 search
+- [x] Spanish, Italian, French, Dutch, Portuguese, Japanese, Korean translations
+- [x] Incapsulated basic RAG search with optional BM25 search
 
 ## My other Obsidian plugins
 - [Local GPT](https://github.com/pfrankov/obsidian-local-gpt) that assists with local AI for maximum privacy and offline access.
