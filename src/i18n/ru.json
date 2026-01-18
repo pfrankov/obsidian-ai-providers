@@ -39,7 +39,7 @@
         "debugLogging": "Отладочное логирование",
         "debugLoggingDesc": "Включить подробное логирование в консоли",
         "useNativeFetch": "Использовать нативный Fetch",
-        "useNativeFetchDesc": "Использовать Fetch API вместо Obsidian для удобной отладки запросов в DevTools"
+        "useNativeFetchDesc": "Использовать нативный Fetch API вместо реализации Electron (может помочь с проблемами CORS)"
     },
     "modals": {
         "confirm": "Подтвердить",

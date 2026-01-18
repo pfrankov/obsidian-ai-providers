@@ -39,7 +39,7 @@
         "debugLogging": "调试日志",
         "debugLoggingDesc": "在控制台启用详细日志记录",
         "useNativeFetch": "使用原生 Fetch",
-        "useNativeFetchDesc": "使用 Fetch API 替代 Obsidian，以便在 DevTools 中更好地调试请求"
+        "useNativeFetchDesc": "使用原生 Fetch API 而不是 Electron 特定实现（可能有助于解决 CORS 问题）"
     },
     "modals": {
         "confirm": "确认",
