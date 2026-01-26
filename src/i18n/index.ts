@@ -11,7 +11,9 @@ import ru from './ru.json';
 import zh from './zh.json';
 import { logger } from '../utils/logger';
 
-const locales: { [key: string]: any } = {
+type TranslationNode = string | { [key: string]: TranslationNode };
+
+const locales: Record<string, TranslationNode> = {
     en,
     ru,
     de,
@@ -25,35 +27,48 @@ const locales: { [key: string]: any } = {
     pt,
 };
 
+const resolveTranslation = (
+    translations: TranslationNode,
+    keys: string[]
+): string | undefined => {
+    let current: TranslationNode = translations;
+    for (const key of keys) {
+        if (typeof current !== 'object' || current === null) {
+            return undefined;
+        }
+        if (!(key in current)) {
+            return undefined;
+        }
+        current = current[key];
+    }
+    return typeof current === 'string' ? current : undefined;
+};
+
 export class I18n {
     static t(key: string, params?: { [key: string]: string }): string {
         const locale = window.localStorage.getItem('language') || 'en';
         const keys = key.split('.');
 
-        let translations = locales[locale] || locales['en'];
+        const translations = locales[locale] || locales['en'];
+        let result = resolveTranslation(translations, keys);
 
-        for (const k of keys) {
-            if (translations?.[k] === undefined) {
-                logger.warn(`Translation missing: ${key}`);
-                translations = locales['en'];
-                let engValue = translations;
-                for (const ek of keys) {
-                    engValue = engValue?.[ek];
-                }
-                return engValue || key;
-            }
-            translations = translations[k];
+        if (result === undefined) {
+            logger.warn(`Translation missing: ${key}`);
+            result = resolveTranslation(locales['en'], keys);
         }
 
-        let result = translations;
+        if (result === undefined) {
+            return key;
+        }
 
+        let finalResult = result;
         // Handle string interpolation if params are provided
         if (params) {
             Object.entries(params).forEach(([key, value]) => {
-                result = result.replace(`{{${key}}}`, value);
+                finalResult = finalResult.replace(`{{${key}}}`, value);
             });
         }
 
-        return result;
+        return finalResult;
     }
 }

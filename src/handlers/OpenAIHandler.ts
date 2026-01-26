@@ -17,6 +17,10 @@ type ChatMessage = {
     content: string | IContentBlock[];
     images?: string[];
 };
+type ChatCompletionDelta =
+    OpenAI.Chat.Completions.ChatCompletionChunk['choices'][number]['delta'] & {
+        reasoning?: string;
+    };
 
 export class OpenAIHandler implements IAIHandler {
     private fetchSelector: FetchSelector;
@@ -49,14 +53,18 @@ export class OpenAIHandler implements IAIHandler {
         message: ChatMessage
     ): OpenAI.Chat.Completions.ChatCompletionMessageParam {
         if (typeof message.content === 'string') {
+            const role: 'assistant' | 'system' | 'user' =
+                message.role === 'assistant' || message.role === 'system'
+                    ? message.role
+                    : 'user';
             return {
-                role: message.role as any,
+                role,
                 content: message.content,
             };
         }
 
         return {
-            role: message.role as any,
+            role: 'user',
             content: this.buildContentParts(message.content),
         };
     }
@@ -120,7 +128,7 @@ export class OpenAIHandler implements IAIHandler {
 
         for await (const chunk of response) {
             this.ensureNotAborted(abortController);
-            const delta = chunk.choices[0]?.delta as any;
+            const delta = chunk.choices[0]?.delta;
             const result = this.buildStreamingAppend(delta, isInThinkBlock);
             isInThinkBlock = result.isInThinkBlock;
 
@@ -139,7 +147,7 @@ export class OpenAIHandler implements IAIHandler {
     }
 
     private buildStreamingAppend(
-        delta: any,
+        delta: ChatCompletionDelta | undefined,
         isInThinkBlock: boolean
     ): { appendText: string; isInThinkBlock: boolean } {
         let content = '';
@@ -186,7 +194,7 @@ export class OpenAIHandler implements IAIHandler {
                     : 'http://localhost:1234/v1'),
             apiKey: provider.apiKey || 'placeholder-key',
             dangerouslyAllowBrowser: true,
-            fetch: fetch as any,
+            fetch: fetch as unknown as typeof fetch,
             defaultHeaders: {
                 'x-stainless-arch': null,
                 'x-stainless-lang': null,
@@ -226,15 +234,17 @@ export class OpenAIHandler implements IAIHandler {
     async embed(params: IAIProvidersEmbedParams): Promise<number[][]> {
         // Support for both input and text (for backward compatibility)
         // Using type assertion to bypass type checking
-        const inputText = params.input ?? (params as any).text;
+        const legacyParams = params as IAIProvidersEmbedParams & {
+            text?: string | string[];
+        };
+        const inputText = params.input ?? legacyParams.text;
 
         if (!inputText) {
             throw new Error('Either input or text parameter must be provided');
         }
 
         // Access optional abortController directly for consistency
-        const abortController: AbortController | undefined = (params as any)
-            .abortController;
+        const abortController = params.abortController;
         if (abortController?.signal.aborted) {
             throw new Error('Aborted');
         }
@@ -320,12 +330,7 @@ export class OpenAIHandler implements IAIHandler {
             systemPromptLength: params.systemPrompt?.length || 0,
             hasImages: !!params.images?.length,
         });
-        const unsafe = params as any;
-        const externalAbort: AbortController = unsafe.abortController;
-
-        const onProgress = unsafe.onProgress as
-            | ((c: string, a: string) => void)
-            | undefined;
+        const { abortController: externalAbort, onProgress } = params;
 
         this.ensureNotAborted(externalAbort);
 

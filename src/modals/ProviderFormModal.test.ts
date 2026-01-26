@@ -1,5 +1,5 @@
 import type { Mock } from 'vitest';
-import { App } from 'obsidian';
+import { App, Platform } from 'obsidian';
 import { ProviderFormModal } from './ProviderFormModal';
 import AIProvidersPlugin from '../main';
 import { IAIProvider } from '@obsidian-ai-providers/sdk';
@@ -32,6 +32,7 @@ describe('ProviderFormModal', () => {
     let provider: IAIProvider;
 
     beforeEach(() => {
+        (Platform as any).isMobileApp = false;
         app = new App();
         plugin = new AIProvidersPlugin(app, {
             id: 'test-plugin',
@@ -60,6 +61,10 @@ describe('ProviderFormModal', () => {
 
         onSaveMock = vi.fn();
         modal = new ProviderFormModal(app, plugin, provider, onSaveMock, true);
+    });
+
+    afterEach(() => {
+        (Platform as any).isMobileApp = false;
     });
 
     it('should render form elements correctly', () => {
@@ -245,6 +250,61 @@ describe('ProviderFormModal', () => {
         expect(
             modal.contentEl.querySelector('[data-testid="model-input"]')
         ).toBeFalsy();
+    });
+
+    it('should use select for providers with model fetching on mobile', () => {
+        (Platform as any).isMobileApp = true;
+        provider.availableModels = ['model-a'];
+        provider.model = '';
+        modal.onOpen();
+
+        expect(
+            modal.contentEl.querySelector('[data-testid="model-select"]')
+        ).toBeTruthy();
+        expect(
+            modal.contentEl.querySelector(
+                '[data-testid="model-combobox-input"]'
+            )
+        ).toBeFalsy();
+        expect(
+            modal.contentEl.querySelector(
+                '[data-testid="refresh-models-button"]'
+            )
+        ).toBeTruthy();
+    });
+
+    it('updates model when using mobile select', () => {
+        (Platform as any).isMobileApp = true;
+        provider.availableModels = ['model-a', 'model-b'];
+        provider.model = '';
+        modal.onOpen();
+
+        const select = getElement<HTMLSelectElement>(
+            modal.contentEl,
+            '[data-testid="model-select"]'
+        );
+        select.value = 'model-b';
+        select.dispatchEvent(new Event('change'));
+
+        expect(provider.model).toBe('model-b');
+    });
+
+    it('includes current model when it is missing from mobile select list', () => {
+        (Platform as any).isMobileApp = true;
+        provider.availableModels = ['model-a'];
+        provider.model = 'custom-model';
+        modal.onOpen();
+
+        const select = getElement<HTMLSelectElement>(
+            modal.contentEl,
+            '[data-testid="model-select"]'
+        );
+        const options = Array.from(select.querySelectorAll('option'));
+
+        expect(options.some(option => option.value === 'custom-model')).toBe(
+            true
+        );
+        expect(select.value).toBe('custom-model');
     });
 
     it('updates model when combobox selection changes', async () => {

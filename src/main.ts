@@ -1,4 +1,5 @@
 import { Plugin, addIcon } from 'obsidian';
+import type { App } from 'obsidian';
 import { IAIProvidersPluginSettings } from '@obsidian-ai-providers/sdk';
 import { DEFAULT_SETTINGS, AIProvidersSettingTab } from './settings';
 import { AIProvidersService } from './AIProvidersService';
@@ -25,6 +26,10 @@ import {
     cerebrasIcon,
     zaiIcon,
 } from './utils/icons';
+
+type AppWithAIProviders = App & {
+    aiProviders?: AIProvidersService;
+};
 
 export default class AIProvidersPlugin extends Plugin {
     settings!: IAIProvidersPluginSettings;
@@ -71,7 +76,8 @@ export default class AIProvidersPlugin extends Plugin {
         if (this.aiProviders) {
             await this.aiProviders.cleanup();
         }
-        delete (this.app as any).aiProviders;
+        const appWithProviders = this.app as AppWithAIProviders;
+        delete appWithProviders.aiProviders;
     }
 
     async loadSettings() {
@@ -99,7 +105,8 @@ export default class AIProvidersPlugin extends Plugin {
         }
 
         this.aiProviders = new AIProvidersService(this.app, this);
-        (this.app as any).aiProviders = this.aiProviders;
+        const appWithProviders = this.app as AppWithAIProviders;
+        appWithProviders.aiProviders = this.aiProviders;
 
         // Reinitialize cache if workspace is ready
         if (this.app.workspace.layoutReady) {

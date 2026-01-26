@@ -98,7 +98,9 @@ export class AIProvidersSettingTab extends PluginSettingTab {
     async saveProvider(provider: IAIProvider) {
         const validation = this.validateProvider(provider);
         if (!validation.isValid) {
-            new Notice(validation.error!);
+            if (validation.error) {
+                new Notice(validation.error);
+            }
             return;
         }
 
@@ -199,7 +201,7 @@ export class AIProvidersSettingTab extends PluginSettingTab {
                     'ai-providers-provider-icon'
                 );
                 setIcon(iconEl, `ai-providers-${provider.type}`);
-                setting.nameEl.prepend(iconEl as any);
+                setting.nameEl.prepend(iconEl as unknown as Node);
 
                 // Add model pill if model is selected
                 if (provider.model) {
@@ -208,7 +210,7 @@ export class AIProvidersSettingTab extends PluginSettingTab {
                     );
                     modelPill.textContent = provider.model;
                     modelPill.setAttribute('data-testid', 'model-pill');
-                    setting.nameEl.after(modelPill as any);
+                    setting.nameEl.after(modelPill as unknown as Node);
                 }
 
                 setting

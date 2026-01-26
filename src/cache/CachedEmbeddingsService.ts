@@ -1,4 +1,7 @@
-import { IAIProvidersEmbedParams } from '@obsidian-ai-providers/sdk';
+import {
+    IAIProvider,
+    IAIProvidersEmbedParams,
+} from '@obsidian-ai-providers/sdk';
 import { embeddingsCache } from './EmbeddingsCache';
 import { logger } from '../utils/logger';
 
@@ -26,8 +29,7 @@ export class CachedEmbeddingsService {
             return this.embedFunction(params);
         }
 
-        const abortController: AbortController | undefined = (params as any)
-            .abortController;
+        const abortController = params.abortController;
         if (abortController?.signal.aborted) {
             throw new Error('Aborted');
         }
@@ -53,7 +55,13 @@ export class CachedEmbeddingsService {
         }
 
         params.onProgress?.(chunks);
-        return chunks.map(content => chunksMap.get(content)!);
+        return chunks.map(content => {
+            const embedding = chunksMap.get(content);
+            if (!embedding) {
+                throw new Error('Missing embedding for chunk');
+            }
+            return embedding;
+        });
     }
 
     private async embedAndCacheChunks(
@@ -62,8 +70,7 @@ export class CachedEmbeddingsService {
         chunksMap: Map<string, number[]>,
         cacheKey: string
     ) {
-        const abortController: AbortController | undefined = (params as any)
-            .abortController;
+        const abortController = params.abortController;
         if (abortController?.signal.aborted) {
             throw new Error('Aborted');
         }
@@ -100,7 +107,7 @@ export class CachedEmbeddingsService {
 
     private async saveCachedChunks(
         cacheKey: string,
-        provider: any,
+        provider: IAIProvider,
         chunksMap: Map<string, number[]>
     ): Promise<void> {
         if (!provider.model) return;

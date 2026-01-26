@@ -9,6 +9,10 @@ export class App {
     }
 }
 
+export const Platform = {
+    isMobileApp: false,
+};
+
 export class Workspace {
     onLayoutReady(callback: () => void): void {
         // In tests, execute callback immediately

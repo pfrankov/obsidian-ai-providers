@@ -65,6 +65,11 @@
     text-overflow: ellipsis;
 }
 
+.ai-providers-model-input select {
+    width: 100%;
+    text-overflow: ellipsis;
+}
+
 .ai-providers-main-interface .setting-item {
     overflow: hidden;
 }

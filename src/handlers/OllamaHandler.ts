@@ -24,6 +24,18 @@ const EMBEDDING_CONTEXT_LENGTH = 2048;
 const CONTEXT_BUFFER_MULTIPLIER = 1.2; // 20% buffer
 type TextContentBlock = Extract<IContentBlock, { type: 'text' }>;
 type ImageContentBlock = Extract<IContentBlock, { type: 'image_url' }>;
+type OllamaChatMessage = { role: string; content: string; images?: string[] };
+type OllamaStreamChunk = {
+    message?: { content?: string };
+    done?: boolean;
+    total_duration?: number;
+    context?: number[];
+};
+type OllamaClientConfig = {
+    host?: string;
+    fetch?: typeof fetch;
+    headers?: Record<string, string>;
+};
 
 export class OllamaHandler implements IAIHandler {
     private modelInfoCache: Map<string, ModelInfo>;
@@ -42,11 +54,11 @@ export class OllamaHandler implements IAIHandler {
 
     private getClient(
         provider: IAIProvider,
-        fetch: typeof electronFetch | typeof obsidianFetch
+        fetchImpl: typeof electronFetch | typeof obsidianFetch
     ): Ollama {
-        const clientConfig: any = {
+        const clientConfig: OllamaClientConfig = {
             host: provider.url,
-            fetch,
+            fetch: fetchImpl as typeof fetch,
         };
 
         if (provider.apiKey) {
@@ -79,10 +91,12 @@ export class OllamaHandler implements IAIHandler {
             this.settings.useNativeFetch ? fetch : obsidianFetch
         );
         try {
-            let config: any = { model: modelName };
-            if (provider.type === 'ollama-openwebui') {
-                config = { name: modelName };
-            }
+            const config =
+                provider.type === 'ollama-openwebui'
+                    ? ({ name: modelName } as unknown as Parameters<
+                          Ollama['show']
+                      >[0])
+                    : { model: modelName };
             const response = await ollama.show(config);
             const modelInfo = this.getDefaultModelInfo();
 
@@ -262,7 +276,7 @@ export class OllamaHandler implements IAIHandler {
         onProgress,
         abortController,
     }: {
-        response: AsyncIterable<any>;
+        response: AsyncIterable<OllamaStreamChunk>;
         provider: IAIProvider;
         modelName: string;
         onProgress?: (chunk: string, accumulatedText: string) => void;
@@ -278,7 +292,11 @@ export class OllamaHandler implements IAIHandler {
                 onProgress?.(content, fullText);
             }
 
-            if (chunk.done && chunk.total_duration > 0) {
+            if (
+                chunk.done &&
+                typeof chunk.total_duration === 'number' &&
+                chunk.total_duration > 0
+            ) {
                 this.setModelInfoLastContextLength(
                     provider,
                     modelName,
@@ -291,14 +309,10 @@ export class OllamaHandler implements IAIHandler {
     }
 
     private prepareChatMessages(params: IAIProvidersExecuteParams): {
-        chatMessages: any[];
+        chatMessages: OllamaChatMessage[];
         extractedImages: string[];
     } {
-        const chatMessages: {
-            role: string;
-            content: string;
-            images?: string[];
-        }[] = [];
+        const chatMessages: OllamaChatMessage[] = [];
         const extractedImages: string[] = [];
 
         if ('messages' in params && params.messages) {
@@ -390,9 +404,9 @@ export class OllamaHandler implements IAIHandler {
             this.prepareChatMessages(params);
         const processedImages = this.normalizeImages(extractedImages);
 
-        const requestOptions: Record<string, any> = {
-            ...(params.options || {}),
-        };
+        const requestOptions: Record<string, unknown> = params.options
+            ? { ...params.options }
+            : {};
 
         if (processedImages.length === 0) {
             const inputLength = chatMessages.reduce(
@@ -434,14 +448,16 @@ export class OllamaHandler implements IAIHandler {
     }
 
     async embed(params: IAIProvidersEmbedParams): Promise<number[][]> {
-        const inputText = params.input ?? (params as any).text;
+        const legacyParams = params as IAIProvidersEmbedParams & {
+            text?: string | string[];
+        };
+        const inputText = params.input ?? legacyParams.text;
 
         if (!inputText) {
             throw new Error('Either input or text parameter must be provided');
         }
 
-        const abortController: AbortController | undefined = (params as any)
-            .abortController;
+        const abortController = params.abortController;
         this.ensureNotAborted(abortController);
 
         const modelName = params.provider.model || '';
@@ -501,12 +517,7 @@ export class OllamaHandler implements IAIHandler {
     }
 
     async execute(params: IAIProvidersExecuteParams): Promise<string> {
-        const unsafe = params as any; // access optional callbacks/abortController
-        const externalAbort: AbortController | undefined =
-            unsafe.abortController;
-        const onProgress = unsafe.onProgress as
-            | ((c: string, acc: string) => void)
-            | undefined;
+        const { abortController: externalAbort, onProgress } = params;
 
         this.ensureNotAborted(externalAbort);
 

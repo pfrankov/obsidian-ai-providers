@@ -15,7 +15,7 @@ class Logger {
         this.enabled = value;
     }
 
-    private log(level: LogLevel, ...args: any[]) {
+    private log(level: LogLevel, ...args: unknown[]) {
         if (!this.enabled) return;
 
         const timestamp = new Date().toISOString();
@@ -37,19 +37,19 @@ class Logger {
         }
     }
 
-    debug(...args: any[]) {
+    debug(...args: unknown[]) {
         this.log('debug', ...args);
     }
 
-    info(...args: any[]) {
+    info(...args: unknown[]) {
         this.log('info', ...args);
     }
 
-    warn(...args: any[]) {
+    warn(...args: unknown[]) {
         this.log('warn', ...args);
     }
 
-    error(...args: any[]) {
+    error(...args: unknown[]) {
         this.log('error', ...args);
     }
 }

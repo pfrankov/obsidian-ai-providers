@@ -35,9 +35,23 @@
     },
     "overrides": [
       {
-        "files": ["**/*.test.ts", "**/*.spec.ts", "test-utils/**/*.ts"],
+        "files": [
+          "**/*.test.ts",
+          "**/*.spec.ts",
+          "test-utils/**/*.ts",
+          "__mocks__/**/*.ts",
+          "vitest.setup.ts"
+        ],
         "rules": {
-          "sonarjs/cognitive-complexity": "off"
+          "sonarjs/cognitive-complexity": "off",
+          "@typescript-eslint/no-explicit-any": "off",
+          "@typescript-eslint/no-non-null-assertion": "off"
+        }
+      },
+      {
+        "files": ["**/*.d.ts"],
+        "rules": {
+          "@typescript-eslint/no-explicit-any": "off"
         }
       }
     ]

@@ -269,4 +269,22 @@ describe('CachedEmbeddingsService', () => {
 
         expect(onProgress).toHaveBeenCalledWith(['test text']);
     });
+
+    it('throws when a chunk embedding is missing', async () => {
+        (service as any).generateCacheKey = vi
+            .fn()
+            .mockResolvedValue('embed:test-provider:test-model');
+        (service as any).loadCachedChunks = vi
+            .fn()
+            .mockResolvedValue(new Map());
+        (service as any).embedAndCacheChunks = vi.fn();
+
+        await expect(
+            service.embedWithCache({
+                provider: mockProvider,
+                input: ['missing'],
+                chunks: ['missing'],
+            })
+        ).rejects.toThrow('Missing embedding for chunk');
+    });
 });

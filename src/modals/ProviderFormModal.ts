@@ -3,6 +3,7 @@ import {
     Modal,
     Setting,
     Notice,
+    Platform,
     AbstractInputSuggest,
     TextComponent,
     prepareFuzzySearch,
@@ -158,16 +159,10 @@ class ModelSuggest extends AbstractInputSuggest<string> {
         }
 
         if (trimmedQuery.length < this.minQueryLength) {
-            const matches: string[] = [];
             const lowerQuery = trimmedQuery.toLowerCase();
-            for (const model of this.models) {
-                if (model.toLowerCase().includes(lowerQuery)) {
-                    matches.push(model);
-                    if (matches.length >= this.limit) {
-                        break;
-                    }
-                }
-            }
+            const matches = this.models
+                .filter(model => model.toLowerCase().includes(lowerQuery))
+                .slice(0, this.limit);
             this.lastQuery = trimmedQuery;
             this.lastMatches = matches;
             return matches;
@@ -178,23 +173,27 @@ class ModelSuggest extends AbstractInputSuggest<string> {
             trimmedQuery.startsWith(this.lastQuery);
         const candidates = reuseCandidates ? this.lastMatches : this.models;
         const fuzzySearch = prepareFuzzySearch(trimmedQuery);
-        const matches: {
-            model: string;
-            matches: SearchMatches;
-            score: number;
-        }[] = [];
-
-        candidates.forEach(model => {
-            const match = fuzzySearch(model);
-            if (!match) return;
-            matches.push({
-                model,
-                matches: match.matches,
-                score: match.score,
-            });
-        });
-
-        matches.sort((a, b) => b.score - a.score);
+        const matches = candidates
+            .map(model => {
+                const match = fuzzySearch(model);
+                return match
+                    ? {
+                          model,
+                          matches: match.matches,
+                          score: match.score,
+                      }
+                    : null;
+            })
+            .filter(
+                (
+                    item
+                ): item is {
+                    model: string;
+                    matches: SearchMatches;
+                    score: number;
+                } => Boolean(item)
+            )
+            .sort((a, b) => b.score - a.score);
         this.lastQuery = trimmedQuery;
         this.lastMatches = matches.map(item => item.model);
 
@@ -327,6 +326,36 @@ export class ProviderFormModal extends Modal {
         const inputWrapper = modelSetting.controlEl.createDiv(
             'ai-providers-model-input'
         );
+
+        if (Platform.isMobileApp) {
+            const selectEl = inputWrapper.createEl(
+                'select'
+            ) as HTMLSelectElement;
+            selectEl.setAttribute('data-testid', 'model-select');
+            selectEl.disabled = isDisabled;
+
+            const placeholderOption = selectEl.createEl('option', {
+                text: placeholder,
+            }) as HTMLOptionElement;
+            placeholderOption.value = '';
+            const currentModel = this.provider.model || '';
+            const optionValues = currentModel
+                ? [currentModel, ...models]
+                : models;
+            Array.from(new Set(optionValues)).forEach(model => {
+                const option = selectEl.createEl('option', {
+                    text: model,
+                }) as HTMLOptionElement;
+                option.value = model;
+            });
+
+            selectEl.value = currentModel;
+            selectEl.addEventListener('change', event => {
+                this.provider.model = (event.target as HTMLSelectElement).value;
+            });
+            return;
+        }
+
         const input = new TextComponent(inputWrapper);
 
         input.setPlaceholder(placeholder);

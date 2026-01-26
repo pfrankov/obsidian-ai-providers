@@ -25,6 +25,20 @@ describe('I18n', () => {
         );
     });
 
+    it('warns when nested key targets a string value', () => {
+        const warnSpy = vi.spyOn(logger, 'warn');
+        expect(I18n.t('settings.save.extra')).toBe('settings.save.extra');
+        expect(warnSpy).toHaveBeenCalledWith(
+            'Translation missing: settings.save.extra'
+        );
+    });
+
+    it('warns when translation resolves to an object', () => {
+        const warnSpy = vi.spyOn(logger, 'warn');
+        expect(I18n.t('settings')).toBe('settings');
+        expect(warnSpy).toHaveBeenCalledWith('Translation missing: settings');
+    });
+
     it('supports interpolation params', () => {
         const result = I18n.t('settings.deleteConfirmation', { name: 'Test' });
         expect(result).toContain('Test');

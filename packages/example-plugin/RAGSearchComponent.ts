@@ -1,5 +1,9 @@
 import { App, Setting, TFile, Notice } from 'obsidian';
-import { IAIProvidersService, IAIProvider } from '@obsidian-ai-providers/sdk';
+import {
+    IAIProvidersService,
+    IAIProvider,
+    IAIProvidersRetrievalResult,
+} from '@obsidian-ai-providers/sdk';
 
 export class RAGSearchComponent {
     private selectedFiles = new Set<string>();
@@ -53,7 +57,10 @@ export class RAGSearchComponent {
         const filesList = container.createEl('div');
         filesList.addClass('rag-files-list');
         files.forEach(file => this.createFileCheckbox(filesList, file));
-        (container as any)._filesList = filesList;
+        const containerWithList = container as HTMLElement & {
+            _filesList?: HTMLElement;
+        };
+        containerWithList._filesList = filesList;
     }
 
     private createFileCheckbox(parent: HTMLElement, file: TFile): void {
@@ -136,7 +143,10 @@ export class RAGSearchComponent {
 
         const resultsContainer = containerEl.querySelector(
             '.rag-results-container'
-        ) as unknown as HTMLElement;
+        );
+        if (!(resultsContainer instanceof HTMLElement)) {
+            throw new Error('Results container not found');
+        }
         resultsContainer.empty();
 
         // Create progress display element
@@ -187,17 +197,24 @@ export class RAGSearchComponent {
 
             this.displayResults(resultsContainer, results);
         } catch (error) {
+            const errorMessage =
+                error instanceof Error ? error.message : String(error);
             const errorDiv = resultsContainer.createEl('div');
             errorDiv.addClass('callout');
             errorDiv.addClass('callout-error');
-            errorDiv.createEl('p', { text: `Search failed: ${error.message}` });
+            errorDiv.createEl('p', {
+                text: `Search failed: ${errorMessage}`,
+            });
         } finally {
             buttonEl.textContent = originalText;
             buttonEl.disabled = false;
         }
     }
 
-    private displayResults(container: HTMLElement, results: any[]): void {
+    private displayResults(
+        container: HTMLElement,
+        results: IAIProvidersRetrievalResult[]
+    ): void {
         if (!results.length) {
             const noResults = container.createEl('div');
             noResults.addClass('callout');
@@ -211,10 +228,12 @@ export class RAGSearchComponent {
 
         const summary = container.createEl('div');
         summary.addClass('rag-results-summary');
-        const uniqueFiles = new Set(results.map(r => r.document.meta?.fileName))
-            .size;
+        const uniqueFiles = new Set(
+            results.map(result => result.document.meta?.fileName)
+        ).size;
         const avgScore =
-            results.reduce((sum, r) => sum + r.score, 0) / results.length;
+            results.reduce((sum, result) => sum + result.score, 0) /
+            results.length;
 
         summary.createEl('h4', { text: `🎯 Found ${results.length} chunks` });
         const summaryP = summary.createEl('p', {
@@ -227,12 +246,18 @@ export class RAGSearchComponent {
         );
     }
 
-    private groupByFile(results: any[]): [string, any[]][] {
-        const grouped = new Map<string, any[]>();
+    private groupByFile(
+        results: IAIProvidersRetrievalResult[]
+    ): [string, IAIProvidersRetrievalResult[]][] {
+        const grouped = new Map<string, IAIProvidersRetrievalResult[]>();
         results.forEach(result => {
             const fileName = result.document.meta?.fileName || 'Unknown';
-            if (!grouped.has(fileName)) grouped.set(fileName, []);
-            grouped.get(fileName)!.push(result);
+            const existing = grouped.get(fileName);
+            if (existing) {
+                existing.push(result);
+                return;
+            }
+            grouped.set(fileName, [result]);
         });
         return Array.from(grouped.entries()).sort(
             ([, a], [, b]) =>
@@ -244,7 +269,7 @@ export class RAGSearchComponent {
     private renderFileCard(
         container: HTMLElement,
         fileName: string,
-        chunks: any[]
+        chunks: IAIProvidersRetrievalResult[]
     ): void {
         const card = container.createEl('div');
         card.addClass('rag-file-card');

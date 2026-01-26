@@ -21,6 +21,12 @@ const DEFAULT_MAX_TOKENS = 1024;
 
 type AnthropicImageSource = Base64ImageSource;
 type AnthropicImageBlock = Extract<ContentBlockParam, { type: 'image' }>;
+type AnthropicRequestOptions = {
+    max_tokens?: number;
+    temperature?: number;
+    top_p?: number;
+    stop?: string[];
+};
 
 export class AnthropicHandler implements IAIHandler {
     private fetchSelector: FetchSelector;
@@ -58,7 +64,7 @@ export class AnthropicHandler implements IAIHandler {
         });
     }
 
-    private mapOptions(options?: Record<string, any>): {
+    private mapOptions(options?: AnthropicRequestOptions): {
         max_tokens: number;
         temperature?: number;
         top_p?: number;
@@ -166,14 +172,21 @@ export class AnthropicHandler implements IAIHandler {
         if ('messages' in params && params.messages) {
             params.messages.forEach(msg => {
                 const contentBlocks = this.normalizeContent(
-                    msg.content as any,
+                    msg.content,
                     msg.images
                 );
 
                 if (msg.role === 'system') {
                     const systemText = contentBlocks
-                        .filter(block => block.type === 'text')
-                        .map(block => (block as any).text)
+                        .filter(
+                            (
+                                block
+                            ): block is Extract<
+                                ContentBlockParam,
+                                { type: 'text' }
+                            > => block.type === 'text'
+                        )
+                        .map(block => block.text)
                         .join('\n')
                         .trim();
                     if (systemText) {
@@ -216,12 +229,11 @@ export class AnthropicHandler implements IAIHandler {
     }
 
     private extractTextFromEvent(event: RawMessageStreamEvent): string | null {
-        if (
-            event.type === 'content_block_delta' &&
-            'text' in event.delta &&
-            (event.delta as any).text
-        ) {
-            return (event.delta as any).text as string;
+        if (event.type === 'content_block_delta') {
+            const delta = event.delta as { text?: string };
+            if (typeof delta.text === 'string') {
+                return delta.text;
+            }
         }
         return null;
     }
@@ -285,7 +297,9 @@ export class AnthropicHandler implements IAIHandler {
 
         let fullText = '';
 
-        for await (const event of stream as any as AsyncIterable<RawMessageStreamEvent>) {
+        const iterable =
+            stream as unknown as AsyncIterable<RawMessageStreamEvent>;
+        for await (const event of iterable) {
             this.ensureNotAborted(abortController);
             const textChunk = this.extractTextFromEvent(event);
             if (textChunk) {
@@ -298,12 +312,7 @@ export class AnthropicHandler implements IAIHandler {
     }
 
     async execute(params: IAIProvidersExecuteParams): Promise<string> {
-        const unsafeParams = params as any;
-        const abortController: AbortController | undefined =
-            unsafeParams.abortController;
-        const onProgress = unsafeParams.onProgress as
-            | ((chunk: string, acc: string) => void)
-            | undefined;
+        const { abortController, onProgress } = params;
 
         this.ensureNotAborted(abortController);
 
