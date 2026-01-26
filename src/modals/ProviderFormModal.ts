@@ -114,6 +114,13 @@ interface ModelSuggestOptions {
     onSelect: (value: string) => void;
 }
 
+interface ModelControlState {
+    models: string[];
+    currentModel: string;
+    isDisabled: boolean;
+    placeholder: string;
+}
+
 class ModelSuggest extends AbstractInputSuggest<string> {
     private models: string[];
     private onSelectValue: (value: string) => void;
@@ -261,6 +268,25 @@ export class ProviderFormModal extends Modal {
         return I18n.t('settings.modelDesc');
     }
 
+    private getModelControlState(): ModelControlState {
+        const models = this.provider.availableModels || [];
+        const hasModels = models.length > 0;
+        const isDisabled = this.isLoadingModels || !hasModels;
+        const placeholder = this.isLoadingModels
+            ? I18n.t('settings.loadingModels')
+            : hasModels
+              ? I18n.t('settings.modelSearchPlaceholder')
+              : I18n.t('settings.noModelsAvailable');
+        const currentModel = this.provider.model || '';
+
+        return {
+            models,
+            currentModel,
+            isDisabled,
+            placeholder,
+        };
+    }
+
     private getDefaultName(type: AIProviderType): string {
         return PROVIDER_CONFIGS[type].name;
     }
@@ -288,14 +314,50 @@ export class ProviderFormModal extends Modal {
             .setName(I18n.t('settings.model'))
             .setDesc(this.getModelDescription(forceTextMode));
 
+        this.modelSuggest?.close();
+        this.modelSuggest = undefined;
+
         if (forceTextMode) {
             this.createTextInput(modelSetting);
-        } else {
-            this.createComboBox(modelSetting);
-            this.createRefresh(modelSetting);
+            this.setupDescription(modelSetting, true);
+            return modelSetting;
         }
 
-        this.setupDescription(modelSetting, forceTextMode);
+        const modelState = this.getModelControlState();
+
+        modelSetting.controlEl.addClass('ai-providers-model-control');
+        if (Platform.isMobileApp) {
+            modelSetting.controlEl.addClass(
+                'ai-providers-model-control--mobile'
+            );
+        }
+
+        if (Platform.isMobileApp) {
+            modelSetting.addDropdown(dropdown => {
+                dropdown.selectEl.setAttribute('data-testid', 'model-select');
+                dropdown.selectEl.addClass('dropdown');
+                dropdown.setDisabled(modelState.isDisabled);
+                dropdown.addOption('', modelState.placeholder);
+
+                const optionValues = modelState.currentModel
+                    ? [modelState.currentModel, ...modelState.models]
+                    : modelState.models;
+                Array.from(new Set(optionValues)).forEach(model => {
+                    dropdown.addOption(model, model);
+                });
+
+                dropdown.setValue(modelState.currentModel);
+                dropdown.onChange(value => {
+                    this.provider.model = value;
+                });
+                return dropdown;
+            });
+        } else {
+            this.createComboBox(modelSetting, modelState);
+        }
+
+        this.createRefresh(modelSetting);
+        this.setupDescription(modelSetting, false);
         return modelSetting;
     }
 
@@ -309,57 +371,18 @@ export class ProviderFormModal extends Modal {
         });
     }
 
-    private createComboBox(modelSetting: Setting) {
-        const models = this.provider.availableModels || [];
-        const hasModels = models.length > 0;
-        const isDisabled = this.isLoadingModels || !hasModels;
-        const placeholder = this.isLoadingModels
-            ? I18n.t('settings.loadingModels')
-            : hasModels
-              ? I18n.t('settings.modelSearchPlaceholder')
-              : I18n.t('settings.noModelsAvailable');
-
-        this.modelSuggest?.close();
-        this.modelSuggest = undefined;
-
-        modelSetting.controlEl.addClass('ai-providers-model-control');
+    private createComboBox(
+        modelSetting: Setting,
+        modelState: ModelControlState
+    ) {
+        const { models, currentModel, isDisabled, placeholder } = modelState;
         const inputWrapper = modelSetting.controlEl.createDiv(
             'ai-providers-model-input'
         );
-
-        if (Platform.isMobileApp) {
-            const selectEl = inputWrapper.createEl(
-                'select'
-            ) as HTMLSelectElement;
-            selectEl.setAttribute('data-testid', 'model-select');
-            selectEl.disabled = isDisabled;
-
-            const placeholderOption = selectEl.createEl('option', {
-                text: placeholder,
-            }) as HTMLOptionElement;
-            placeholderOption.value = '';
-            const currentModel = this.provider.model || '';
-            const optionValues = currentModel
-                ? [currentModel, ...models]
-                : models;
-            Array.from(new Set(optionValues)).forEach(model => {
-                const option = selectEl.createEl('option', {
-                    text: model,
-                }) as HTMLOptionElement;
-                option.value = model;
-            });
-
-            selectEl.value = currentModel;
-            selectEl.addEventListener('change', event => {
-                this.provider.model = (event.target as HTMLSelectElement).value;
-            });
-            return;
-        }
-
         const input = new TextComponent(inputWrapper);
 
         input.setPlaceholder(placeholder);
-        input.setValue(this.provider.model || '');
+        input.setValue(currentModel);
         input.setDisabled(isDisabled);
         input.onChange(value => {
             this.provider.model = value;
@@ -369,7 +392,7 @@ export class ProviderFormModal extends Modal {
         input.inputEl.setAttribute('data-testid', 'model-combobox-input');
         input.inputEl.setAttribute('role', 'combobox');
         input.inputEl.setAttribute('aria-autocomplete', 'list');
-        input.inputEl.title = this.provider.model || '';
+        input.inputEl.title = currentModel;
 
         if (isDisabled) {
             return;
@@ -391,6 +414,7 @@ export class ProviderFormModal extends Modal {
                 .setIcon('refresh-cw')
                 .setTooltip(I18n.t('settings.refreshModelsList'));
 
+            button.buttonEl.addClass('ai-providers-model-refresh');
             button.buttonEl.setAttribute(
                 'data-testid',
                 'refresh-models-button'
