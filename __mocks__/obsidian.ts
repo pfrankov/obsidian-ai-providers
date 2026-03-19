@@ -1,11 +1,29 @@
 export class App {
     workspace: Workspace;
     vault: Vault;
+    secretStorage: SecretStorage;
     appId = 'test-vault-id';
     
     constructor() {
         this.workspace = new Workspace();
         this.vault = new Vault();
+        this.secretStorage = new SecretStorage();
+    }
+}
+
+export class SecretStorage {
+    private secrets = new Map<string, string>();
+
+    async getSecret(key: string): Promise<string | null> {
+        return this.secrets.get(key) ?? null;
+    }
+
+    async setSecret(key: string, value: string): Promise<void> {
+        this.secrets.set(key, value);
+    }
+
+    async deleteSecret(key: string): Promise<void> {
+        this.secrets.delete(key);
     }
 }
 

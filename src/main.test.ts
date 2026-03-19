@@ -4,6 +4,7 @@ import AIProvidersPlugin from './main';
 import { DEFAULT_SETTINGS } from './settings';
 import { AIProvidersService } from './AIProvidersService';
 import { logger } from './utils/logger';
+import { IAIProvider } from '@obsidian-ai-providers/sdk';
 
 vi.mock('./AIProvidersService', () => ({
     AIProvidersService: vi.fn().mockImplementation(() => ({
@@ -25,12 +26,29 @@ describe('AIProvidersPlugin', () => {
     let app: any;
     let plugin: AIProvidersPlugin;
 
+    const createProvider = (
+        overrides: Partial<IAIProvider> = {}
+    ): IAIProvider => ({
+        id: 'provider-1',
+        name: 'Provider 1',
+        apiKey: 'secret-key',
+        url: 'https://example.com',
+        type: 'openai',
+        model: 'gpt-4o-mini',
+        ...overrides,
+    });
+
     beforeEach(() => {
         app = {
             workspace: {
                 layoutReady: false,
                 onLayoutReady: vi.fn(cb => cb()),
                 trigger: vi.fn(),
+            },
+            secretStorage: {
+                getSecret: vi.fn().mockResolvedValue(null),
+                setSecret: vi.fn().mockResolvedValue(undefined),
+                deleteSecret: vi.fn().mockResolvedValue(undefined),
             },
         };
 
@@ -50,12 +68,29 @@ describe('AIProvidersPlugin', () => {
     });
 
     it('loads settings and enables logger', async () => {
+        const provider = createProvider();
+        plugin.loadData = vi.fn().mockResolvedValue({
+            debugLogging: true,
+            providers: [provider],
+        });
+
         await plugin.loadSettings();
 
         expect(plugin.settings).toEqual(
             expect.objectContaining({
                 ...DEFAULT_SETTINGS,
                 debugLogging: true,
+                providers: [provider],
+            })
+        );
+        expect(app.secretStorage.setSecret).toHaveBeenCalled();
+        expect(plugin.saveData).toHaveBeenCalledWith(
+            expect.objectContaining({
+                providers: [
+                    expect.not.objectContaining({
+                        apiKey: expect.anything(),
+                    }),
+                ],
             })
         );
         expect(logger.setEnabled).toHaveBeenCalledWith(true);
@@ -72,15 +107,102 @@ describe('AIProvidersPlugin', () => {
     });
 
     it('saves settings and re-exposes providers', async () => {
-        plugin.settings = { ...DEFAULT_SETTINGS, providers: [] };
+        plugin.settings = {
+            ...DEFAULT_SETTINGS,
+            providers: [createProvider()],
+        };
         const exposeSpy = vi
             .spyOn(plugin, 'exposeAIProviders')
             .mockImplementation(() => {});
 
         await plugin.saveSettings();
 
-        expect(plugin.saveData).toHaveBeenCalledWith(plugin.settings);
+        expect(app.secretStorage.setSecret).toHaveBeenCalledWith(
+            expect.stringMatching(/^ai-providers-/),
+            'secret-key'
+        );
+        expect(plugin.saveData).toHaveBeenCalledWith(
+            expect.objectContaining({
+                providers: [
+                    expect.not.objectContaining({
+                        apiKey: expect.anything(),
+                    }),
+                ],
+            })
+        );
         expect(exposeSpy).toHaveBeenCalled();
+    });
+
+    it('hydrates providers from secret storage when data is already scrubbed', async () => {
+        const provider = createProvider();
+        plugin.loadData = vi.fn().mockResolvedValue({
+            providers: [{ ...provider, apiKey: undefined }],
+        });
+        app.secretStorage.getSecret = vi
+            .fn()
+            .mockResolvedValue(provider.apiKey);
+
+        await plugin.loadSettings();
+
+        expect(plugin.settings.providers?.[0].apiKey).toBe('secret-key');
+        expect(plugin.saveData).not.toHaveBeenCalled();
+    });
+
+    it('keeps plaintext apiKey in persisted data when secret storage is unavailable', async () => {
+        const provider = createProvider();
+        delete app.secretStorage;
+        plugin.settings = {
+            ...DEFAULT_SETTINGS,
+            providers: [provider],
+        };
+
+        await plugin.saveSettings();
+
+        expect(plugin.saveData).toHaveBeenCalledWith(
+            expect.objectContaining({
+                providers: [expect.objectContaining({ apiKey: 'secret-key' })],
+            })
+        );
+    });
+
+    it('deletes stored secrets for removed providers', async () => {
+        const keptProvider = createProvider();
+        const removedProvider = createProvider({
+            id: 'provider-2',
+            name: 'Provider 2',
+        });
+        plugin.loadData = vi.fn().mockResolvedValue({
+            providers: [keptProvider, removedProvider],
+        });
+
+        await plugin.loadSettings();
+
+        plugin.settings.providers = [keptProvider];
+        await plugin.saveSettings();
+
+        expect(app.secretStorage.deleteSecret).toHaveBeenCalledWith(
+            expect.stringMatching(/^ai-providers-/)
+        );
+    });
+
+    it('keeps plaintext apiKey when secret storage write fails', async () => {
+        const provider = createProvider();
+        app.secretStorage.setSecret = vi
+            .fn()
+            .mockRejectedValue(new Error('nope'));
+        plugin.settings = {
+            ...DEFAULT_SETTINGS,
+            providers: [provider],
+        };
+
+        await plugin.saveSettings();
+
+        expect(logger.warn).toHaveBeenCalled();
+        expect(plugin.saveData).toHaveBeenCalledWith(
+            expect.objectContaining({
+                providers: [expect.objectContaining({ apiKey: 'secret-key' })],
+            })
+        );
     });
 
     it('exposes providers and handles cleanup/reinit errors', async () => {
