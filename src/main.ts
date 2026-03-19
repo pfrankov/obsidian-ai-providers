@@ -238,6 +238,10 @@ export default class AIProvidersPlugin extends Plugin {
     private async hydrateProviderSecrets(): Promise<void> {
         const providers = await Promise.all(
             this.getProviders().map(async provider => {
+                if (typeof provider.apiKey === 'string') {
+                    return provider;
+                }
+
                 const storedApiKey = await this.readSecret(provider.id);
                 if (storedApiKey === null) {
                     return provider;
@@ -279,6 +283,7 @@ export default class AIProvidersPlugin extends Plugin {
         const providers = await Promise.all(
             this.getProviders().map(async provider => {
                 if (!provider.apiKey) {
+                    await this.deleteSecret(provider.id);
                     return this.omitApiKey(provider);
                 }
 

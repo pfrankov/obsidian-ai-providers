@@ -148,6 +148,22 @@ describe('AIProvidersPlugin', () => {
         expect(plugin.saveData).not.toHaveBeenCalled();
     });
 
+    it('does not hydrate stale secrets over a plaintext fallback apiKey', async () => {
+        const provider = createProvider({ apiKey: 'fallback-key' });
+        plugin.loadData = vi.fn().mockResolvedValue({
+            providers: [provider],
+        });
+        app.secretStorage.getSecret = vi.fn().mockResolvedValue('stale-secret');
+        app.secretStorage.setSecret = vi
+            .fn()
+            .mockRejectedValue(new Error('write failed'));
+
+        await plugin.loadSettings();
+
+        expect(plugin.settings.providers?.[0].apiKey).toBe('fallback-key');
+        expect(app.secretStorage.getSecret).not.toHaveBeenCalled();
+    });
+
     it('keeps plaintext apiKey in persisted data when secret storage is unavailable', async () => {
         const provider = createProvider();
         delete app.secretStorage;
@@ -182,6 +198,35 @@ describe('AIProvidersPlugin', () => {
 
         expect(app.secretStorage.deleteSecret).toHaveBeenCalledWith(
             expect.stringMatching(/^ai-providers-/)
+        );
+    });
+
+    it('deletes stored secrets when a provider apiKey is cleared', async () => {
+        const provider = createProvider();
+        plugin.loadData = vi.fn().mockResolvedValue({
+            providers: [provider],
+        });
+
+        await plugin.loadSettings();
+
+        app.secretStorage.deleteSecret.mockClear();
+        app.secretStorage.setSecret.mockClear();
+        plugin.settings.providers = [{ ...provider, apiKey: '' }];
+
+        await plugin.saveSettings();
+
+        expect(app.secretStorage.setSecret).not.toHaveBeenCalled();
+        expect(app.secretStorage.deleteSecret).toHaveBeenCalledWith(
+            expect.stringMatching(/^ai-providers-/)
+        );
+        expect(plugin.saveData).toHaveBeenCalledWith(
+            expect.objectContaining({
+                providers: [
+                    expect.not.objectContaining({
+                        apiKey: expect.anything(),
+                    }),
+                ],
+            })
         );
     });
 
