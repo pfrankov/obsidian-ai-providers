@@ -6,10 +6,12 @@ import { AIProvidersService } from './AIProvidersService';
 import { logger } from './utils/logger';
 
 vi.mock('./AIProvidersService', () => ({
-    AIProvidersService: vi.fn().mockImplementation(() => ({
-        initEmbeddingsCache: vi.fn().mockResolvedValue(undefined),
-        cleanup: vi.fn().mockResolvedValue(undefined),
-    })),
+    AIProvidersService: vi.fn().mockImplementation(function () {
+        return {
+            initEmbeddingsCache: vi.fn().mockResolvedValue(undefined),
+            cleanup: vi.fn().mockResolvedValue(undefined),
+        };
+    }),
 }));
 
 vi.mock('./utils/logger', () => ({
@@ -88,10 +90,14 @@ describe('AIProvidersPlugin', () => {
         const initEmbeddingsCache = vi
             .fn()
             .mockRejectedValue(new Error('cache fail'));
-        (AIProvidersService as unknown as Mock).mockImplementationOnce(() => ({
-            initEmbeddingsCache,
-            cleanup: vi.fn(),
-        }));
+        (AIProvidersService as unknown as Mock).mockImplementationOnce(
+            function () {
+                return {
+                    initEmbeddingsCache,
+                    cleanup: vi.fn(),
+                };
+            }
+        );
 
         plugin.aiProviders = { cleanup } as any;
         app.workspace.layoutReady = true;

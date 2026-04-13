@@ -7,7 +7,7 @@ interface AIProvidersExampleSettings {
 }
 
 export default class AIProvidersExamplePlugin extends Plugin {
-    settings: AIProvidersExampleSettings;
+    settings: AIProvidersExampleSettings = { mySetting: '' };
 
     async onload() {
         initAI(this.app, this, async () => {
@@ -18,8 +18,8 @@ export default class AIProvidersExamplePlugin extends Plugin {
 
 class SampleSettingTab extends PluginSettingTab {
     plugin: AIProvidersExamplePlugin;
-    selectedProvider: string;
-    selectedFile: string;
+    selectedProvider = '';
+    selectedFile = '';
     private ragSearchComponent: RAGSearchComponent;
 
     constructor(app: App, plugin: AIProvidersExamplePlugin) {
@@ -205,7 +205,7 @@ class SampleSettingTab extends PluginSettingTab {
                                     statusEl.addClass('mod-success');
                                 } catch (error) {
                                     const errorEl = resultEl.createEl('p', {
-                                        text: `Error: ${error.message}`,
+                                        text: `Error: ${(error as Error).message}`,
                                     });
                                     errorEl.addClass('mod-warning');
                                 } finally {

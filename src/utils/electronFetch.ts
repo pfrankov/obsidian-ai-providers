@@ -5,16 +5,25 @@ import { logger } from './logger';
 import { normalizeHeaders } from './normalizeHeaders';
 
 export async function electronFetch(
-    url: string,
-    options: RequestInit = {}
+    this: { controller?: AbortController } | void,
+    input: string | URL | Request,
+    init: RequestInit = {}
 ): Promise<Response> {
+    const url =
+        typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+    const options = init;
+
     // Convert headers to plain object and remove content-length
     const headers = normalizeHeaders(options.headers);
     delete headers['content-length'];
 
     const params: { controller?: AbortController } = {};
 
-    if (this && 'controller' in this) {
+    if (this && this.controller instanceof AbortController) {
         params.controller = this.controller;
     }
 

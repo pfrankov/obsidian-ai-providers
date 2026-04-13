@@ -32,7 +32,7 @@ vi.mock('./modals/ConfirmationModal', () => {
     return {
         ConfirmationModal: vi
             .fn()
-            .mockImplementation((app, message, onConfirm) => {
+            .mockImplementation(function (app, message, onConfirm) {
                 return {
                     app,
                     message,
@@ -46,10 +46,12 @@ vi.mock('./modals/ConfirmationModal', () => {
 });
 
 vi.mock('./modals/ProviderFormModal', () => ({
-    ProviderFormModal: vi.fn().mockImplementation(() => ({
-        open: vi.fn(),
-        close: vi.fn(),
-    })),
+    ProviderFormModal: vi.fn().mockImplementation(function () {
+        return {
+            open: vi.fn(),
+            close: vi.fn(),
+        };
+    }),
 }));
 
 // Mock handlers with common implementation
@@ -59,29 +61,39 @@ const mockHandlerImplementation = {
 };
 
 vi.mock('./handlers/OpenAIHandler', () => ({
-    OpenAIHandler: vi.fn().mockImplementation(() => mockHandlerImplementation),
+    OpenAIHandler: vi.fn().mockImplementation(function () {
+        return mockHandlerImplementation;
+    }),
 }));
 
 vi.mock('./handlers/OllamaHandler', () => ({
-    OllamaHandler: vi.fn().mockImplementation(() => mockHandlerImplementation),
+    OllamaHandler: vi.fn().mockImplementation(function () {
+        return mockHandlerImplementation;
+    }),
 }));
 
 // Mock AIProvidersService
 vi.mock('./AIProvidersService', () => {
     return {
-        AIProvidersService: vi.fn().mockImplementation((_app, settings) => ({
-            providers: settings?.providers || [],
-            version: 1,
-            handlers: {
-                openai: new OpenAIHandler(settings),
-                ollama: new OllamaHandler(settings),
-                gemini: new OpenAIHandler(settings),
-            },
-            embed: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]),
-            fetchModels: vi.fn().mockResolvedValue(['gpt-4', 'gpt-3.5-turbo']),
-            execute: vi.fn().mockResolvedValue('result'),
-            checkCompatibility: vi.fn(),
-        })),
+        AIProvidersService: vi
+            .fn()
+            .mockImplementation(function (_app, settings) {
+                return {
+                    providers: settings?.providers || [],
+                    version: 1,
+                    handlers: {
+                        openai: new OpenAIHandler(settings),
+                        ollama: new OllamaHandler(settings),
+                        gemini: new OpenAIHandler(settings),
+                    },
+                    embed: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]),
+                    fetchModels: vi
+                        .fn()
+                        .mockResolvedValue(['gpt-4', 'gpt-3.5-turbo']),
+                    execute: vi.fn().mockResolvedValue('result'),
+                    checkCompatibility: vi.fn(),
+                };
+            }),
     };
 });
 

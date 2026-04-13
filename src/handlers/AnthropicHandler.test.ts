@@ -27,18 +27,20 @@ vi.mock('../utils/logger', () => ({
 }));
 
 vi.mock('../utils/FetchSelector', () => ({
-    FetchSelector: vi.fn().mockImplementation(() => ({
-        execute: vi
-            .fn()
-            .mockImplementation(async (_provider, operation) =>
-                operation(vi.fn())
-            ),
-        request: vi
-            .fn()
-            .mockImplementation(async (_provider, operation) =>
-                operation(vi.fn())
-            ),
-    })),
+    FetchSelector: vi.fn().mockImplementation(function () {
+        return {
+            execute: vi
+                .fn()
+                .mockImplementation(async (_provider, operation) =>
+                    operation(vi.fn())
+                ),
+            request: vi
+                .fn()
+                .mockImplementation(async (_provider, operation) =>
+                    operation(vi.fn())
+                ),
+        };
+    }),
 }));
 
 const createHandler = () =>

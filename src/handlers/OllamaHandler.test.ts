@@ -8,7 +8,18 @@ import {
 import { Ollama } from 'ollama';
 import type { Mock } from 'vitest';
 
-vi.mock('ollama');
+vi.mock('ollama', () => ({
+    Ollama: vi.fn().mockImplementation(function () {
+        return {
+            list: vi.fn(),
+            generate: vi.fn(),
+            chat: vi.fn(),
+            embed: vi.fn(),
+            show: vi.fn(),
+            abort: vi.fn(),
+        };
+    }),
+}));
 
 const createHandler = () => {
     const handler = new OllamaHandler({
@@ -242,7 +253,9 @@ describe('OllamaHandler internal behaviors', () => {
         const handler = createHandler();
         const provider = { ...createMockProvider(), apiKey: 'secret-key' };
         const fetchFn = vi.fn();
-        (Ollama as unknown as Mock).mockImplementation(() => ({}));
+        (Ollama as unknown as Mock).mockImplementation(function () {
+            return {};
+        });
 
         (handler as any).getClient(provider, fetchFn);
 

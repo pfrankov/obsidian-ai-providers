@@ -7,10 +7,10 @@ import { obsidianFetch } from './obsidianFetch';
 import { Platform } from 'obsidian';
 import { logger } from './logger';
 
-export type FetchFunction =
-    | typeof electronFetch
-    | typeof obsidianFetch
-    | typeof fetch;
+export type FetchFunction = (
+    input: string | URL | Request,
+    init?: RequestInit
+) => Promise<Response>;
 
 /**
  * CORS error patterns for detection

@@ -6,11 +6,9 @@ import {
     IAIProvidersPluginSettings,
     IContentBlock,
 } from '@obsidian-ai-providers/sdk';
-import { electronFetch } from '../utils/electronFetch';
 import OpenAI from 'openai';
-import { obsidianFetch } from '../utils/obsidianFetch';
 import { logger } from '../utils/logger';
-import { FetchSelector } from '../utils/FetchSelector';
+import { FetchFunction, FetchSelector } from '../utils/FetchSelector';
 
 type ChatMessage = {
     role: string;
@@ -182,10 +180,7 @@ export class OpenAIHandler implements IAIHandler {
         return { appendText, isInThinkBlock };
     }
 
-    private getClient(
-        provider: IAIProvider,
-        fetch: typeof electronFetch | typeof obsidianFetch
-    ): OpenAI {
+    private getClient(provider: IAIProvider, fetchImpl: FetchFunction): OpenAI {
         const openai = new OpenAI({
             baseURL:
                 provider.url ||
@@ -194,7 +189,7 @@ export class OpenAIHandler implements IAIHandler {
                     : 'http://localhost:1234/v1'),
             apiKey: provider.apiKey || 'placeholder-key',
             dangerouslyAllowBrowser: true,
-            fetch: fetch as unknown as typeof fetch,
+            fetch: fetchImpl,
             defaultHeaders: {
                 'x-stainless-arch': null,
                 'x-stainless-lang': null,
@@ -220,7 +215,7 @@ export class OpenAIHandler implements IAIHandler {
         this.ensureNotAborted(abortController);
         const result = await this.fetchSelector.request(
             provider,
-            async (fetchImpl: typeof electronFetch | typeof obsidianFetch) => {
+            async (fetchImpl: FetchFunction) => {
                 this.ensureNotAborted(abortController);
                 const openai = this.getClient(provider, fetchImpl);
                 const response = await openai.models.list();
@@ -264,9 +259,7 @@ export class OpenAIHandler implements IAIHandler {
 
         for (const chunk of chunks) {
             this.ensureNotAborted(abortController);
-            const operation = async (
-                fetchImpl: typeof electronFetch | typeof obsidianFetch
-            ) => {
+            const operation = async (fetchImpl: FetchFunction) => {
                 const openai = this.getClient(params.provider, fetchImpl);
                 const response = await openai.embeddings.create(
                     {

@@ -60,7 +60,7 @@ export class AnthropicHandler implements IAIHandler {
             apiKey: provider.apiKey || 'placeholder-key',
             baseURL: provider.url || 'https://api.anthropic.com',
             dangerouslyAllowBrowser: true,
-            fetch: fetchImpl as unknown as typeof fetch,
+            fetch: fetchImpl,
         });
     }
 
@@ -304,7 +304,9 @@ export class AnthropicHandler implements IAIHandler {
             const textChunk = this.extractTextFromEvent(event);
             if (textChunk) {
                 fullText += textChunk;
-                onProgress && onProgress(textChunk, fullText);
+                if (onProgress) {
+                    onProgress(textChunk, fullText);
+                }
             }
         }
 
@@ -325,7 +327,9 @@ export class AnthropicHandler implements IAIHandler {
                         params,
                         client,
                         (chunk, acc) => {
-                            onProgress && onProgress(chunk, acc);
+                            if (onProgress) {
+                                onProgress(chunk, acc);
+                            }
                             this.ensureNotAborted(abortController);
                         },
                         abortController

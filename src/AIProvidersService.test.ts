@@ -33,11 +33,13 @@ vi.mock('./modals/ConfirmationModal', () => {
     return {
         ConfirmationModal: vi
             .fn()
-            .mockImplementation((_app, _message, onConfirm, onCancel) => ({
-                onConfirm,
-                onCancel,
-                open: vi.fn(),
-            })),
+            .mockImplementation(function (_app, _message, onConfirm, onCancel) {
+                return {
+                    onConfirm,
+                    onCancel,
+                    open: vi.fn(),
+                };
+            }),
     };
 });
 
@@ -383,8 +385,10 @@ describe('AIProvidersService', () => {
                     .mockImplementation(({ onProgress }: any) => {
                         return new Promise<string>(resolve => {
                             setTimeout(() => {
-                                onProgress && onProgress('Hel', 'Hel');
-                                onProgress && onProgress('lo', 'Hello');
+                                if (onProgress) {
+                                    onProgress('Hel', 'Hel');
+                                    onProgress('lo', 'Hello');
+                                }
                                 resolve('Hello');
                             }, 0);
                         });
@@ -476,19 +480,18 @@ describe('AIProvidersService', () => {
     });
 
     it('migrateProvider resolves false when canceled', async () => {
-        const { ConfirmationModal } = await import(
-            './modals/ConfirmationModal'
-        );
-        (ConfirmationModal as any).mockImplementationOnce(
-            (
-                _app: unknown,
-                _message: string,
-                _onConfirm?: () => void,
-                onCancel?: () => void
-            ) => ({
+        const { ConfirmationModal } =
+            await import('./modals/ConfirmationModal');
+        (ConfirmationModal as any).mockImplementationOnce(function (
+            _app: unknown,
+            _message: string,
+            _onConfirm?: () => void,
+            onCancel?: () => void
+        ) {
+            return {
                 open: vi.fn().mockImplementation(() => onCancel?.()),
-            })
-        );
+            };
+        });
 
         const result = await service.migrateProvider(mockProvider);
 
@@ -496,14 +499,17 @@ describe('AIProvidersService', () => {
     });
 
     it('migrateProvider saves provider on confirm', async () => {
-        const { ConfirmationModal } = await import(
-            './modals/ConfirmationModal'
-        );
-        (ConfirmationModal as any).mockImplementationOnce(
-            (_app: unknown, _message: string, onConfirm?: () => void) => ({
+        const { ConfirmationModal } =
+            await import('./modals/ConfirmationModal');
+        (ConfirmationModal as any).mockImplementationOnce(function (
+            _app: unknown,
+            _message: string,
+            onConfirm?: () => void
+        ) {
+            return {
                 open: vi.fn().mockImplementation(() => onConfirm?.()),
-            })
-        );
+            };
+        });
 
         const result = await service.migrateProvider(mockProvider);
 
@@ -514,14 +520,17 @@ describe('AIProvidersService', () => {
     it('migrateProvider initializes providers list when missing', async () => {
         mockPlugin.settings.providers = undefined;
 
-        const { ConfirmationModal } = await import(
-            './modals/ConfirmationModal'
-        );
-        (ConfirmationModal as any).mockImplementationOnce(
-            (_app: unknown, _message: string, onConfirm?: () => void) => ({
+        const { ConfirmationModal } =
+            await import('./modals/ConfirmationModal');
+        (ConfirmationModal as any).mockImplementationOnce(function (
+            _app: unknown,
+            _message: string,
+            onConfirm?: () => void
+        ) {
+            return {
                 open: vi.fn().mockImplementation(() => onConfirm?.()),
-            })
-        );
+            };
+        });
 
         await service.migrateProvider(mockProvider);
 

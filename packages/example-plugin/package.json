@@ -16,7 +16,7 @@
         "obsidian": "latest"
     },
     "devDependencies": {
-        "builtin-modules": "3.3.0",
-        "esbuild": "0.17.3"
+        "builtin-modules": "^5.0.0",
+        "esbuild": "^0.28.0"
     }
 }

@@ -10,6 +10,10 @@ export default defineConfig({
             obsidian: path.resolve(rootDir, '__mocks__/obsidian.ts'),
             electron: path.resolve(rootDir, '__mocks__/electron.ts'),
             idb: path.resolve(rootDir, '__mocks__/idb.js'),
+            '@obsidian-ai-providers/sdk': path.resolve(
+                rootDir,
+                'packages/sdk/index.ts'
+            ),
         },
     },
     test: {

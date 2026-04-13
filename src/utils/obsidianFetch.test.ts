@@ -119,6 +119,42 @@ describe('obsidianFetch', () => {
         expect(text).toBe('Not Found');
     });
 
+    it('supports URL instance as input', async () => {
+        const mockResponse: Partial<RequestUrlResponse> = {
+            status: 200,
+            text: 'ok',
+            headers: { 'content-type': 'text/plain' },
+        };
+        requestUrlMock.mockResolvedValue(mockResponse);
+
+        const input = new URL('https://api.example.com/url-object');
+        await obsidianFetch(input, { headers: {} });
+
+        expect(requestUrlMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: 'https://api.example.com/url-object',
+            })
+        );
+    });
+
+    it('supports Request instance as input', async () => {
+        const mockResponse: Partial<RequestUrlResponse> = {
+            status: 200,
+            text: 'ok',
+            headers: { 'content-type': 'text/plain' },
+        };
+        requestUrlMock.mockResolvedValue(mockResponse);
+
+        const input = new Request('https://api.example.com/request-object');
+        await obsidianFetch(input, { headers: {} });
+
+        expect(requestUrlMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: 'https://api.example.com/request-object',
+            })
+        );
+    });
+
     it('should pass through custom headers', async () => {
         const mockResponse: Partial<RequestUrlResponse> = {
             status: 200,

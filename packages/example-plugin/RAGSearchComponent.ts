@@ -75,9 +75,12 @@ export class RAGSearchComponent {
     }
 
     private toggleFile(path: string, selected: boolean): void {
-        selected
-            ? this.selectedFiles.add(path)
-            : this.selectedFiles.delete(path);
+        if (selected) {
+            this.selectedFiles.add(path);
+            return;
+        }
+
+        this.selectedFiles.delete(path);
     }
 
     private toggleAllFiles(

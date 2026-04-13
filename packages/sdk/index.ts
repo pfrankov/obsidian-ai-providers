@@ -142,7 +142,8 @@ export async function initAI(
             aiProviders.checkCompatibility(REQUIRED_AI_PROVIDERS_VERSION);
         } catch (error) {
             console.error(`AI Providers compatibility check failed: ${error}`);
-            if (error.code === 'version_mismatch') {
+            const compatibilityError = error as { code?: string };
+            if (compatibilityError.code === 'version_mismatch') {
                 plugin.addSettingTab(
                     new AIProvidersFallbackSettingsTab(app, plugin)
                 );

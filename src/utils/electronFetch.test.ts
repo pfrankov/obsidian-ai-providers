@@ -113,6 +113,65 @@ describe('electronFetch', () => {
         expect(response.status).toBe(200);
     });
 
+    it('supports URL instance as input', async () => {
+        const mockRequest = getMockRequest();
+
+        mockRequest.on.mockImplementation(
+            (event: string, callback: (...args: any[]) => void) => {
+                if (event === 'response') {
+                    setTimeout(() => {
+                        callback(mockResponse);
+                        const endCallback = mockResponse.on.mock.calls.find(
+                            (call: any) => call[0] === 'end'
+                        )?.[1];
+                        if (endCallback) {
+                            endCallback();
+                        }
+                    }, 0);
+                }
+            }
+        );
+
+        await electronFetch(new URL('https://api.example.com/url-object'), {
+            headers: {},
+        });
+
+        expect(remote.net.request).toHaveBeenCalledWith({
+            url: 'https://api.example.com/url-object',
+            method: 'GET',
+        });
+    });
+
+    it('supports Request instance as input', async () => {
+        const mockRequest = getMockRequest();
+
+        mockRequest.on.mockImplementation(
+            (event: string, callback: (...args: any[]) => void) => {
+                if (event === 'response') {
+                    setTimeout(() => {
+                        callback(mockResponse);
+                        const endCallback = mockResponse.on.mock.calls.find(
+                            (call: any) => call[0] === 'end'
+                        )?.[1];
+                        if (endCallback) {
+                            endCallback();
+                        }
+                    }, 0);
+                }
+            }
+        );
+
+        await electronFetch(
+            new Request('https://api.example.com/request-object'),
+            { headers: {} }
+        );
+
+        expect(remote.net.request).toHaveBeenCalledWith({
+            url: 'https://api.example.com/request-object',
+            method: 'GET',
+        });
+    });
+
     it('defaults status to 200 when response has no statusCode', async () => {
         const mockRequest = getMockRequest();
         mockResponse.statusCode = undefined;

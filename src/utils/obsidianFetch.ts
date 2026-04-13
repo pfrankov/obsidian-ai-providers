@@ -3,9 +3,17 @@ import { logger } from './logger';
 import { normalizeHeaders } from './normalizeHeaders';
 
 export const obsidianFetch = async (
-    url: string,
-    options: RequestInit = {}
+    input: string | URL | Request,
+    init: RequestInit = {}
 ): Promise<Response> => {
+    const url =
+        typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+    const options = init;
+
     // Convert headers to plain object and remove content-length
     const headers = normalizeHeaders(options.headers);
     delete headers['content-length'];

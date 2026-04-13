@@ -33,7 +33,7 @@ vi.mock('../utils/FetchSelector', async () => {
     >('../utils/FetchSelector');
     return {
         ...originalModule,
-        FetchSelector: vi.fn().mockImplementation(settings => {
+        FetchSelector: vi.fn().mockImplementation(function (settings) {
             const instance = new originalModule.FetchSelector(settings);
             instance.execute = vi
                 .fn()
@@ -219,6 +219,15 @@ describe('OpenAIHandler message mapping', () => {
         );
     });
 
+    it('passes fetch implementation directly into OpenAI client config', () => {
+        const handler = createHandler();
+        const fetchFn = vi.fn() as any;
+        const provider = createMockProvider();
+
+        const client = (handler as any).getClient(provider, fetchFn);
+        expect(client.config.fetch).toBe(fetchFn);
+    });
+
     it('uses placeholder apiKey when provider apiKey is missing', () => {
         const handler = createHandler();
         const fetchFn = vi.fn() as any;
@@ -296,13 +305,10 @@ describe('OpenAI CORS Handling', () => {
 
         vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
         vi.spyOn((handler as any).fetchSelector, 'request').mockImplementation(
-            async (
-                provider: IAIProvider,
-                operation: (client: any) => Promise<any>
-            ) => {
+            async (_provider: any, operation: any) => {
                 try {
                     return await operation(vi.fn());
-                } catch (error) {
+                } catch {
                     return await operation(vi.fn());
                 }
             }

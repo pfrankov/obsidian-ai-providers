@@ -1,5 +1,0 @@
-dist/
-packages/*/dist/
-benchmarks/
-coverage/
-node_modules/
