@@ -22,11 +22,22 @@ describe('RAGSearchComponent', () => {
         component = new RAGSearchComponent(createMockApp());
         mockProvider = { id: 'test', name: 'Test', type: 'openai' as const };
         mockAIProviders = {
-            version: 2,
+            version: 4,
             providers: [],
             fetchModels: vi.fn(),
             embed: vi.fn(),
             execute: vi.fn(),
+            toolsExecute: vi.fn(),
+            getModelCapabilities: vi.fn().mockReturnValue(null),
+            getModels: vi.fn().mockReturnValue([]),
+            checkModelCapabilities: vi
+                .fn()
+                .mockResolvedValue({
+                    text: false,
+                    embedding: false,
+                    tools: false,
+                    vision: false,
+                }),
             checkCompatibility: vi.fn(),
             migrateProvider: vi.fn(),
             retrieve: vi.fn().mockResolvedValue([]),

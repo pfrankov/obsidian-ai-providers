@@ -8,6 +8,7 @@ import { OpenAIHandler } from './handlers/OpenAIHandler';
 import { OllamaHandler } from './handlers/OllamaHandler';
 import { AIProvidersService } from './AIProvidersService';
 import { ProviderFormModal } from './modals/ProviderFormModal';
+import { logger } from './utils/logger';
 
 // Mock translations
 vi.mock('./i18n', () => ({
@@ -54,6 +55,18 @@ vi.mock('./modals/ProviderFormModal', () => ({
     }),
 }));
 
+vi.mock('./utils/logger', () => ({
+    logger: {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        configure: vi.fn(),
+        setEnabled: vi.fn(),
+        setChunkLoggingEnabled: vi.fn(),
+    },
+}));
+
 // Mock handlers with common implementation
 const mockHandlerImplementation = {
     fetchModels: vi.fn().mockResolvedValue(['model-1', 'model-2']),
@@ -91,6 +104,8 @@ vi.mock('./AIProvidersService', () => {
                         .fn()
                         .mockResolvedValue(['gpt-4', 'gpt-3.5-turbo']),
                     execute: vi.fn().mockResolvedValue('result'),
+                    toolsExecute: vi.fn(),
+                    getModelCapabilities: vi.fn().mockReturnValue(null),
                     checkCompatibility: vi.fn(),
                 };
             }),
@@ -446,6 +461,7 @@ describe('AIProvidersSettingTab', () => {
 
     it('updates developer settings toggles', async () => {
         (settingTab as any).isDeveloperMode = true;
+        plugin.settings.debugChunkLogging = true;
         settingTab.display();
 
         const toggles = Array.from(
@@ -453,21 +469,116 @@ describe('AIProvidersSettingTab', () => {
             el => el as unknown as HTMLInputElement
         );
         const debugToggle = toggles[1];
-        const nativeFetchToggle = toggles[2];
+        const chunkToggle = toggles[2];
+        const nativeFetchToggle = toggles[3];
 
         debugToggle.checked = true;
         debugToggle.dispatchEvent(new Event('change'));
+
+        chunkToggle.checked = true;
+        chunkToggle.dispatchEvent(new Event('change'));
 
         nativeFetchToggle.checked = true;
         nativeFetchToggle.dispatchEvent(new Event('change'));
 
         expect(plugin.settings.debugLogging).toBe(true);
+        expect(plugin.settings.debugChunkLogging).toBe(true);
         expect(plugin.settings.useNativeFetch).toBe(true);
+        expect(logger.configure).toHaveBeenCalled();
+        expect(logger.setChunkLoggingEnabled).toHaveBeenCalledWith(true);
         expect(plugin.saveSettings).toHaveBeenCalled();
+    });
+
+    it('falls back to false chunk logging when enabling debug logging without a stored chunk flag', async () => {
+        plugin.settings.debugChunkLogging = undefined;
+        (settingTab as any).isDeveloperMode = true;
+        settingTab.display();
+
+        const toggles = Array.from(
+            containerEl.querySelectorAll('input[type="checkbox"]'),
+            el => el as unknown as HTMLInputElement
+        );
+        const debugToggle = toggles[1];
+
+        debugToggle.checked = true;
+        debugToggle.dispatchEvent(new Event('change'));
+
+        expect(logger.configure).toHaveBeenCalledWith({
+            enabled: true,
+            chunkLoggingEnabled: false,
+        });
+    });
+
+    it('forces chunk logging off from the developer toggle in production builds', async () => {
+        const originalNodeEnv = process.env.NODE_ENV;
+        process.env.NODE_ENV = 'production';
+        vi.resetModules();
+
+        const {
+            AIProvidersSettingTab: ProductionSettingTab,
+            DEFAULT_SETTINGS: productionDefaults,
+        } = await import('./settings');
+        const { default: ProductionPlugin } = await import('./main');
+        const { logger: productionLogger } = await import('./utils/logger');
+
+        const app = new App();
+        const productionPlugin = new ProductionPlugin(app, {
+            id: 'test-plugin',
+            name: 'Test Plugin',
+            author: 'Test Author',
+            version: '1.0.0',
+            minAppVersion: '0.0.1',
+            description: 'Test Description',
+        });
+        productionPlugin.settings = {
+            ...productionDefaults,
+            providers: [],
+            debugChunkLogging: true,
+        };
+        productionPlugin.saveSettings = vi.fn().mockResolvedValue(undefined);
+        productionPlugin.aiProviders = new AIProvidersService(
+            app,
+            productionPlugin
+        );
+
+        const productionSettingTab = new ProductionSettingTab(
+            app,
+            productionPlugin
+        );
+        const productionContainer = document.createElement('div');
+        productionContainer.createDiv = containerEl.createDiv;
+        productionContainer.empty = containerEl.empty;
+        productionContainer.createEl = containerEl.createEl;
+        // @ts-ignore
+        productionSettingTab.containerEl = productionContainer;
+        (productionSettingTab as any).isDeveloperMode = true;
+        productionSettingTab.display();
+
+        const toggles = Array.from(
+            productionContainer.querySelectorAll('input[type="checkbox"]'),
+            el => el as unknown as HTMLInputElement
+        );
+        const debugToggle = toggles[1];
+
+        debugToggle.checked = true;
+        debugToggle.dispatchEvent(new Event('change'));
+
+        expect(productionLogger.configure).toHaveBeenCalledWith({
+            enabled: true,
+            chunkLoggingEnabled: false,
+        });
+        expect(
+            productionContainer.textContent?.includes(
+                'Verbose stream chunk logging'
+            )
+        ).toBe(false);
+
+        process.env.NODE_ENV = originalNodeEnv;
     });
 
     it('defaults developer toggles when settings are undefined', () => {
         plugin.settings.debugLogging = undefined;
+        plugin.settings.debugChunkLogging = undefined;
         plugin.settings.useNativeFetch = undefined;
         (settingTab as any).isDeveloperMode = true;
         settingTab.display();
@@ -479,6 +590,7 @@ describe('AIProvidersSettingTab', () => {
 
         expect(toggles[1].checked).toBe(false);
         expect(toggles[2].checked).toBe(false);
+        expect(toggles[3].checked).toBe(false);
     });
 
     it('uses empty description when provider url is missing', () => {

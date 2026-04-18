@@ -39,7 +39,18 @@
         "debugLogging": "Debug-protokollierung",
         "debugLoggingDesc": "Detaillierte Protokollierung in der Konsole aktivieren",
         "useNativeFetch": "Nativen fetch verwenden",
-        "useNativeFetchDesc": "Native Fetch API anstelle der Electron-Implementierung verwenden (kann bei CORS-Problemen helfen)"
+        "useNativeFetchDesc": "Native Fetch API anstelle der Electron-Implementierung verwenden (kann bei CORS-Problemen helfen)",
+        "modelCapabilities": "Fähigkeiten",
+        "modelCapabilitiesCheck": "Prüfen",
+        "modelCapabilitiesChecking": "Prüfung...",
+        "modelCapabilitiesUpdated": "Aktualisiert",
+        "modelCapabilitiesCheckFailed": "Prüfung fehlgeschlagen: {{message}}",
+        "modelCapabilitiesCheckTooltip": "Sendet Testanfragen an das Modell. Dabei können Ihre Anfragen und Tokens beim Anbieter verbraucht werden.",
+        "modelCapabilityEmbedding": "Einbettung",
+        "modelCapabilityText": "Text",
+        "modelCapabilityTools": "Werkzeuge",
+        "modelCapabilityVision": "Visuell",
+        "selectModelFirst": "Wählen Sie zuerst ein Modell aus"
     },
     "modals": {
         "confirm": "Bestätigen",

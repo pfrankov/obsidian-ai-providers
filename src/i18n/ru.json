@@ -39,7 +39,18 @@
         "debugLogging": "Отладочное логирование",
         "debugLoggingDesc": "Включить подробное логирование в консоли",
         "useNativeFetch": "Использовать нативный Fetch",
-        "useNativeFetchDesc": "Использовать нативный Fetch API вместо реализации Electron (может помочь с проблемами CORS)"
+        "useNativeFetchDesc": "Использовать нативный Fetch API вместо реализации Electron (может помочь с проблемами CORS)",
+        "modelCapabilities": "Возможности",
+        "modelCapabilitiesCheck": "Проверить",
+        "modelCapabilitiesChecking": "Проверка...",
+        "modelCapabilitiesUpdated": "Обновлено",
+        "modelCapabilitiesCheckFailed": "Ошибка проверки: {{message}}",
+        "modelCapabilitiesCheckTooltip": "Отправит тестовые запросы к модели. Это может расходовать ваши запросы и токены у провайдера.",
+        "modelCapabilityEmbedding": "Эмбеддинги",
+        "modelCapabilityText": "Текст",
+        "modelCapabilityTools": "Инструменты",
+        "modelCapabilityVision": "Визуальный контент",
+        "selectModelFirst": "Сначала выберите модель"
     },
     "modals": {
         "confirm": "Подтвердить",

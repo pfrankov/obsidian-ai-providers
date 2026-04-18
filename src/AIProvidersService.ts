@@ -2,10 +2,13 @@ import { App, Notice } from 'obsidian';
 import {
     AIProviderType,
     IAIDocument,
+    IAIAssistantToolMessage,
     IAIHandler,
+    IAIModelCapabilities,
     IAIProvider,
     IAIProvidersEmbedParams,
     IAIProvidersExecuteParams,
+    IAIProvidersToolsExecuteParams,
     IAIProvidersRetrievalParams,
     IAIProvidersRetrievalResult,
     IAIProvidersService,
@@ -22,10 +25,12 @@ import { logger } from './utils/logger';
 import { preprocessContent, splitContent } from './utils/textProcessing';
 import { IAIProvidersRetrievalChunk } from '@obsidian-ai-providers/sdk/types';
 import { AnthropicHandler } from './handlers/AnthropicHandler';
+import { probeModelCapabilities } from './utils/modelCapabilityChecker';
+import { AI_PROVIDERS_SERVICE_VERSION } from './constants/serviceApiVersion';
 
 export class AIProvidersService implements IAIProvidersService {
     providers: IAIProvider[] = [];
-    version = 3;
+    version = AI_PROVIDERS_SERVICE_VERSION;
     private app: App;
     private plugin: AIProvidersPlugin;
     private handlers: Record<string, IAIHandler>;
@@ -192,7 +197,15 @@ export class AIProvidersService implements IAIProvidersService {
             );
         }
 
-        const extendedParams = params as IAIProvidersExecuteParams & {
+        // Apply model override: if params.model is set, use it instead of the provider's default
+        const resolvedParams = params.model
+            ? {
+                  ...params,
+                  provider: { ...params.provider, model: params.model },
+              }
+            : params;
+
+        const extendedParams = resolvedParams as IAIProvidersExecuteParams & {
             onProgress?: (chunk: string, accumulatedText: string) => void;
             abortController?: AbortController;
         };
@@ -203,7 +216,7 @@ export class AIProvidersService implements IAIProvidersService {
 
         if (!useLegacyWrapper) {
             // Ensure a provided abortController (if any) is forwarded unchanged
-            return await handler.execute(params);
+            return await handler.execute(resolvedParams);
         }
 
         const internalAbortController = new AbortController();
@@ -215,7 +228,7 @@ export class AIProvidersService implements IAIProvidersService {
 
         handler
             .execute({
-                ...params,
+                ...resolvedParams,
                 abortController: internalAbortController,
                 onProgress: (chunk: string, acc: string) => {
                     handlers.data.forEach(handler => handler(chunk, acc));
@@ -245,6 +258,87 @@ export class AIProvidersService implements IAIProvidersService {
             },
         };
         return legacyHandler;
+    }
+
+    async toolsExecute(
+        params: IAIProvidersToolsExecuteParams
+    ): Promise<IAIAssistantToolMessage> {
+        const handler = this.getHandler(params.provider.type);
+        if (!handler) {
+            throw new Error(
+                `Handler not found for provider type: ${params.provider.type}`
+            );
+        }
+
+        // Apply model override: if params.model is set, use it instead of the provider's default
+        const resolvedParams = params.model
+            ? {
+                  ...params,
+                  provider: { ...params.provider, model: params.model },
+              }
+            : params;
+
+        return handler.toolsExecute(resolvedParams);
+    }
+
+    getModelCapabilities({
+        provider,
+        model,
+    }: {
+        provider: IAIProvider;
+        model?: string;
+    }): IAIModelCapabilities | null {
+        const targetModel = model || provider.model;
+        if (!targetModel) {
+            return null;
+        }
+
+        return provider.modelCapabilities?.[targetModel] || null;
+    }
+
+    getModels({
+        provider,
+    }: {
+        provider: IAIProvider;
+    }): Record<string, IAIModelCapabilities | null> {
+        const models = provider.availableModels || [];
+        const result: Record<string, IAIModelCapabilities | null> = {};
+        for (const id of models) {
+            result[id] = provider.modelCapabilities?.[id] || null;
+        }
+        return result;
+    }
+
+    async checkModelCapabilities({
+        provider,
+        model,
+    }: {
+        provider: IAIProvider;
+        model?: string;
+    }): Promise<IAIModelCapabilities> {
+        const targetModel = model || provider.model;
+        const probeProvider = model ? { ...provider, model } : provider;
+
+        const capabilities = await probeModelCapabilities({
+            aiProviders: this,
+            provider: probeProvider,
+        });
+
+        // Persist capabilities in settings
+        if (targetModel) {
+            const settingsProvider = this.plugin.settings.providers?.find(
+                (p: IAIProvider) => p.id === provider.id
+            );
+            if (settingsProvider) {
+                settingsProvider.modelCapabilities = {
+                    ...settingsProvider.modelCapabilities,
+                    [targetModel]: capabilities,
+                };
+                await this.plugin.saveSettings();
+            }
+        }
+
+        return capabilities;
     }
 
     async migrateProvider(provider: IAIProvider): Promise<IAIProvider | false> {
@@ -284,7 +378,17 @@ export class AIProvidersService implements IAIProvidersService {
     checkCompatibility(requiredVersion: number) {
         if (requiredVersion > this.version) {
             new Notice(I18n.t('errors.pluginMustBeUpdatedFormatted'));
-            throw new Error(I18n.t('errors.pluginMustBeUpdated'));
+            const error = new Error(
+                I18n.t('errors.pluginMustBeUpdated')
+            ) as Error & {
+                code?: string;
+                requiredVersion?: number;
+                currentVersion?: number;
+            };
+            error.code = 'version_mismatch';
+            error.requiredVersion = requiredVersion;
+            error.currentVersion = this.version;
+            throw error;
         }
     }
 

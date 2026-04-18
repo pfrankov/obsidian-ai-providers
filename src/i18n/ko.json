@@ -39,7 +39,18 @@
         "debugLogging": "디버그 로깅",
         "debugLoggingDesc": "문제 해결을 위한 디버그 로깅 활성화",
         "useNativeFetch": "네이티브 Fetch 사용",
-        "useNativeFetchDesc": "Electron 관련 구현 대신 네이티브 Fetch API 사용(CORS 문제 해결에 도움 될 수 있음)"
+        "useNativeFetchDesc": "Electron 관련 구현 대신 네이티브 Fetch API 사용(CORS 문제 해결에 도움 될 수 있음)",
+        "modelCapabilities": "기능",
+        "modelCapabilitiesCheck": "확인",
+        "modelCapabilitiesChecking": "확인 중...",
+        "modelCapabilitiesUpdated": "업데이트됨",
+        "modelCapabilitiesCheckFailed": "확인 실패: {{message}}",
+        "modelCapabilitiesCheckTooltip": "모델에 테스트 요청을 보냅니다. 이 과정에서 제공업체의 요청 수와 토큰이 소모될 수 있습니다.",
+        "modelCapabilityEmbedding": "임베딩",
+        "modelCapabilityText": "텍스트",
+        "modelCapabilityTools": "도구",
+        "modelCapabilityVision": "이미지",
+        "selectModelFirst": "먼저 모델을 선택하세요"
     },
     "modals": {
         "confirm": "확인",

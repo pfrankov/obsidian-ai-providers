@@ -4,6 +4,7 @@ import { ProviderFormModal } from './ProviderFormModal';
 import AIProvidersPlugin from '../main';
 import { IAIProvider } from '@obsidian-ai-providers/sdk';
 import { AIProvidersService } from '../AIProvidersService';
+import { probeModelCapabilities } from '../utils/modelCapabilityChecker';
 
 vi.mock('../i18n', () => ({
     I18n: {
@@ -11,6 +12,10 @@ vi.mock('../i18n', () => ({
             return key;
         },
     },
+}));
+
+vi.mock('../utils/modelCapabilityChecker', () => ({
+    probeModelCapabilities: vi.fn(),
 }));
 
 const getElement = <T extends HTMLElement>(
@@ -82,6 +87,398 @@ describe('ProviderFormModal', () => {
                 '[data-testid="model-combobox-input"]'
             )
         ).toBeTruthy();
+        expect(
+            modal.contentEl.querySelector(
+                '[data-testid="model-capability-text"]'
+            )
+        ).toBeTruthy();
+    });
+
+    it('shows capability placeholder when no model is selected', () => {
+        provider.model = '';
+        modal.onOpen();
+
+        expect(modal.contentEl.textContent).not.toContain(
+            'settings.modelCapabilities'
+        );
+        expect(
+            modal.contentEl.querySelector(
+                '[data-testid="check-model-capabilities"]'
+            )
+        ).toBeFalsy();
+    });
+
+    it('shows capabilities section after selecting a model from suggestions', async () => {
+        provider.availableModels = ['gpt-4', 'gpt-3.5-turbo'];
+        provider.model = 'gpt-4';
+        modal.onOpen();
+
+        // Capabilities section is visible for the initial model
+        expect(
+            modal.contentEl.querySelector(
+                '[data-testid="check-model-capabilities"]'
+            )
+        ).toBeTruthy();
+
+        // Clear the model text — capabilities should hide
+        const input = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-combobox-input"]'
+        );
+        input.value = '';
+        input.dispatchEvent(new Event('input'));
+        await flushPromises();
+
+        expect(
+            modal.contentEl.querySelector(
+                '[data-testid="check-model-capabilities"]'
+            )
+        ).toBeFalsy();
+
+        // Select a model via suggestions (bypasses onChange)
+        const suggest = (modal as any).modelSuggest;
+        suggest.selectSuggestion('gpt-3.5-turbo', new MouseEvent('click'));
+        await flushPromises();
+
+        // Capabilities section should reappear
+        expect(provider.model).toBe('gpt-3.5-turbo');
+        expect(
+            modal.contentEl.querySelector(
+                '[data-testid="check-model-capabilities"]'
+            )
+        ).toBeTruthy();
+    });
+
+    it('returns default capabilities when no model is selected', () => {
+        provider.model = '';
+
+        expect((modal as any).getSelectedModelCapabilities()).toEqual({
+            embedding: false,
+            text: false,
+            tools: false,
+            vision: false,
+        });
+    });
+
+    it('updates stored model capabilities from checkboxes', () => {
+        modal.onOpen();
+
+        const checkbox = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-capability-tools"]'
+        );
+        checkbox.checked = true;
+        checkbox.dispatchEvent(new Event('change'));
+
+        expect(provider.modelCapabilities).toEqual({
+            'gpt-4': {
+                embedding: false,
+                text: false,
+                tools: true,
+                vision: false,
+            },
+        });
+    });
+
+    it('persists model capabilities to plugin settings on checkbox toggle', async () => {
+        plugin.settings.providers = [{ ...provider }];
+        const saveSpy = vi
+            .spyOn(plugin, 'saveSettings')
+            .mockResolvedValue(undefined);
+
+        modal.onOpen();
+
+        const checkbox = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-capability-tools"]'
+        );
+        checkbox.checked = true;
+        checkbox.dispatchEvent(new Event('change'));
+
+        await flushPromises();
+
+        const saved = plugin.settings.providers.find(
+            (p: IAIProvider) => p.id === provider.id
+        );
+        expect(saved?.modelCapabilities?.['gpt-4']).toEqual({
+            embedding: false,
+            text: false,
+            tools: true,
+            vision: false,
+        });
+        expect(saveSpy).toHaveBeenCalled();
+    });
+
+    it('persists model capabilities when provider had no modelCapabilities yet', async () => {
+        provider.modelCapabilities = undefined;
+        plugin.settings.providers = [{ ...provider }];
+        const saveSpy = vi
+            .spyOn(plugin, 'saveSettings')
+            .mockResolvedValue(undefined);
+
+        modal.onOpen();
+
+        const checkbox = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-capability-vision"]'
+        );
+        checkbox.checked = true;
+        checkbox.dispatchEvent(new Event('change'));
+
+        await flushPromises();
+
+        const saved = plugin.settings.providers.find(
+            (p: IAIProvider) => p.id === provider.id
+        );
+        expect(saved?.modelCapabilities?.['gpt-4']).toEqual({
+            embedding: false,
+            text: false,
+            tools: false,
+            vision: true,
+        });
+        expect(saveSpy).toHaveBeenCalled();
+    });
+
+    it('persists capabilities from Check button to plugin settings', async () => {
+        plugin.settings.providers = [{ ...provider }];
+        const saveSpy = vi
+            .spyOn(plugin, 'saveSettings')
+            .mockResolvedValue(undefined);
+
+        (probeModelCapabilities as Mock).mockResolvedValue({
+            embedding: true,
+            text: true,
+            tools: false,
+            vision: true,
+        });
+
+        modal.onOpen();
+
+        const button = getElement<HTMLButtonElement>(
+            modal.contentEl,
+            '[data-testid="check-model-capabilities"]'
+        );
+        button.click();
+        await flushPromises();
+
+        const saved = plugin.settings.providers.find(
+            (p: IAIProvider) => p.id === provider.id
+        );
+        expect(saved?.modelCapabilities?.['gpt-4']).toEqual({
+            embedding: true,
+            text: true,
+            tools: false,
+            vision: true,
+        });
+        expect(saveSpy).toHaveBeenCalled();
+    });
+
+    it('adds localized aria-label to Check button without title', () => {
+        modal.onOpen();
+
+        const button = getElement<HTMLButtonElement>(
+            modal.contentEl,
+            '[data-testid="check-model-capabilities"]'
+        );
+
+        expect(button.getAttribute('title')).toBeNull();
+        expect(button.getAttribute('aria-label')).toBe(
+            'settings.modelCapabilitiesCheckTooltip'
+        );
+    });
+
+    it('restores per-model capabilities when switching between fetched models', () => {
+        provider.availableModels = ['gpt-4', 'gpt-4.1'];
+        modal.onOpen();
+
+        const toolsCheckbox = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-capability-tools"]'
+        );
+        toolsCheckbox.checked = true;
+        toolsCheckbox.dispatchEvent(new Event('change'));
+
+        const modelInput = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-combobox-input"]'
+        );
+        modelInput.value = 'gpt-4.1';
+        modelInput.dispatchEvent(new Event('input'));
+
+        const visionCheckbox = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-capability-vision"]'
+        );
+        visionCheckbox.checked = true;
+        visionCheckbox.dispatchEvent(new Event('change'));
+
+        modelInput.value = 'gpt-4';
+        modelInput.dispatchEvent(new Event('input'));
+
+        expect(
+            getElement<HTMLInputElement>(
+                modal.contentEl,
+                '[data-testid="model-capability-tools"]'
+            ).checked
+        ).toBe(true);
+        expect(
+            getElement<HTMLInputElement>(
+                modal.contentEl,
+                '[data-testid="model-capability-vision"]'
+            ).checked
+        ).toBe(false);
+
+        modelInput.value = 'gpt-4.1';
+        modelInput.dispatchEvent(new Event('input'));
+
+        expect(
+            getElement<HTMLInputElement>(
+                modal.contentEl,
+                '[data-testid="model-capability-tools"]'
+            ).checked
+        ).toBe(false);
+        expect(
+            getElement<HTMLInputElement>(
+                modal.contentEl,
+                '[data-testid="model-capability-vision"]'
+            ).checked
+        ).toBe(true);
+    });
+
+    it('restores per-model capabilities in text-input mode without saving', () => {
+        provider.type = 'ai302';
+        provider.model = 'model-a';
+        modal.onOpen();
+
+        const modelInput = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-input"]'
+        );
+
+        const textCheckbox = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-capability-text"]'
+        );
+        textCheckbox.checked = true;
+        textCheckbox.dispatchEvent(new Event('change'));
+
+        modelInput.value = 'model-b';
+        modelInput.dispatchEvent(new Event('input'));
+
+        const toolsCheckbox = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-capability-tools"]'
+        );
+        toolsCheckbox.checked = true;
+        toolsCheckbox.dispatchEvent(new Event('change'));
+
+        modelInput.value = 'model-a';
+        modelInput.dispatchEvent(new Event('input'));
+
+        expect(
+            getElement<HTMLInputElement>(
+                modal.contentEl,
+                '[data-testid="model-capability-text"]'
+            ).checked
+        ).toBe(true);
+        expect(
+            getElement<HTMLInputElement>(
+                modal.contentEl,
+                '[data-testid="model-capability-tools"]'
+            ).checked
+        ).toBe(false);
+
+        modelInput.value = 'model-b';
+        modelInput.dispatchEvent(new Event('input'));
+
+        expect(
+            getElement<HTMLInputElement>(
+                modal.contentEl,
+                '[data-testid="model-capability-text"]'
+            ).checked
+        ).toBe(false);
+        expect(
+            getElement<HTMLInputElement>(
+                modal.contentEl,
+                '[data-testid="model-capability-tools"]'
+            ).checked
+        ).toBe(true);
+    });
+
+    it('probes model capabilities and updates status', async () => {
+        (probeModelCapabilities as Mock).mockResolvedValue({
+            embedding: true,
+            text: true,
+            tools: false,
+            vision: true,
+        });
+
+        modal.onOpen();
+
+        const button = getElement<HTMLButtonElement>(
+            modal.contentEl,
+            '[data-testid="check-model-capabilities"]'
+        );
+        expect(button).toBeTruthy();
+
+        button.click();
+        await flushPromises();
+
+        expect(probeModelCapabilities).toHaveBeenCalledWith({
+            aiProviders: plugin.aiProviders,
+            provider,
+        });
+        expect(provider.modelCapabilities?.['gpt-4']).toEqual({
+            embedding: true,
+            text: true,
+            tools: false,
+            vision: true,
+        });
+        expect(modal.contentEl.textContent).toContain('gpt-4');
+        expect(modal.contentEl.textContent).toContain(
+            'settings.modelCapabilitiesUpdated'
+        );
+    });
+
+    it('ignores capability writes when no model is selected', () => {
+        provider.model = '';
+
+        (modal as any).setSelectedModelCapabilities({
+            embedding: true,
+            text: true,
+            tools: true,
+            vision: true,
+        });
+
+        expect(provider.modelCapabilities).toBeUndefined();
+    });
+
+    it('returns early when capability section is not mounted', () => {
+        expect(() =>
+            (modal as any).renderModelCapabilitiesSection()
+        ).not.toThrow();
+    });
+
+    it('returns early when probing capabilities without a selected model', async () => {
+        provider.model = '';
+        (probeModelCapabilities as Mock).mockClear();
+
+        await (modal as any).checkModelCapabilities();
+
+        expect(probeModelCapabilities).not.toHaveBeenCalled();
+    });
+
+    it('shows capability probe failures in the modal status', async () => {
+        (probeModelCapabilities as Mock).mockRejectedValue(
+            new Error('probe failed')
+        );
+
+        modal.onOpen();
+        await (modal as any).checkModelCapabilities();
+
+        expect(modal.contentEl.textContent).toContain(
+            'settings.modelCapabilitiesCheckFailed'
+        );
     });
 
     it('should show correct title for add/edit modes', () => {

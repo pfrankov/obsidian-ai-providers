@@ -19,6 +19,9 @@
 - Input parsing and mapping: provider settings (id/name/type/url/apiKey/model) map to handler-specific request payloads.
 - Derived features/metrics: embeddings are chunked and cached per vault in IndexedDB using hashed keys.
 - External API JSON: OpenAI-compatible providers use messages/model/stream payloads and return streaming deltas; embeddings return data[].embedding.
+- Tool-calling: `toolsExecute()` is message-only, returns an OpenAI-style assistant message (`content`, `tool_calls`), and normalizes provider-specific tool formats (OpenAI-compatible, Anthropic, Ollama) for multi-step agent loops.
+- Model override: `execute()` and `toolsExecute()` accept an optional `model` param; when set, it overrides the provider's default model for that call.
+- Model capabilities: providers store per-model capabilities (`text`, `embedding`, `tools`, `vision`) in `modelCapabilities`; `getModelCapabilities()` retrieves them; `checkModelCapabilities()` probes a model via real API calls and persists results to settings.
 - Config parameters: type selects handler; url overrides base endpoints; debugLogging toggles verbose logs; useNativeFetch changes fetch strategy.
 
 ## Documentation Protocol

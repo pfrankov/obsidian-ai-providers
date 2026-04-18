@@ -33,6 +33,14 @@ export interface IAIProvider {
     type: AIProviderType;
     model?: string;
     availableModels?: string[];
+    modelCapabilities?: Record<string, IAIModelCapabilities>;
+}
+
+export interface IAIModelCapabilities {
+    embedding: boolean;
+    text: boolean;
+    tools: boolean;
+    vision: boolean;
 }
 
 /**
@@ -65,6 +73,18 @@ export interface IAIProvidersService {
     execute(
         params: IAIProvidersExecuteParams & { onProgress?: undefined; abortController?: undefined }
     ): Promise<IChunkHandler>;
+    toolsExecute: (params: IAIProvidersToolsExecuteParams) => Promise<IAIAssistantToolMessage>;
+    getModelCapabilities: (params: {
+        provider: IAIProvider;
+        model?: string;
+    }) => IAIModelCapabilities | null;
+    getModels: (params: {
+        provider: IAIProvider;
+    }) => Record<string, IAIModelCapabilities | null>;
+    checkModelCapabilities: (params: {
+        provider: IAIProvider;
+        model?: string;
+    }) => Promise<IAIModelCapabilities>;
     checkCompatibility: (requiredVersion: number) => void;
     migrateProvider: (provider: IAIProvider) => Promise<IAIProvider | false>;
     retrieve: (params: IAIProvidersRetrievalParams) => Promise<IAIProvidersRetrievalResult[]>;
@@ -84,14 +104,63 @@ export interface IContentBlockImageUrl {
 
 export type IContentBlock = IContentBlockText | IContentBlockImageUrl;
 
+export interface IAIToolFunctionDefinition {
+    name: string;
+    description?: string;
+    parameters?: Record<string, unknown>;
+    strict?: boolean | null;
+}
+
+export interface IAIToolDefinition {
+    type: 'function';
+    function: IAIToolFunctionDefinition;
+}
+
+export interface IAIToolChoiceNamed {
+    type: 'function';
+    function: {
+        name: string;
+    };
+}
+
+export type IAIToolChoice = 'none' | 'auto' | 'required' | IAIToolChoiceNamed;
+
+export interface IAIToolCall {
+    id: string;
+    type: 'function';
+    function: {
+        name: string;
+        arguments: string;
+    };
+}
+
+export interface IAIAssistantToolMessage {
+    role: 'assistant';
+    content: string | null;
+    tool_calls?: IAIToolCall[];
+    name?: string;
+}
+
+export type IChatMessageRole =
+    | 'assistant'
+    | 'developer'
+    | 'system'
+    | 'tool'
+    | 'user';
+
 export interface IChatMessage {
-    role: string;
-    content: string | IContentBlock[];
+    role: IChatMessageRole;
+    content: string | IContentBlock[] | null;
     images?: string[];
+    name?: string;
+    tool_call_id?: string;
+    tool_calls?: IAIToolCall[];
 }
 
 export interface IAIProvidersExecuteParamsBase {
     provider: IAIProvider;
+    /** Optional model override. When set, this model is used instead of the provider's default. */
+    model?: string;
     images?: string[];
     options?: {
         temperature?: number;
@@ -121,6 +190,18 @@ export type IAIProvidersExecuteParamsWithMessages = IAIProvidersExecuteParamsBas
 };
 
 export type IAIProvidersExecuteParams = IAIProvidersExecuteParamsWithPrompt | IAIProvidersExecuteParamsWithMessages;
+
+export type IAIProvidersToolsExecuteParams = {
+    provider: IAIProvider;
+    /** Optional model override. When set, this model is used instead of the provider's default. */
+    model?: string;
+    messages: IChatMessage[];
+    tools: IAIToolDefinition[];
+    tool_choice?: IAIToolChoice;
+    options?: IAIProvidersExecuteParamsBase['options'];
+    abortController?: AbortController;
+    onProgress?: (chunk: string, accumulatedText: string) => void;
+};
 
 export type IAIProcessingType = 'embedding';
 
@@ -167,12 +248,14 @@ export interface IAIHandler {
     fetchModels(params: { provider: IAIProvider; abortController?: AbortController }): Promise<string[]>;
     embed(params: IAIProvidersEmbedParams): Promise<number[][]>;
     execute(params: IAIProvidersExecuteParams): Promise<string>;
+    toolsExecute(params: IAIProvidersToolsExecuteParams): Promise<IAIAssistantToolMessage>;
 }
 
 export interface IAIProvidersPluginSettings {
     providers?: IAIProvider[];
     _version: number;
     debugLogging?: boolean;
+    debugChunkLogging?: boolean;
     useNativeFetch?: boolean;
 }
 

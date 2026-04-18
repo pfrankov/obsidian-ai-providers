@@ -1,16 +1,21 @@
 import {
+    IAIAssistantToolMessage,
     IAIHandler,
     IAIProvider,
     IAIProvidersEmbedParams,
     IAIProvidersExecuteParams,
+    IAIProvidersToolsExecuteParams,
     IAIProvidersPluginSettings,
     IContentBlock,
+    IAIToolCall,
+    IAIToolDefinition,
 } from '@obsidian-ai-providers/sdk';
 import { Ollama } from 'ollama';
 import { electronFetch } from '../utils/electronFetch';
 import { obsidianFetch } from '../utils/obsidianFetch';
 import { logger } from '../utils/logger';
 import { FetchSelector } from '../utils/FetchSelector';
+import { logToolsRequest, logToolsResponse } from '../utils/modelDebugSummary';
 
 // Add interface for model cache
 interface ModelInfo {
@@ -24,9 +29,34 @@ const EMBEDDING_CONTEXT_LENGTH = 2048;
 const CONTEXT_BUFFER_MULTIPLIER = 1.2; // 20% buffer
 type TextContentBlock = Extract<IContentBlock, { type: 'text' }>;
 type ImageContentBlock = Extract<IContentBlock, { type: 'image_url' }>;
-type OllamaChatMessage = { role: string; content: string; images?: string[] };
+type OllamaToolCall = {
+    function: {
+        name: string;
+        arguments: Record<string, unknown>;
+    };
+};
+type OllamaToolDefinition = {
+    type: string;
+    function: {
+        name?: string;
+        description?: string;
+        type?: string;
+        parameters?: Record<string, unknown>;
+    };
+};
+type OllamaChatMessage = {
+    role: string;
+    content: string;
+    images?: string[];
+    tool_calls?: OllamaToolCall[];
+    tool_name?: string;
+};
 type OllamaStreamChunk = {
-    message?: { content?: string };
+    message?: {
+        content?: string;
+        tool_calls?: OllamaToolCall[];
+        tool_name?: string;
+    };
     done?: boolean;
     total_duration?: number;
     context?: number[];
@@ -237,6 +267,83 @@ export class OllamaHandler implements IAIHandler {
         );
     }
 
+    private extractTextContent(
+        content: string | IContentBlock[] | null
+    ): string {
+        if (content === null) {
+            return '';
+        }
+        if (typeof content === 'string') {
+            return content;
+        }
+        return content
+            .filter((block): block is TextContentBlock => block.type === 'text')
+            .map(block => block.text)
+            .join('\n');
+    }
+
+    private parseToolArguments(toolCall: IAIToolCall): Record<string, unknown> {
+        try {
+            const parsed = JSON.parse(toolCall.function.arguments);
+            if (
+                parsed &&
+                typeof parsed === 'object' &&
+                !Array.isArray(parsed)
+            ) {
+                return parsed as Record<string, unknown>;
+            }
+            return { value: parsed };
+        } catch {
+            return { raw: toolCall.function.arguments };
+        }
+    }
+
+    private mapToolCallsToOllama(toolCalls: IAIToolCall[]): OllamaToolCall[] {
+        return toolCalls.map(toolCall => ({
+            function: {
+                name: toolCall.function.name,
+                arguments: this.parseToolArguments(toolCall),
+            },
+        }));
+    }
+
+    private stringifyToolArguments(argumentsValue: unknown): string {
+        if (typeof argumentsValue === 'string') {
+            return argumentsValue;
+        }
+        try {
+            return JSON.stringify(argumentsValue ?? {});
+        } catch {
+            return String(argumentsValue);
+        }
+    }
+
+    private mapTools(tools: IAIToolDefinition[]): OllamaToolDefinition[] {
+        return tools.map(tool => ({
+            type: 'function',
+            function: {
+                name: tool.function.name,
+                description: tool.function.description,
+                parameters: tool.function.parameters,
+            },
+        }));
+    }
+
+    private normalizeMessageRole(role: string): string {
+        if (role === 'developer') {
+            return 'system';
+        }
+        if (
+            role === 'assistant' ||
+            role === 'system' ||
+            role === 'tool' ||
+            role === 'user'
+        ) {
+            return role;
+        }
+        throw new Error(`Unsupported message role: ${role}`);
+    }
+
     private applyImagesToChatMessages(
         chatMessages: { role: string; content: string; images?: string[] }[],
         images: string[]
@@ -281,8 +388,9 @@ export class OllamaHandler implements IAIHandler {
         modelName: string;
         onProgress?: (chunk: string, accumulatedText: string) => void;
         abortController?: AbortController;
-    }): Promise<string> {
+    }): Promise<IAIAssistantToolMessage> {
         let fullText = '';
+        const toolCallsByIndex = new Map<number, IAIToolCall>();
 
         for await (const chunk of response) {
             this.ensureNotAborted(abortController);
@@ -291,6 +399,26 @@ export class OllamaHandler implements IAIHandler {
                 fullText += content;
                 onProgress?.(content, fullText);
             }
+
+            chunk.message?.tool_calls?.forEach((toolCall, index) => {
+                const existing = toolCallsByIndex.get(index) || {
+                    id: `call_${index + 1}`,
+                    type: 'function' as const,
+                    function: {
+                        name: '',
+                        arguments: '',
+                    },
+                };
+
+                if (typeof toolCall.function.name === 'string') {
+                    existing.function.name = toolCall.function.name;
+                }
+
+                existing.function.arguments = this.stringifyToolArguments(
+                    toolCall.function.arguments
+                );
+                toolCallsByIndex.set(index, existing);
+            });
 
             if (
                 chunk.done &&
@@ -305,7 +433,20 @@ export class OllamaHandler implements IAIHandler {
             }
         }
 
-        return fullText;
+        const assistantMessage: IAIAssistantToolMessage = {
+            role: 'assistant',
+            content: fullText || null,
+        };
+
+        const toolCalls = [...toolCallsByIndex.entries()]
+            .sort(([a], [b]) => a - b)
+            .map(([, toolCall]) => toolCall);
+
+        if (toolCalls.length > 0) {
+            assistantMessage.tool_calls = toolCalls;
+        }
+
+        return assistantMessage;
     }
 
     private prepareChatMessages(params: IAIProvidersExecuteParams): {
@@ -318,22 +459,9 @@ export class OllamaHandler implements IAIHandler {
         if ('messages' in params && params.messages) {
             // Process messages with standardized handling for text and images
             params.messages.forEach(msg => {
-                if (typeof msg.content === 'string') {
-                    // Simple text content
-                    chatMessages.push({
-                        role: msg.role,
-                        content: msg.content,
-                    });
-                } else {
-                    // Extract text content from content blocks
-                    const textContent = msg.content
-                        .filter(
-                            (block): block is TextContentBlock =>
-                                block.type === 'text'
-                        )
-                        .map(block => block.text)
-                        .join('\n');
+                const textContent = this.extractTextContent(msg.content);
 
+                if (Array.isArray(msg.content)) {
                     // Extract image URLs from content blocks
                     msg.content
                         .filter(
@@ -345,12 +473,24 @@ export class OllamaHandler implements IAIHandler {
                                 extractedImages.push(block.image_url.url);
                             }
                         });
-
-                    chatMessages.push({
-                        role: msg.role,
-                        content: textContent,
-                    });
                 }
+
+                const chatMessage: OllamaChatMessage = {
+                    role: this.normalizeMessageRole(msg.role),
+                    content: textContent,
+                };
+
+                if (msg.role === 'assistant' && msg.tool_calls?.length) {
+                    chatMessage.tool_calls = this.mapToolCallsToOllama(
+                        msg.tool_calls
+                    );
+                }
+
+                if (msg.role === 'tool' && msg.name) {
+                    chatMessage.tool_name = msg.name;
+                }
+
+                chatMessages.push(chatMessage);
 
                 // Add any images from the images property
                 if (msg.images?.length) {
@@ -379,6 +519,48 @@ export class OllamaHandler implements IAIHandler {
         return { chatMessages, extractedImages };
     }
 
+    private buildRequestConfig(params: IAIProvidersExecuteParams): {
+        options: Record<string, unknown>;
+    } {
+        return {
+            options: params.options ? { ...params.options } : {},
+        };
+    }
+
+    private assertNoToolConfigInOptions(
+        options: IAIProvidersToolsExecuteParams['options']
+    ) {
+        if (!options) {
+            return;
+        }
+        if ('tools' in options || 'tool_choice' in options) {
+            throw new Error(
+                'Pass tools and tool_choice as top-level toolsExecute params'
+            );
+        }
+    }
+
+    private buildToolsRequestConfig(params: IAIProvidersToolsExecuteParams): {
+        options: Record<string, unknown>;
+        tools?: OllamaToolDefinition[];
+    } {
+        this.assertNoToolConfigInOptions(params.options);
+        if (params.tool_choice !== undefined) {
+            throw new Error(
+                'tool_choice is not supported for Ollama providers'
+            );
+        }
+
+        const requestOptions: Record<string, unknown> = params.options
+            ? { ...params.options }
+            : {};
+
+        return {
+            options: requestOptions,
+            tools: this.mapTools(params.tools),
+        };
+    }
+
     private async executeOllamaGeneration({
         params,
         ollama,
@@ -389,7 +571,7 @@ export class OllamaHandler implements IAIHandler {
         ollama: Ollama;
         onProgress?: (chunk: string, accumulatedText: string) => void;
         abortController?: AbortController;
-    }): Promise<string> {
+    }): Promise<IAIAssistantToolMessage> {
         const modelName = params.provider.model || '';
         const modelInfo = await this.getCachedModelInfo(
             params.provider,
@@ -403,10 +585,7 @@ export class OllamaHandler implements IAIHandler {
         const { chatMessages, extractedImages } =
             this.prepareChatMessages(params);
         const processedImages = this.normalizeImages(extractedImages);
-
-        const requestOptions: Record<string, unknown> = params.options
-            ? { ...params.options }
-            : {};
+        const requestOptions = this.buildRequestConfig(params).options;
 
         if (processedImages.length === 0) {
             const inputLength = chatMessages.reduce(
@@ -516,7 +695,9 @@ export class OllamaHandler implements IAIHandler {
         return this.fetchSelector.request(params.provider, operation);
     }
 
-    async execute(params: IAIProvidersExecuteParams): Promise<string> {
+    private async runExecute(
+        params: IAIProvidersExecuteParams
+    ): Promise<IAIAssistantToolMessage> {
         const { abortController: externalAbort, onProgress } = params;
 
         this.ensureNotAborted(externalAbort);
@@ -544,9 +725,115 @@ export class OllamaHandler implements IAIHandler {
                     });
                 }
             );
-        } catch (e) {
-            const error = e as Error;
-            if (error.message === 'Aborted') {
+        } catch (error) {
+            if ((error as Error).message === 'Aborted') {
+                return Promise.reject(error);
+            }
+            throw error;
+        }
+    }
+
+    async execute(params: IAIProvidersExecuteParams): Promise<string> {
+        const assistantMessage = await this.runExecute(params);
+        return assistantMessage.content || '';
+    }
+
+    async toolsExecute(
+        params: IAIProvidersToolsExecuteParams
+    ): Promise<IAIAssistantToolMessage> {
+        const { abortController: externalAbort, onProgress } = params;
+
+        this.ensureNotAborted(externalAbort);
+        logToolsRequest({
+            provider: params.provider,
+            messages: params.messages,
+            tools: params.tools,
+            toolChoice: params.tool_choice,
+        });
+
+        try {
+            const assistantMessage = await this.fetchSelector.execute(
+                params.provider,
+                async (
+                    fetchImpl: typeof electronFetch | typeof obsidianFetch
+                ) => {
+                    const ollama = this.getClient(params.provider, fetchImpl);
+                    externalAbort?.signal.addEventListener('abort', () => {
+                        ollama.abort();
+                    });
+                    this.ensureNotAborted(externalAbort);
+
+                    const modelName = params.provider.model || '';
+                    const modelInfo = await this.getCachedModelInfo(
+                        params.provider,
+                        modelName
+                    ).catch(error => {
+                        logger.error('Failed to get model info:', error);
+                        return null;
+                    });
+                    const effectiveModelInfo =
+                        modelInfo || this.getDefaultModelInfo();
+
+                    const { chatMessages, extractedImages } =
+                        this.prepareChatMessages(
+                            params as IAIProvidersExecuteParams
+                        );
+                    const processedImages =
+                        this.normalizeImages(extractedImages);
+                    const requestConfig = this.buildToolsRequestConfig(params);
+                    const requestOptions = requestConfig.options;
+
+                    if (processedImages.length === 0) {
+                        const inputLength = chatMessages.reduce(
+                            (acc, msg) => acc + msg.content.length,
+                            0
+                        );
+
+                        const num_ctx = this.applyContextOptimization({
+                            provider: params.provider,
+                            modelName,
+                            inputLength,
+                            modelInfo: effectiveModelInfo,
+                            defaultContextLength: DEFAULT_CONTEXT_LENGTH,
+                        });
+
+                        if (num_ctx) {
+                            requestOptions.num_ctx = num_ctx;
+                        }
+                    }
+
+                    this.applyImagesToChatMessages(
+                        chatMessages,
+                        processedImages
+                    );
+
+                    const response = await ollama.chat({
+                        model: modelName,
+                        messages: chatMessages,
+                        tools: requestConfig.tools,
+                        stream: true,
+                        options: requestOptions,
+                    });
+
+                    return this.streamOllamaResponse({
+                        response,
+                        provider: params.provider,
+                        modelName,
+                        onProgress: (chunk, acc) => {
+                            onProgress?.(chunk, acc);
+                            this.ensureNotAborted(externalAbort);
+                        },
+                        abortController: externalAbort,
+                    });
+                }
+            );
+            logToolsResponse({
+                provider: params.provider,
+                assistantMessage,
+            });
+            return assistantMessage;
+        } catch (error) {
+            if ((error as Error).message === 'Aborted') {
                 return Promise.reject(error);
             }
             throw error;

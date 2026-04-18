@@ -39,7 +39,18 @@
         "debugLogging": "Foutopsporingslogboek",
         "debugLoggingDesc": "Schakel foutopsporingslogboek in voor probleemoplossing",
         "useNativeFetch": "Gebruik native Fetch",
-        "useNativeFetchDesc": "Gebruik native Fetch API in plaats van de Electron-specifieke implementatie (kan helpen bij CORS-problemen)"
+        "useNativeFetchDesc": "Gebruik native Fetch API in plaats van de Electron-specifieke implementatie (kan helpen bij CORS-problemen)",
+        "modelCapabilities": "Mogelijkheden",
+        "modelCapabilitiesCheck": "Controleren",
+        "modelCapabilitiesChecking": "Controleren...",
+        "modelCapabilitiesUpdated": "Bijgewerkt",
+        "modelCapabilitiesCheckFailed": "Controle mislukt: {{message}}",
+        "modelCapabilitiesCheckTooltip": "Stuurt testverzoeken naar het model. Dit kan je aanvragen en tokens bij de provider verbruiken.",
+        "modelCapabilityEmbedding": "Embedding",
+        "modelCapabilityText": "Tekst",
+        "modelCapabilityTools": "Tools",
+        "modelCapabilityVision": "Visueel",
+        "selectModelFirst": "Selecteer eerst een model"
     },
     "modals": {
         "confirm": "Bevestigen",

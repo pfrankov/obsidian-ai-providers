@@ -39,7 +39,18 @@
         "debugLogging": "调试日志",
         "debugLoggingDesc": "在控制台启用详细日志记录",
         "useNativeFetch": "使用原生 Fetch",
-        "useNativeFetchDesc": "使用原生 Fetch API 而不是 Electron 特定实现（可能有助于解决 CORS 问题）"
+        "useNativeFetchDesc": "使用原生 Fetch API 而不是 Electron 特定实现（可能有助于解决 CORS 问题）",
+        "modelCapabilities": "能力",
+        "modelCapabilitiesCheck": "检查",
+        "modelCapabilitiesChecking": "检查中...",
+        "modelCapabilitiesUpdated": "已更新",
+        "modelCapabilitiesCheckFailed": "检查失败：{{message}}",
+        "modelCapabilitiesCheckTooltip": "会向模型发送测试请求。这可能会消耗你在服务商处的请求次数和 token。",
+        "modelCapabilityEmbedding": "嵌入",
+        "modelCapabilityText": "文本",
+        "modelCapabilityTools": "工具",
+        "modelCapabilityVision": "视觉",
+        "selectModelFirst": "请先选择一个模型"
     },
     "modals": {
         "confirm": "确认",

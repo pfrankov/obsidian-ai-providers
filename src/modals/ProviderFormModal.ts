@@ -8,12 +8,18 @@ import {
     TextComponent,
     prepareFuzzySearch,
     sanitizeHTMLToDom,
+    setIcon,
 } from 'obsidian';
 import type { SearchMatches } from 'obsidian';
 import { I18n } from '../i18n';
-import { IAIProvider, AIProviderType } from '@obsidian-ai-providers/sdk';
+import {
+    IAIModelCapabilities,
+    IAIProvider,
+    AIProviderType,
+} from '@obsidian-ai-providers/sdk';
 import { logger } from '../utils/logger';
 import AIProvidersPlugin from '../main';
+import { probeModelCapabilities } from '../utils/modelCapabilityChecker';
 
 interface ProviderConfig {
     url: string;
@@ -244,6 +250,9 @@ export class ProviderFormModal extends Modal {
     private nameModified = false;
     private urlModified = false;
     private isLoadingModels = false;
+    private isCheckingModelCapabilities = false;
+    private modelCapabilitiesStatus = '';
+    private modelCapabilitiesSetting?: Setting;
     private modelSuggest?: ModelSuggest;
 
     constructor(
@@ -289,6 +298,183 @@ export class ProviderFormModal extends Modal {
 
     private getDefaultName(type: AIProviderType): string {
         return PROVIDER_CONFIGS[type].name;
+    }
+
+    private getSelectedModel(): string {
+        return (this.provider.model || '').trim();
+    }
+
+    private getDefaultModelCapabilities(): IAIModelCapabilities {
+        return {
+            embedding: false,
+            text: false,
+            tools: false,
+            vision: false,
+        };
+    }
+
+    private getSelectedModelCapabilities(): IAIModelCapabilities {
+        const selectedModel = this.getSelectedModel();
+        if (!selectedModel) {
+            return this.getDefaultModelCapabilities();
+        }
+
+        return (
+            this.provider.modelCapabilities?.[selectedModel] ||
+            this.getDefaultModelCapabilities()
+        );
+    }
+
+    private setSelectedModelCapabilities(capabilities: IAIModelCapabilities) {
+        const selectedModel = this.getSelectedModel();
+        if (!selectedModel) {
+            return;
+        }
+
+        if (!this.provider.modelCapabilities) {
+            this.provider.modelCapabilities = {};
+        }
+        this.provider.modelCapabilities[selectedModel] = capabilities;
+        this.persistModelCapabilities();
+    }
+
+    private persistModelCapabilities() {
+        const settingsProvider = this.plugin.settings.providers?.find(
+            (p: IAIProvider) => p.id === this.provider.id
+        );
+        if (settingsProvider) {
+            settingsProvider.modelCapabilities = {
+                ...this.provider.modelCapabilities,
+            };
+            this.plugin.saveSettings();
+        }
+    }
+
+    private setSelectedModelCapability(
+        key: keyof IAIModelCapabilities,
+        value: boolean
+    ) {
+        const current = this.getSelectedModelCapabilities();
+        this.setSelectedModelCapabilities({
+            ...current,
+            [key]: value,
+        });
+    }
+
+    private renderModelCapabilitiesSection() {
+        if (!this.modelCapabilitiesSetting) {
+            return;
+        }
+
+        const setting = this.modelCapabilitiesSetting;
+        setting.nameEl.textContent = '';
+        setting.descEl.empty();
+        setting.controlEl.empty();
+
+        const selectedModel = this.getSelectedModel();
+        if (!selectedModel) {
+            setting.settingEl.style.display = 'none';
+            return;
+        }
+
+        setting.settingEl.style.display = '';
+        setting
+            .setName(I18n.t('settings.modelCapabilities'))
+            .setClass('ai-providers-model-capabilities-setting');
+        const descriptionEl = setting.descEl;
+        const modelEl = descriptionEl.createDiv(
+            'ai-providers-model-capabilities-model'
+        );
+        modelEl.textContent = selectedModel;
+        if (this.modelCapabilitiesStatus) {
+            const statusEl = descriptionEl.createDiv(
+                'ai-providers-model-capabilities-status'
+            );
+            statusEl.textContent = this.modelCapabilitiesStatus;
+        }
+
+        setting.controlEl.addClass('ai-providers-model-capabilities-control');
+        const layoutEl = setting.controlEl.createDiv(
+            'ai-providers-model-capabilities-layout'
+        );
+
+        const checkButton = layoutEl.createEl('button') as HTMLButtonElement;
+        checkButton.addClass('ai-providers-model-capabilities-check-btn');
+        // Icon alternatives: 'cpu', 'telescope', 'zap', 'sparkles'
+        setIcon(checkButton, 'scan');
+        const checkTooltip = I18n.t('settings.modelCapabilitiesCheckTooltip');
+        checkButton.setAttribute('aria-label', checkTooltip);
+        checkButton.createEl('span', {
+            text: this.isCheckingModelCapabilities
+                ? I18n.t('settings.modelCapabilitiesChecking')
+                : I18n.t('settings.modelCapabilitiesCheck'),
+        });
+        checkButton.disabled = this.isCheckingModelCapabilities;
+        checkButton.setAttribute('data-testid', 'check-model-capabilities');
+        checkButton.addEventListener('click', async () => {
+            await this.checkModelCapabilities();
+        });
+
+        const capabilities = this.getSelectedModelCapabilities();
+        const capabilityLabels: Array<[keyof IAIModelCapabilities, string]> = [
+            ['embedding', I18n.t('settings.modelCapabilityEmbedding')],
+            ['text', I18n.t('settings.modelCapabilityText')],
+            ['tools', I18n.t('settings.modelCapabilityTools')],
+            ['vision', I18n.t('settings.modelCapabilityVision')],
+        ];
+        const checkboxGrid = layoutEl.createDiv(
+            'ai-providers-model-capabilities-grid'
+        );
+
+        capabilityLabels.forEach(([key, label]) => {
+            const labelEl = checkboxGrid.createEl('label');
+            labelEl.addClass('ai-providers-model-capability');
+            const checkbox = labelEl.createEl('input') as HTMLInputElement;
+            checkbox.type = 'checkbox';
+            checkbox.checked = capabilities[key];
+            checkbox.setAttribute('data-testid', `model-capability-${key}`);
+            checkbox.addEventListener('change', () => {
+                this.setSelectedModelCapability(key, checkbox.checked);
+            });
+            labelEl.createEl('span', { text: label });
+        });
+    }
+
+    private async checkModelCapabilities() {
+        const selectedModel = this.getSelectedModel();
+        if (!selectedModel) {
+            new Notice(I18n.t('settings.selectModelFirst'));
+            return;
+        }
+
+        try {
+            this.isCheckingModelCapabilities = true;
+            this.modelCapabilitiesStatus = I18n.t(
+                'settings.modelCapabilitiesChecking'
+            );
+            this.renderModelCapabilitiesSection();
+
+            const capabilities = await probeModelCapabilities({
+                aiProviders: this.plugin.aiProviders,
+                provider: this.provider,
+            });
+
+            this.setSelectedModelCapabilities(capabilities);
+            this.modelCapabilitiesStatus = I18n.t(
+                'settings.modelCapabilitiesUpdated'
+            );
+        } catch (error) {
+            logger.error('Failed to probe model capabilities:', error);
+            this.modelCapabilitiesStatus = I18n.t(
+                'settings.modelCapabilitiesCheckFailed',
+                {
+                    message: (error as Error).message,
+                }
+            );
+        } finally {
+            this.isCheckingModelCapabilities = false;
+            this.renderModelCapabilitiesSection();
+        }
     }
 
     private initDefaults() {
@@ -349,6 +535,7 @@ export class ProviderFormModal extends Modal {
                 dropdown.setValue(modelState.currentModel);
                 dropdown.onChange(value => {
                     this.provider.model = value;
+                    this.renderModelCapabilitiesSection();
                 });
                 return dropdown;
             });
@@ -365,6 +552,7 @@ export class ProviderFormModal extends Modal {
         modelSetting.addText(text => {
             text.setValue(this.provider.model || '').onChange(value => {
                 this.provider.model = value;
+                this.renderModelCapabilitiesSection();
             });
             text.inputEl.setAttribute('data-testid', 'model-input');
             return text;
@@ -387,6 +575,7 @@ export class ProviderFormModal extends Modal {
         input.onChange(value => {
             this.provider.model = value;
             input.inputEl.title = value;
+            this.renderModelCapabilitiesSection();
         });
 
         input.inputEl.setAttribute('data-testid', 'model-combobox-input');
@@ -404,6 +593,7 @@ export class ProviderFormModal extends Modal {
                 this.provider.model = value;
                 input.setValue(value);
                 input.inputEl.title = value;
+                this.renderModelCapabilitiesSection();
             },
         });
     }
@@ -554,6 +744,8 @@ export class ProviderFormModal extends Modal {
             });
 
         this.createModelSetting(contentEl);
+        this.modelCapabilitiesSetting = new Setting(contentEl);
+        this.renderModelCapabilitiesSection();
 
         new Setting(contentEl)
             .addButton(button =>
@@ -580,6 +772,7 @@ export class ProviderFormModal extends Modal {
         const { contentEl } = this;
         this.modelSuggest?.close();
         this.modelSuggest = undefined;
+        this.modelCapabilitiesSetting = undefined;
         contentEl.empty();
     }
 
@@ -593,6 +786,7 @@ export class ProviderFormModal extends Modal {
         this.provider.type = newType;
         this.provider.availableModels = undefined;
         this.provider.model = undefined;
+        this.provider.modelCapabilities = undefined;
 
         // Update URL only for new providers or if URL hasn't been manually modified
         if (
@@ -618,6 +812,7 @@ export class ProviderFormModal extends Modal {
             this.display();
         } else {
             this.updateFields();
+            this.renderModelCapabilitiesSection();
         }
     }
 

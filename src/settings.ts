@@ -19,8 +19,11 @@ import { ProviderFormModal } from './modals/ProviderFormModal';
 export const DEFAULT_SETTINGS: IAIProvidersPluginSettings = {
     _version: 1,
     debugLogging: false,
+    debugChunkLogging: false,
     useNativeFetch: false,
 };
+
+const IS_DEV_BUILD = process.env.NODE_ENV !== 'production';
 
 export class AIProvidersSettingTab extends PluginSettingTab {
     private isFormOpen = false;
@@ -292,10 +295,38 @@ export class AIProvidersSettingTab extends PluginSettingTab {
                         .setValue(this.plugin.settings.debugLogging ?? false)
                         .onChange(async value => {
                             this.plugin.settings.debugLogging = value;
-                            logger.setEnabled(value);
+                            logger.configure({
+                                enabled: value,
+                                chunkLoggingEnabled: IS_DEV_BUILD
+                                    ? (this.plugin.settings.debugChunkLogging ??
+                                      false)
+                                    : false,
+                            });
                             await this.plugin.saveSettings();
                         })
                 );
+
+            if (IS_DEV_BUILD) {
+                new Setting(developerSection)
+                    .setName('Verbose stream chunk logging')
+                    .setDesc(
+                        'Logs raw streaming chunks for debugging transport issues. Keep this off unless you are actively debugging.'
+                    )
+                    .addToggle(toggle =>
+                        toggle
+                            .setValue(
+                                this.plugin.settings.debugChunkLogging ?? false
+                            )
+                            .setDisabled(
+                                !(this.plugin.settings.debugLogging ?? false)
+                            )
+                            .onChange(async value => {
+                                this.plugin.settings.debugChunkLogging = value;
+                                logger.setChunkLoggingEnabled(value);
+                                await this.plugin.saveSettings();
+                            })
+                    );
+            }
 
             new Setting(developerSection)
                 .setName(I18n.t('settings.useNativeFetch'))

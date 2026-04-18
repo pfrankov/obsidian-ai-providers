@@ -31,6 +31,8 @@ type AppWithAIProviders = App & {
     aiProviders?: AIProvidersService;
 };
 
+const IS_DEV_BUILD = process.env.NODE_ENV !== 'production';
+
 export default class AIProvidersPlugin extends Plugin {
     settings!: IAIProvidersPluginSettings;
     aiProviders!: AIProvidersService;
@@ -86,7 +88,12 @@ export default class AIProvidersPlugin extends Plugin {
             DEFAULT_SETTINGS,
             await this.loadData()
         );
-        logger.setEnabled(this.settings.debugLogging ?? false);
+        logger.configure({
+            enabled: this.settings.debugLogging ?? false,
+            chunkLoggingEnabled: IS_DEV_BUILD
+                ? (this.settings.debugChunkLogging ?? false)
+                : false,
+        });
     }
 
     async saveSettings() {

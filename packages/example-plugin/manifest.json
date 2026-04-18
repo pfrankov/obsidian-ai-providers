@@ -6,5 +6,5 @@
     "description": "Example plugin that demonstrates AI Providers integration",
     "author": "Pavel Frankov",
     "isDesktopOnly": false,
-    "main": "dist/main.js"
+    "main": "main.js"
 }

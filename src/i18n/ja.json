@@ -39,7 +39,18 @@
         "debugLogging": "デバッグログ",
         "debugLoggingDesc": "トラブルシューティング用のデバッグログを有効にする",
         "useNativeFetch": "ネイティブFetchを使用",
-        "useNativeFetchDesc": "Electron固有の実装の代わりにネイティブFetch APIを使用します（CORSの問題に役立つ場合があります）"
+        "useNativeFetchDesc": "Electron固有の実装の代わりにネイティブFetch APIを使用します（CORSの問題に役立つ場合があります）",
+        "modelCapabilities": "機能",
+        "modelCapabilitiesCheck": "チェック",
+        "modelCapabilitiesChecking": "チェック中...",
+        "modelCapabilitiesUpdated": "更新済み",
+        "modelCapabilitiesCheckFailed": "チェックに失敗しました: {{message}}",
+        "modelCapabilitiesCheckTooltip": "モデルにテストリクエストを送信します。プロバイダーのリクエスト数とトークンを消費する場合があります。",
+        "modelCapabilityEmbedding": "埋め込み",
+        "modelCapabilityText": "テキスト",
+        "modelCapabilityTools": "ツール",
+        "modelCapabilityVision": "画像",
+        "selectModelFirst": "先にモデルを選択してください"
     },
     "modals": {
         "confirm": "確認",

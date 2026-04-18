@@ -2,7 +2,7 @@ import { Plugin, PluginSettingTab, App, sanitizeHTMLToDom } from 'obsidian';
 import { ExtendedApp, IAIProvidersService } from './types';
 
 const FALLBACK_TIMEOUT = 100;
-const REQUIRED_AI_PROVIDERS_VERSION = 3;
+const REQUIRED_AI_PROVIDERS_VERSION = 4;
 const AI_PROVIDERS_READY_EVENT = 'ai-providers-ready';
 
 let aiProvidersReadyAiResolver: {
@@ -213,12 +213,15 @@ class AIProvidersFallbackSettingsTab extends PluginSettingTab {
 export const __testing__ = {
     resetManager: () => AIProvidersManager.reset(),
     waitForAIProviders,
+    REQUIRED_AI_PROVIDERS_VERSION,
 };
 
 export type {
     IAIProvider,
     IAIProvidersService,
     IAIProvidersExecuteParams,
+    IAIProvidersToolsExecuteParams,
+    IAIModelCapabilities,
     IChunkHandler,
     IAIProvidersEmbedParams,
     IAIHandler,
@@ -227,5 +230,11 @@ export type {
     IAIDocument,
     IAIProvidersRetrievalParams,
     IAIProvidersRetrievalResult,
+    IChatMessage,
     IContentBlock,
+    IAIAssistantToolMessage,
+    IAIToolCall,
+    IAIToolChoice,
+    IAIToolDefinition,
+    IChatMessageRole,
 } from './types';

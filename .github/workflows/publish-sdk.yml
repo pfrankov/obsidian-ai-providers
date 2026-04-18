@@ -1,0 +1,95 @@
+name: Publish SDK
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - .github/workflows/publish-sdk.yml
+      - packages/sdk/package.json
+
+concurrency:
+  group: publish-sdk-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-sdk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Detect SDK version bump
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          before_sha="${{ github.event.before }}"
+          current_version="$(node -p "require('./packages/sdk/package.json').version")"
+
+          echo "version=$current_version" >> "$GITHUB_OUTPUT"
+
+          if [[ "$before_sha" == "0000000000000000000000000000000000000000" ]]; then
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "reason=initial_push" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git diff --quiet "$before_sha" "${{ github.sha }}" -- packages/sdk/package.json; then
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "reason=package_json_unchanged" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          previous_version="$(
+            git show "$before_sha:packages/sdk/package.json" | node -e "let json='';process.stdin.on('data', (chunk) => json += chunk);process.stdin.on('end', () => process.stdout.write(JSON.parse(json).version));"
+          )"
+
+          if [[ "$previous_version" == "$current_version" ]]; then
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "reason=version_unchanged" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          published_version="$(npm view @obsidian-ai-providers/sdk version 2>/dev/null || true)"
+          if [[ "$published_version" == "$current_version" ]]; then
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "reason=already_published" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          echo "reason=version_bumped" >> "$GITHUB_OUTPUT"
+
+      - name: Log publish decision
+        run: |
+          echo "should_publish=${{ steps.version.outputs.should_publish }}"
+          echo "version=${{ steps.version.outputs.version }}"
+          echo "reason=${{ steps.version.outputs.reason }}"
+
+      - name: Install SDK dependencies
+        if: steps.version.outputs.should_publish == 'true'
+        working-directory: packages/sdk
+        run: npm install
+
+      - name: Build SDK
+        if: steps.version.outputs.should_publish == 'true'
+        working-directory: packages/sdk
+        run: npm run build
+
+      - name: Publish SDK
+        if: steps.version.outputs.should_publish == 'true'
+        working-directory: packages/sdk
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

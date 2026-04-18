@@ -1,24 +1,34 @@
 import {
+    IAIAssistantToolMessage,
     IAIHandler,
     IAIProvider,
     IAIProvidersEmbedParams,
     IAIProvidersExecuteParams,
+    IAIProvidersToolsExecuteParams,
     IAIProvidersPluginSettings,
+    IChatMessage,
     IContentBlock,
+    IAIToolCall,
+    IAIToolChoice,
+    IAIToolDefinition,
 } from '@obsidian-ai-providers/sdk';
 import OpenAI from 'openai';
 import { logger } from '../utils/logger';
 import { FetchFunction, FetchSelector } from '../utils/FetchSelector';
+import { logToolsRequest, logToolsResponse } from '../utils/modelDebugSummary';
 
-type ChatMessage = {
-    role: string;
-    content: string | IContentBlock[];
-    images?: string[];
-};
 type ChatCompletionDelta =
     OpenAI.Chat.Completions.ChatCompletionChunk['choices'][number]['delta'] & {
         reasoning?: string;
     };
+type ChatCompletionToolDelta = NonNullable<
+    ChatCompletionDelta['tool_calls']
+>[number];
+
+type StreamedOpenAIResult = {
+    text: string;
+    toolCalls: IAIToolCall[];
+};
 
 export class OpenAIHandler implements IAIHandler {
     private fetchSelector: FetchSelector;
@@ -47,23 +57,150 @@ export class OpenAIHandler implements IAIHandler {
         });
     }
 
+    private buildTextContentParts(
+        blocks: IContentBlock[]
+    ): OpenAI.Chat.Completions.ChatCompletionContentPartText[] {
+        return blocks
+            .filter(
+                (block): block is Extract<IContentBlock, { type: 'text' }> => {
+                    return block.type === 'text';
+                }
+            )
+            .map(block => ({
+                type: 'text',
+                text: block.text,
+            }));
+    }
+
+    private extractTextFromContent(
+        content: string | IContentBlock[] | null
+    ): string {
+        if (content === null) {
+            return '';
+        }
+        if (typeof content === 'string') {
+            return content;
+        }
+        return content
+            .filter(
+                (block): block is Extract<IContentBlock, { type: 'text' }> => {
+                    return block.type === 'text';
+                }
+            )
+            .map(block => block.text)
+            .join('\n');
+    }
+
+    private mapToolCallsToOpenAI(
+        toolCalls?: IAIToolCall[]
+    ): OpenAI.Chat.Completions.ChatCompletionMessageToolCall[] | undefined {
+        if (!toolCalls?.length) {
+            return undefined;
+        }
+
+        return toolCalls.map(toolCall => ({
+            id: toolCall.id,
+            type: 'function',
+            function: {
+                name: toolCall.function.name,
+                arguments: toolCall.function.arguments,
+            },
+        }));
+    }
+
+    private buildUserMessageContent(
+        message: IChatMessage
+    ): string | OpenAI.Chat.Completions.ChatCompletionContentPart[] {
+        if (Array.isArray(message.content)) {
+            const contentParts = [...this.buildContentParts(message.content)];
+            message.images?.forEach(image => {
+                contentParts.push({
+                    type: 'image_url',
+                    image_url: { url: image },
+                } as OpenAI.Chat.Completions.ChatCompletionContentPartImage);
+            });
+            return contentParts;
+        }
+
+        const textContent = this.extractTextFromContent(message.content);
+        if (!message.images?.length) {
+            return textContent;
+        }
+
+        return this.buildPromptContentParts(textContent, message.images);
+    }
+
+    private mapAssistantMessage(
+        message: IChatMessage
+    ): OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam {
+        const content =
+            typeof message.content === 'string' || message.content === null
+                ? message.content
+                : this.buildTextContentParts(message.content);
+        return {
+            role: 'assistant',
+            content,
+            name: message.name,
+            tool_calls: this.mapToolCallsToOpenAI(message.tool_calls),
+        };
+    }
+
+    private mapToolMessage(
+        message: IChatMessage
+    ): OpenAI.Chat.Completions.ChatCompletionToolMessageParam {
+        if (!message.tool_call_id) {
+            throw new Error('Tool message requires tool_call_id');
+        }
+        const content =
+            typeof message.content === 'string'
+                ? message.content
+                : this.buildTextContentParts(message.content || []);
+        return {
+            role: 'tool',
+            content,
+            tool_call_id: message.tool_call_id,
+        };
+    }
+
+    private mapSystemOrDeveloperMessage(
+        message: IChatMessage
+    ):
+        | OpenAI.Chat.Completions.ChatCompletionSystemMessageParam
+        | OpenAI.Chat.Completions.ChatCompletionDeveloperMessageParam {
+        const content =
+            typeof message.content === 'string'
+                ? message.content
+                : this.buildTextContentParts(message.content || []);
+        return {
+            role: message.role,
+            content,
+            name: message.name,
+        } as
+            | OpenAI.Chat.Completions.ChatCompletionSystemMessageParam
+            | OpenAI.Chat.Completions.ChatCompletionDeveloperMessageParam;
+    }
+
+    private unsupportedRole(role: string): never {
+        throw new Error(`Unsupported message role: ${role}`);
+    }
+
     private mapMessageToOpenAIMessage(
-        message: ChatMessage
+        message: IChatMessage
     ): OpenAI.Chat.Completions.ChatCompletionMessageParam {
-        if (typeof message.content === 'string') {
-            const role: 'assistant' | 'system' | 'user' =
-                message.role === 'assistant' || message.role === 'system'
-                    ? message.role
-                    : 'user';
-            return {
-                role,
-                content: message.content,
-            };
+        if (message.role === 'assistant')
+            return this.mapAssistantMessage(message);
+        if (message.role === 'tool') return this.mapToolMessage(message);
+        if (message.role === 'system' || message.role === 'developer') {
+            return this.mapSystemOrDeveloperMessage(message);
+        }
+        if (message.role !== 'user') {
+            return this.unsupportedRole(message.role);
         }
 
         return {
             role: 'user',
-            content: this.buildContentParts(message.content),
+            content: this.buildUserMessageContent(message),
+            name: message.name,
         };
     }
 
@@ -116,34 +253,6 @@ export class OpenAIHandler implements IAIHandler {
         throw new Error('Either messages or prompt must be provided');
     }
 
-    private async streamChatResponse(
-        response: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>,
-        abortController?: AbortController,
-        onProgress?: (chunk: string, accumulatedText: string) => void
-    ): Promise<string> {
-        let fullText = '';
-        let isInThinkBlock = false;
-
-        for await (const chunk of response) {
-            this.ensureNotAborted(abortController);
-            const delta = chunk.choices[0]?.delta;
-            const result = this.buildStreamingAppend(delta, isInThinkBlock);
-            isInThinkBlock = result.isInThinkBlock;
-
-            if (result.appendText.length > 0) {
-                fullText += result.appendText;
-                onProgress?.(result.appendText, fullText);
-            }
-        }
-
-        if (isInThinkBlock) {
-            fullText += '</think>';
-            onProgress?.('</think>', fullText);
-        }
-
-        return fullText;
-    }
-
     private buildStreamingAppend(
         delta: ChatCompletionDelta | undefined,
         isInThinkBlock: boolean
@@ -178,6 +287,145 @@ export class OpenAIHandler implements IAIHandler {
         }
 
         return { appendText, isInThinkBlock };
+    }
+
+    private appendToolCallDelta(
+        toolCallsByIndex: Map<number, IAIToolCall>,
+        toolCallDeltas?: ChatCompletionToolDelta[]
+    ) {
+        if (!toolCallDeltas?.length) {
+            return;
+        }
+
+        toolCallDeltas.forEach(toolCallDelta => {
+            const index = toolCallDelta.index;
+            const existing = toolCallsByIndex.get(index) || {
+                id: `call_${index + 1}`,
+                type: 'function' as const,
+                function: {
+                    name: '',
+                    arguments: '',
+                },
+            };
+
+            if (toolCallDelta.id) {
+                existing.id = toolCallDelta.id;
+            }
+            if (toolCallDelta.function?.name) {
+                existing.function.name = toolCallDelta.function.name;
+            }
+            if (toolCallDelta.function?.arguments) {
+                existing.function.arguments += toolCallDelta.function.arguments;
+            }
+
+            toolCallsByIndex.set(index, existing);
+        });
+    }
+
+    private toSortedToolCalls(
+        toolCallsByIndex: Map<number, IAIToolCall>
+    ): IAIToolCall[] {
+        return [...toolCallsByIndex.entries()]
+            .sort(([a], [b]) => a - b)
+            .map(([, toolCall]) => toolCall);
+    }
+
+    private async streamChatResponse(
+        response: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>,
+        abortController?: AbortController,
+        onProgress?: (chunk: string, accumulatedText: string) => void
+    ): Promise<StreamedOpenAIResult> {
+        let fullText = '';
+        let isInThinkBlock = false;
+        const toolCallsByIndex = new Map<number, IAIToolCall>();
+
+        for await (const chunk of response) {
+            this.ensureNotAborted(abortController);
+            const delta = chunk.choices[0]?.delta as
+                | ChatCompletionDelta
+                | undefined;
+            const result = this.buildStreamingAppend(delta, isInThinkBlock);
+            isInThinkBlock = result.isInThinkBlock;
+
+            if (result.appendText.length > 0) {
+                fullText += result.appendText;
+                onProgress?.(result.appendText, fullText);
+            }
+
+            this.appendToolCallDelta(toolCallsByIndex, delta?.tool_calls);
+        }
+
+        if (isInThinkBlock) {
+            fullText += '</think>';
+            onProgress?.('</think>', fullText);
+        }
+
+        return {
+            text: fullText,
+            toolCalls: this.toSortedToolCalls(toolCallsByIndex),
+        };
+    }
+
+    private mapTools(
+        tools: IAIToolDefinition[]
+    ): OpenAI.Chat.Completions.ChatCompletionTool[] {
+        return tools.map(tool => ({
+            type: 'function',
+            function: {
+                name: tool.function.name,
+                description: tool.function.description,
+                parameters: tool.function.parameters,
+                strict: tool.function.strict,
+            },
+        }));
+    }
+
+    private mapToolChoice(
+        toolChoice: IAIToolChoice
+    ): OpenAI.Chat.Completions.ChatCompletionToolChoiceOption {
+        if (typeof toolChoice === 'string') {
+            return toolChoice;
+        }
+
+        return {
+            type: 'function',
+            function: {
+                name: toolChoice.function.name,
+            },
+        };
+    }
+
+    private buildRequestOptions(
+        params: IAIProvidersExecuteParams
+    ): Record<string, unknown> {
+        return params.options ? { ...params.options } : {};
+    }
+
+    private assertNoToolConfigInOptions(
+        options: IAIProvidersToolsExecuteParams['options']
+    ) {
+        if (!options) {
+            return;
+        }
+        if ('tools' in options || 'tool_choice' in options) {
+            throw new Error(
+                'Pass tools and tool_choice as top-level toolsExecute params'
+            );
+        }
+    }
+
+    private buildToolsRequestOptions(
+        params: IAIProvidersToolsExecuteParams
+    ): Record<string, unknown> {
+        this.assertNoToolConfigInOptions(params.options);
+        const requestOptions = params.options ? { ...params.options } : {};
+
+        requestOptions.tools = this.mapTools(params.tools);
+        if (params.tool_choice !== undefined) {
+            requestOptions.tool_choice = this.mapToolChoice(params.tool_choice);
+        }
+
+        return requestOptions;
     }
 
     private getClient(provider: IAIProvider, fetchImpl: FetchFunction): OpenAI {
@@ -297,8 +545,9 @@ export class OpenAIHandler implements IAIHandler {
         openai: OpenAI;
         onProgress?: (chunk: string, accumulatedText: string) => void;
         abortController?: AbortController;
-    }): Promise<string> {
+    }): Promise<IAIAssistantToolMessage> {
         const messages = this.buildOpenAIMessages(params);
+        const requestOptions = this.buildRequestOptions(params);
 
         logger.debug('Sending chat request to OpenAI');
 
@@ -307,15 +556,88 @@ export class OpenAIHandler implements IAIHandler {
                 model: params.provider.model || '',
                 messages,
                 stream: true,
-                ...params.options,
+                ...requestOptions,
             },
             { signal: abortController?.signal }
         );
 
-        return this.streamChatResponse(response, abortController, onProgress);
+        const streamedResult = await this.streamChatResponse(
+            response,
+            abortController,
+            onProgress
+        );
+
+        const assistantMessage: IAIAssistantToolMessage = {
+            role: 'assistant',
+            content: streamedResult.text || null,
+        };
+
+        if (streamedResult.toolCalls.length > 0) {
+            assistantMessage.tool_calls = streamedResult.toolCalls;
+        }
+
+        return assistantMessage;
     }
 
-    async execute(params: IAIProvidersExecuteParams): Promise<string> {
+    private async executeOpenAIToolsGeneration({
+        params,
+        openai,
+        onProgress,
+        abortController,
+    }: {
+        params: IAIProvidersToolsExecuteParams;
+        openai: OpenAI;
+        onProgress?: (chunk: string, accumulatedText: string) => void;
+        abortController?: AbortController;
+    }): Promise<IAIAssistantToolMessage> {
+        const messages = params.messages.map((message: IChatMessage) =>
+            this.mapMessageToOpenAIMessage(message)
+        );
+        const requestOptions = this.buildToolsRequestOptions(params);
+
+        logToolsRequest({
+            provider: params.provider,
+            messages: params.messages,
+            tools: params.tools,
+            toolChoice: params.tool_choice,
+        });
+        logger.debug('Sending tools chat request to OpenAI');
+
+        const response = await openai.chat.completions.create(
+            {
+                model: params.provider.model || '',
+                messages,
+                stream: true,
+                ...requestOptions,
+            },
+            { signal: abortController?.signal }
+        );
+
+        const streamedResult = await this.streamChatResponse(
+            response,
+            abortController,
+            onProgress
+        );
+
+        const assistantMessage: IAIAssistantToolMessage = {
+            role: 'assistant',
+            content: streamedResult.text || null,
+        };
+
+        if (streamedResult.toolCalls.length > 0) {
+            assistantMessage.tool_calls = streamedResult.toolCalls;
+        }
+
+        logToolsResponse({
+            provider: params.provider,
+            assistantMessage,
+        });
+        return assistantMessage;
+    }
+
+    private async runExecute(
+        params: IAIProvidersExecuteParams
+    ): Promise<IAIAssistantToolMessage> {
         logger.debug('Starting execute process with params:', {
             model: params.provider.model,
             messagesCount: params.messages?.length || 0,
@@ -346,6 +668,42 @@ export class OpenAIHandler implements IAIHandler {
         } catch (e) {
             const error = e as Error;
             if (error.message === 'Aborted') {
+                return Promise.reject(error);
+            }
+            throw error;
+        }
+    }
+
+    async execute(params: IAIProvidersExecuteParams): Promise<string> {
+        const assistantMessage = await this.runExecute(params);
+        return assistantMessage.content || '';
+    }
+
+    async toolsExecute(
+        params: IAIProvidersToolsExecuteParams
+    ): Promise<IAIAssistantToolMessage> {
+        const { abortController: externalAbort, onProgress } = params;
+
+        this.ensureNotAborted(externalAbort);
+
+        try {
+            return await this.fetchSelector.execute(
+                params.provider,
+                async fetchImpl => {
+                    const openai = this.getClient(params.provider, fetchImpl);
+                    return this.executeOpenAIToolsGeneration({
+                        params,
+                        openai,
+                        onProgress: (chunk, acc) => {
+                            onProgress?.(chunk, acc);
+                            this.ensureNotAborted(externalAbort);
+                        },
+                        abortController: externalAbort,
+                    });
+                }
+            );
+        } catch (error) {
+            if ((error as Error).message === 'Aborted') {
                 return Promise.reject(error);
             }
             throw error;

@@ -103,7 +103,7 @@ export async function electronFetch(
                 try {
                     await writer.ready;
                     await writer.write(chunk);
-                    logger.debug('Chunk received:', {
+                    logger.debugChunk('Chunk received:', {
                         size: chunk.length,
                         text: chunk.toString('utf-8'),
                     });

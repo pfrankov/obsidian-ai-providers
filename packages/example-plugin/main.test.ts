@@ -46,14 +46,21 @@ const createMockProvider = (id: string, name: string, model?: string) => ({
 const createMockAIResolver = (
     providers: any[] = [],
     execute = vi.fn(),
+    toolsExecute = vi.fn().mockResolvedValue({
+        role: 'assistant',
+        content: 'Tool demo completed',
+        tool_calls: [],
+    }),
     embed = vi.fn(),
     retrieve = vi.fn()
 ) => ({
     promise: Promise.resolve({
         providers,
         execute,
+        toolsExecute,
         embed,
         retrieve,
+        getModelCapabilities: vi.fn().mockReturnValue(null),
     }),
 });
 
@@ -238,11 +245,13 @@ describe('AIProvidersExamplePlugin', () => {
 
             await settingsTab.display();
 
-            // Check for embeddings heading
-            const embeddingsHeading =
-                settingsTab.containerEl.querySelector('h3');
+            const headings = Array.from(
+                settingsTab.containerEl.querySelectorAll('h3')
+            );
+            const embeddingsHeading = headings.find(
+                heading => heading.textContent === 'Embeddings'
+            );
             expect(embeddingsHeading).toBeTruthy();
-            expect(embeddingsHeading?.textContent).toBe('Embeddings');
 
             // Check for file selection dropdown
             const fileDropdown =
@@ -285,7 +294,12 @@ describe('AIProvidersExamplePlugin', () => {
                 .mockResolvedValue([[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]]);
 
             (waitForAI as Mock).mockResolvedValueOnce(
-                createMockAIResolver([mockProvider], vi.fn(), mockEmbed)
+                createMockAIResolver(
+                    [mockProvider],
+                    vi.fn(),
+                    vi.fn(),
+                    mockEmbed
+                )
             );
 
             (settingsTab as any).selectedProvider = 'provider1';
@@ -317,7 +331,12 @@ describe('AIProvidersExamplePlugin', () => {
             const mockEmbed = vi.fn().mockResolvedValue(mockEmbeddings);
 
             (waitForAI as Mock).mockResolvedValueOnce(
-                createMockAIResolver([mockProvider], vi.fn(), mockEmbed)
+                createMockAIResolver(
+                    [mockProvider],
+                    vi.fn(),
+                    vi.fn(),
+                    mockEmbed
+                )
             );
 
             (settingsTab as any).selectedProvider = 'provider1';
@@ -371,7 +390,12 @@ describe('AIProvidersExamplePlugin', () => {
                 .mockRejectedValue(new Error('Embedding failed'));
 
             (waitForAI as Mock).mockResolvedValueOnce(
-                createMockAIResolver([mockProvider], vi.fn(), mockEmbed)
+                createMockAIResolver(
+                    [mockProvider],
+                    vi.fn(),
+                    vi.fn(),
+                    mockEmbed
+                )
             );
 
             (settingsTab as any).selectedProvider = 'provider1';
@@ -451,6 +475,101 @@ describe('AIProvidersExamplePlugin', () => {
             // Check that RAG component is rendered
             const ragComponent = (settingsTab as any).ragSearchComponent;
             expect(ragComponent).toBeTruthy();
+        });
+
+        it('should display tool calling demo section when provider is selected', async () => {
+            const mockProvider = createMockProvider('provider1', 'Provider 1');
+
+            (waitForAI as Mock).mockResolvedValueOnce(
+                createMockAIResolver([mockProvider])
+            );
+
+            (settingsTab as any).selectedProvider = 'provider1';
+
+            await settingsTab.display();
+
+            const toolHeading = Array.from(
+                settingsTab.containerEl.querySelectorAll('h3')
+            ).find(h3 => h3.textContent === '🛠️ Tool Calling Demo');
+            expect(toolHeading).toBeTruthy();
+
+            const toolButton = Array.from(
+                settingsTab.containerEl.querySelectorAll('button')
+            ).find(button => button.textContent === 'Run Tool Demo');
+            expect(toolButton).toBeTruthy();
+        });
+
+        it('should execute tool calling loop and append tool results', async () => {
+            const mockProvider = createMockProvider('provider1', 'Provider 1');
+            const mockToolsExecute = vi
+                .fn()
+                .mockResolvedValueOnce({
+                    role: 'assistant',
+                    content: null,
+                    tool_calls: [
+                        {
+                            id: 'call_1',
+                            type: 'function',
+                            function: {
+                                name: 'list_markdown_notes',
+                                arguments: '{"limit":2}',
+                            },
+                        },
+                    ],
+                })
+                .mockResolvedValueOnce({
+                    role: 'assistant',
+                    content: 'There are 3 markdown notes.',
+                    tool_calls: [],
+                });
+
+            (waitForAI as Mock).mockResolvedValueOnce(
+                createMockAIResolver([mockProvider], vi.fn(), mockToolsExecute)
+            );
+
+            (settingsTab as any).selectedProvider = 'provider1';
+
+            await settingsTab.display();
+
+            const toolButton = Array.from(
+                settingsTab.containerEl.querySelectorAll('button')
+            ).find(
+                button => button.textContent === 'Run Tool Demo'
+            ) as HTMLButtonElement;
+
+            expect(toolButton).toBeTruthy();
+            toolButton.click();
+
+            await new Promise(resolve => setTimeout(resolve, 0));
+            await new Promise(resolve => setTimeout(resolve, 0));
+
+            expect(mockToolsExecute).toHaveBeenCalledTimes(2);
+
+            const firstCall = mockToolsExecute.mock.calls[0][0];
+            expect(firstCall.provider).toBe(mockProvider);
+            expect(firstCall.tool_choice).toBe('required');
+            expect(firstCall.tools).toHaveLength(3);
+            expect(firstCall.messages[0]).toEqual(
+                expect.objectContaining({ role: 'user' })
+            );
+
+            const secondCall = mockToolsExecute.mock.calls[1][0];
+            expect(secondCall.messages).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ role: 'assistant' }),
+                    expect.objectContaining({
+                        role: 'tool',
+                        tool_call_id: 'call_1',
+                    }),
+                ])
+            );
+
+            expect(settingsTab.containerEl.textContent).toContain(
+                'Tool call: list_markdown_notes'
+            );
+            expect(settingsTab.containerEl.textContent).toContain(
+                'There are 3 markdown notes.'
+            );
         });
     });
 });

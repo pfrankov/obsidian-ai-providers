@@ -8,6 +8,7 @@ import {
     IAIDocument,
 } from '@obsidian-ai-providers/sdk';
 import { logger } from './utils/logger';
+import { AI_PROVIDERS_SERVICE_VERSION } from './constants/serviceApiVersion';
 
 // Mock the handlers
 vi.mock('./handlers/OpenAIHandler');
@@ -161,7 +162,7 @@ describe('AIProvidersService', () => {
     });
 
     it('should initialize with correct version', () => {
-        expect(service.version).toBe(3);
+        expect(service.version).toBe(AI_PROVIDERS_SERVICE_VERSION);
     });
 
     it('defaults providers to empty array when missing', () => {
@@ -328,6 +329,354 @@ describe('AIProvidersService', () => {
         ).rejects.toThrow('Handler not found');
     });
 
+    it('toolsExecute throws for unsupported handlers', async () => {
+        await expect(
+            service.toolsExecute({
+                provider: { ...mockProvider, type: 'unsupported' },
+                messages: [{ role: 'user', content: 'hi' }],
+                tools: [
+                    {
+                        type: 'function',
+                        function: { name: 'test', parameters: {} },
+                    },
+                ],
+            } as any)
+        ).rejects.toThrow('Handler not found');
+    });
+
+    it('toolsExecute delegates to provider handler', async () => {
+        const handlers = (service as any).handlers;
+        handlers.openai.toolsExecute = vi.fn().mockResolvedValue({
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+                {
+                    id: 'call_1',
+                    type: 'function',
+                    function: { name: 'test', arguments: '{}' },
+                },
+            ],
+        });
+
+        const result = await service.toolsExecute({
+            provider: mockProvider,
+            messages: [{ role: 'user', content: 'Hi' }],
+            tools: [
+                {
+                    type: 'function',
+                    function: { name: 'test', parameters: {} },
+                },
+            ],
+        } as any);
+
+        expect(handlers.openai.toolsExecute).toHaveBeenCalled();
+        expect(result.tool_calls?.[0].function.name).toBe('test');
+    });
+
+    it('execute uses model override when params.model is set', async () => {
+        const handlers = (service as any).handlers;
+        handlers.openai.execute = vi
+            .fn()
+            .mockImplementation(async (params: any) => {
+                return params.provider.model;
+            });
+
+        const result = await service.execute({
+            provider: mockProvider,
+            model: 'gpt-4o',
+            prompt: 'Hi',
+            onProgress: () => {},
+        } as any);
+
+        expect(result).toBe('gpt-4o');
+        expect(handlers.openai.execute).toHaveBeenCalledWith(
+            expect.objectContaining({
+                provider: expect.objectContaining({ model: 'gpt-4o' }),
+            })
+        );
+    });
+
+    it('execute uses provider default model when params.model is not set', async () => {
+        const handlers = (service as any).handlers;
+        handlers.openai.execute = vi
+            .fn()
+            .mockImplementation(async (params: any) => {
+                return params.provider.model;
+            });
+
+        const result = await service.execute({
+            provider: mockProvider,
+            prompt: 'Hi',
+            onProgress: () => {},
+        } as any);
+
+        expect(result).toBe('gpt-3.5-turbo');
+        expect(handlers.openai.execute).toHaveBeenCalledWith(
+            expect.objectContaining({
+                provider: expect.objectContaining({ model: 'gpt-3.5-turbo' }),
+            })
+        );
+    });
+
+    it('toolsExecute uses model override when params.model is set', async () => {
+        const handlers = (service as any).handlers;
+        handlers.openai.toolsExecute = vi.fn().mockResolvedValue({
+            role: 'assistant',
+            content: 'done',
+        });
+
+        await service.toolsExecute({
+            provider: mockProvider,
+            model: 'gpt-4o',
+            messages: [{ role: 'user', content: 'Hi' }],
+            tools: [
+                {
+                    type: 'function',
+                    function: { name: 'test', parameters: {} },
+                },
+            ],
+        } as any);
+
+        expect(handlers.openai.toolsExecute).toHaveBeenCalledWith(
+            expect.objectContaining({
+                provider: expect.objectContaining({ model: 'gpt-4o' }),
+            })
+        );
+    });
+
+    it('toolsExecute uses provider default model when params.model is not set', async () => {
+        const handlers = (service as any).handlers;
+        handlers.openai.toolsExecute = vi.fn().mockResolvedValue({
+            role: 'assistant',
+            content: 'done',
+        });
+
+        await service.toolsExecute({
+            provider: mockProvider,
+            messages: [{ role: 'user', content: 'Hi' }],
+            tools: [
+                {
+                    type: 'function',
+                    function: { name: 'test', parameters: {} },
+                },
+            ],
+        } as any);
+
+        expect(handlers.openai.toolsExecute).toHaveBeenCalledWith(
+            expect.objectContaining({
+                provider: expect.objectContaining({ model: 'gpt-3.5-turbo' }),
+            })
+        );
+    });
+
+    it('legacy execute uses model override', async () => {
+        const handlers = (service as any).handlers;
+        let capturedProvider: any = null;
+        handlers.openai.execute = vi
+            .fn()
+            .mockImplementation(async (params: any) => {
+                capturedProvider = params.provider;
+                return 'Hi';
+            });
+
+        await service.execute({
+            provider: mockProvider,
+            model: 'gpt-4o',
+            prompt: 'Hi',
+        } as any);
+
+        expect(capturedProvider.model).toBe('gpt-4o');
+    });
+
+    it('getModelCapabilities returns stored capabilities for requested model', () => {
+        const providerWithCapabilities = {
+            ...mockProvider,
+            model: 'gpt-4',
+            modelCapabilities: {
+                'gpt-4': {
+                    embedding: false,
+                    text: true,
+                    tools: true,
+                    vision: true,
+                },
+            },
+        };
+
+        expect(
+            service.getModelCapabilities({ provider: providerWithCapabilities })
+        ).toEqual({
+            embedding: false,
+            text: true,
+            tools: true,
+            vision: true,
+        });
+        expect(
+            service.getModelCapabilities({
+                provider: providerWithCapabilities,
+                model: 'missing',
+            })
+        ).toBeNull();
+        expect(
+            service.getModelCapabilities({
+                provider: { ...mockProvider, model: '' },
+            })
+        ).toBeNull();
+    });
+
+    it('getModels returns models with capabilities', () => {
+        const provider = {
+            ...mockProvider,
+            availableModels: [
+                'gpt-4o',
+                'gpt-3.5-turbo',
+                'text-embedding-3-small',
+            ],
+            modelCapabilities: {
+                'gpt-4o': {
+                    text: true,
+                    embedding: false,
+                    tools: true,
+                    vision: true,
+                },
+                'text-embedding-3-small': {
+                    text: false,
+                    embedding: true,
+                    tools: false,
+                    vision: false,
+                },
+            },
+        };
+
+        const models = service.getModels({ provider });
+
+        expect(models).toEqual({
+            'gpt-4o': {
+                text: true,
+                embedding: false,
+                tools: true,
+                vision: true,
+            },
+            'gpt-3.5-turbo': null,
+            'text-embedding-3-small': {
+                text: false,
+                embedding: true,
+                tools: false,
+                vision: false,
+            },
+        });
+    });
+
+    it('getModels returns empty object when no availableModels', () => {
+        expect(service.getModels({ provider: mockProvider })).toEqual({});
+    });
+
+    it('checkModelCapabilities probes and persists capabilities', async () => {
+        const provider = {
+            ...mockProvider,
+            model: 'gpt-4o',
+        };
+        mockPlugin.settings.providers = [provider];
+
+        const handlers = (service as any).handlers;
+        handlers.openai.execute = vi.fn().mockResolvedValue('OK');
+        handlers.openai.embed = vi.fn().mockResolvedValue([[0.1]]);
+        handlers.openai.toolsExecute = vi.fn().mockResolvedValue({
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+                {
+                    id: 'call_1',
+                    type: 'function',
+                    function: { name: 'capability_probe', arguments: '{}' },
+                },
+            ],
+        });
+
+        const result = await service.checkModelCapabilities({ provider });
+
+        expect(result).toEqual({
+            text: true,
+            embedding: true,
+            tools: true,
+            vision: true,
+        });
+        expect(provider.modelCapabilities).toEqual({
+            'gpt-4o': {
+                text: true,
+                embedding: true,
+                tools: true,
+                vision: true,
+            },
+        });
+        expect(mockPlugin.saveSettings).toHaveBeenCalled();
+    });
+
+    it('checkModelCapabilities uses model override and persists under overridden model', async () => {
+        const provider = {
+            ...mockProvider,
+            model: 'gpt-3.5-turbo',
+        };
+        mockPlugin.settings.providers = [provider];
+
+        const handlers = (service as any).handlers;
+        handlers.openai.execute = vi.fn().mockResolvedValue('OK');
+        (service as any).cachedEmbeddingsService = {
+            embedWithCache: vi.fn().mockRejectedValue(new Error('no embed')),
+        };
+        handlers.openai.toolsExecute = vi
+            .fn()
+            .mockRejectedValue(new Error('no tools'));
+
+        const result = await service.checkModelCapabilities({
+            provider,
+            model: 'gpt-4o',
+        });
+
+        expect(result).toEqual({
+            text: true,
+            embedding: false,
+            tools: false,
+            vision: true,
+        });
+        expect(provider.modelCapabilities).toEqual({
+            'gpt-4o': {
+                text: true,
+                embedding: false,
+                tools: false,
+                vision: true,
+            },
+        });
+        // Verify execute was called with the overridden model
+        expect(handlers.openai.execute.mock.calls[0][0].provider.model).toBe(
+            'gpt-4o'
+        );
+    });
+
+    it('checkModelCapabilities does not save when provider not found in settings', async () => {
+        mockPlugin.settings.providers = [];
+
+        const handlers = (service as any).handlers;
+        handlers.openai.execute = vi.fn().mockRejectedValue(new Error('fail'));
+        (service as any).cachedEmbeddingsService = {
+            embedWithCache: vi.fn().mockRejectedValue(new Error('fail')),
+        };
+        handlers.openai.toolsExecute = vi
+            .fn()
+            .mockRejectedValue(new Error('fail'));
+
+        const result = await service.checkModelCapabilities({
+            provider: mockProvider,
+        });
+
+        expect(result).toEqual({
+            text: false,
+            embedding: false,
+            tools: false,
+            vision: false,
+        });
+        expect(mockPlugin.saveSettings).not.toHaveBeenCalled();
+    });
+
     it('legacy execute propagates handler errors', async () => {
         const handlers = (service as any).handlers;
         handlers.openai.execute = vi.fn().mockRejectedValue('boom');
@@ -464,10 +813,25 @@ describe('AIProvidersService', () => {
         expect(logger.error).toHaveBeenCalled();
     });
 
-    it('checkCompatibility throws when version is too low', () => {
-        expect(() => service.checkCompatibility(999)).toThrow(
-            'errors.pluginMustBeUpdated'
-        );
+    it('checkCompatibility throws version_mismatch when version is too low', () => {
+        try {
+            service.checkCompatibility(999);
+            throw new Error('Expected compatibility error');
+        } catch (error) {
+            const compatibilityError = error as Error & {
+                code?: string;
+                requiredVersion?: number;
+                currentVersion?: number;
+            };
+            expect(compatibilityError.message).toBe(
+                'errors.pluginMustBeUpdated'
+            );
+            expect(compatibilityError.code).toBe('version_mismatch');
+            expect(compatibilityError.requiredVersion).toBe(999);
+            expect(compatibilityError.currentVersion).toBe(
+                AI_PROVIDERS_SERVICE_VERSION
+            );
+        }
     });
 
     it('migrateProvider returns existing provider when matched', async () => {

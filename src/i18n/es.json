@@ -39,7 +39,18 @@
         "debugLogging": "Registro de depuración",
         "debugLoggingDesc": "Habilitar el registro de depuración para solucionar problemas",
         "useNativeFetch": "Usar Fetch nativo",
-        "useNativeFetchDesc": "Usar la API Fetch nativa en lugar de la implementación específica de Electron (puede ayudar con problemas de CORS)"
+        "useNativeFetchDesc": "Usar la API Fetch nativa en lugar de la implementación específica de Electron (puede ayudar con problemas de CORS)",
+        "modelCapabilities": "Capacidades",
+        "modelCapabilitiesCheck": "Comprobar",
+        "modelCapabilitiesChecking": "Comprobando...",
+        "modelCapabilitiesUpdated": "Actualizado",
+        "modelCapabilitiesCheckFailed": "Comprobación fallida: {{message}}",
+        "modelCapabilitiesCheckTooltip": "Envía solicitudes de prueba al modelo. Esto puede consumir tus solicitudes y tokens del proveedor.",
+        "modelCapabilityEmbedding": "Embeddings",
+        "modelCapabilityText": "Texto",
+        "modelCapabilityTools": "Herramientas",
+        "modelCapabilityVision": "Visión",
+        "selectModelFirst": "Primero selecciona un modelo"
     },
     "modals": {
         "confirm": "Confirmar",

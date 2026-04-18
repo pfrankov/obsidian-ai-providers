@@ -19,7 +19,9 @@ vi.mock('./utils/logger', () => ({
         debug: vi.fn(),
         error: vi.fn(),
         warn: vi.fn(),
+        configure: vi.fn(),
         setEnabled: vi.fn(),
+        setChunkLoggingEnabled: vi.fn(),
     },
 }));
 
@@ -60,17 +62,67 @@ describe('AIProvidersPlugin', () => {
                 debugLogging: true,
             })
         );
-        expect(logger.setEnabled).toHaveBeenCalledWith(true);
+        expect(logger.configure).toHaveBeenCalledWith({
+            enabled: true,
+            chunkLoggingEnabled: false,
+        });
     });
 
     it('defaults debugLogging when missing in saved data', async () => {
-        plugin.loadData = vi
-            .fn()
-            .mockResolvedValue({ debugLogging: undefined });
+        plugin.loadData = vi.fn().mockResolvedValue({
+            debugLogging: undefined,
+            debugChunkLogging: undefined,
+        });
 
         await plugin.loadSettings();
 
-        expect(logger.setEnabled).toHaveBeenCalledWith(false);
+        expect(logger.configure).toHaveBeenCalledWith({
+            enabled: false,
+            chunkLoggingEnabled: false,
+        });
+    });
+
+    it('passes debugChunkLogging through to logger configuration', async () => {
+        plugin.loadData = vi
+            .fn()
+            .mockResolvedValue({ debugLogging: true, debugChunkLogging: true });
+
+        await plugin.loadSettings();
+
+        expect(logger.configure).toHaveBeenCalledWith({
+            enabled: true,
+            chunkLoggingEnabled: true,
+        });
+    });
+
+    it('forces chunk logging off in production builds', async () => {
+        const originalNodeEnv = process.env.NODE_ENV;
+        process.env.NODE_ENV = 'production';
+        vi.resetModules();
+
+        const { default: ProductionPlugin } = await import('./main');
+        const { logger: productionLogger } = await import('./utils/logger');
+
+        const productionPlugin = new ProductionPlugin(app, {
+            id: 'test-plugin',
+            name: 'Test Plugin',
+            author: 'Test Author',
+            version: '1.0.0',
+            minAppVersion: '0.0.1',
+            description: 'Test Description',
+        });
+        productionPlugin.loadData = vi
+            .fn()
+            .mockResolvedValue({ debugLogging: true, debugChunkLogging: true });
+
+        await productionPlugin.loadSettings();
+
+        expect(productionLogger.configure).toHaveBeenCalledWith({
+            enabled: true,
+            chunkLoggingEnabled: false,
+        });
+
+        process.env.NODE_ENV = originalNodeEnv;
     });
 
     it('saves settings and re-exposes providers', async () => {

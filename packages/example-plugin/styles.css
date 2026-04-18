@@ -177,6 +177,49 @@
     margin: 0;
 }
 
+.tool-demo-results {
+    display: grid;
+    gap: 10px;
+    margin: 12px 0 18px;
+}
+
+.tool-demo-card {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    background: var(--background-primary);
+}
+
+.tool-demo-card strong {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.tool-demo-card pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.9em;
+    line-height: 1.45;
+    font-family: var(--font-monospace);
+}
+
+.tool-demo-assistant {
+    border-left: 4px solid var(--interactive-accent);
+}
+
+.tool-demo-call {
+    background: var(--background-secondary);
+}
+
+.tool-demo-result {
+    border-left: 4px solid var(--color-green);
+}
+
+.tool-demo-error {
+    border-left: 4px solid var(--color-red);
+}
+
 @media (max-width: 768px) {
     .rag-file-header {
         flex-direction: column;

@@ -98,6 +98,7 @@ describe('initAI', () => {
 
         expect(mockCallback).toHaveBeenCalled();
         expect(mockPlugin.addSettingTab).not.toHaveBeenCalled();
+        expect(mockApp.workspace.on).not.toHaveBeenCalled();
     });
 
     it('should wait for AI providers and show fallback when disableFallback is false', async () => {
@@ -114,7 +115,7 @@ describe('initAI', () => {
         });
 
         expect(mockOnDone).toHaveBeenCalled();
-        expect(mockApp.aiProviders.checkCompatibility).toHaveBeenCalledWith(3);
+        expect(mockApp.aiProviders.checkCompatibility).toHaveBeenCalledWith(4);
     });
 
     it('should wait for AI providers and show fallback when disableFallback is not specified', async () => {
@@ -129,7 +130,7 @@ describe('initAI', () => {
         await initAI(mockApp, mockPlugin, mockOnDone);
 
         expect(mockOnDone).toHaveBeenCalled();
-        expect(mockApp.aiProviders.checkCompatibility).toHaveBeenCalledWith(3);
+        expect(mockApp.aiProviders.checkCompatibility).toHaveBeenCalledWith(4);
     });
 
     it('should handle AI providers not available when disableFallback is false', async () => {
@@ -177,7 +178,7 @@ describe('initAI', () => {
         };
 
         await expect(initAI(mockApp, mockPlugin, mockOnDone)).rejects.toThrow(
-            'AI Providers version 3 is required'
+            'AI Providers version 4 is required'
         );
 
         expect(mockPlugin.addSettingTab).toHaveBeenCalled();
@@ -195,6 +196,18 @@ describe('initAI', () => {
 
         await expect(initAI(mockApp, mockPlugin, mockOnDone)).rejects.toThrow(
             'compat failed'
+        );
+    });
+
+    it('keeps required API version in sync with AI Providers service', async () => {
+        const [{ __testing__ }, { AI_PROVIDERS_SERVICE_VERSION }] =
+            await Promise.all([
+                import('./index'),
+                import('../../src/constants/serviceApiVersion'),
+            ]);
+
+        expect(__testing__.REQUIRED_AI_PROVIDERS_VERSION).toBe(
+            AI_PROVIDERS_SERVICE_VERSION
         );
     });
 

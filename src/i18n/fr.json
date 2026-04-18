@@ -39,7 +39,18 @@
         "debugLogging": "Journalisation de débogage",
         "debugLoggingDesc": "Activer la journalisation de débogage pour le dépannage",
         "useNativeFetch": "Utiliser Fetch natif",
-        "useNativeFetchDesc": "Utiliser l'API Fetch native au lieu de l'implémentation spécifique à Electron (peut aider avec les problèmes CORS)"
+        "useNativeFetchDesc": "Utiliser l'API Fetch native au lieu de l'implémentation spécifique à Electron (peut aider avec les problèmes CORS)",
+        "modelCapabilities": "Capacités",
+        "modelCapabilitiesCheck": "Vérifier",
+        "modelCapabilitiesChecking": "Vérification...",
+        "modelCapabilitiesUpdated": "Mis à jour",
+        "modelCapabilitiesCheckFailed": "La vérification a échoué : {{message}}",
+        "modelCapabilitiesCheckTooltip": "Envoie des requêtes de test au modèle. Cela peut consommer vos requêtes et vos tokens chez le fournisseur.",
+        "modelCapabilityEmbedding": "Embeddings",
+        "modelCapabilityText": "Texte",
+        "modelCapabilityTools": "Outils",
+        "modelCapabilityVision": "Visuel",
+        "selectModelFirst": "Sélectionnez d'abord un modèle"
     },
     "modals": {
         "confirm": "Confirmer",

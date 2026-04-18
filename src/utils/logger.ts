@@ -2,17 +2,32 @@ type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 class Logger {
     private enabled: boolean;
+    private chunkLoggingEnabled: boolean;
 
     constructor() {
         this.enabled = process.env.NODE_ENV === 'development';
+        this.chunkLoggingEnabled = false;
     }
 
     isEnabled(): boolean {
         return this.enabled;
     }
 
+    isChunkLoggingEnabled(): boolean {
+        return this.chunkLoggingEnabled;
+    }
+
     setEnabled(value: boolean): void {
         this.enabled = value;
+    }
+
+    setChunkLoggingEnabled(value: boolean): void {
+        this.chunkLoggingEnabled = value;
+    }
+
+    configure(options: { enabled: boolean; chunkLoggingEnabled?: boolean }) {
+        this.enabled = options.enabled;
+        this.chunkLoggingEnabled = options.chunkLoggingEnabled ?? false;
     }
 
     private log(level: LogLevel, ...args: unknown[]) {
@@ -38,6 +53,13 @@ class Logger {
     }
 
     debug(...args: unknown[]) {
+        this.log('debug', ...args);
+    }
+
+    debugChunk(...args: unknown[]) {
+        if (!this.chunkLoggingEnabled) {
+            return;
+        }
         this.log('debug', ...args);
     }
 

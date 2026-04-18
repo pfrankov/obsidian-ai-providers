@@ -1,6 +1,10 @@
 {
     "compilerOptions": {
         "baseUrl": "./src",
+        "paths": {
+            "@obsidian-ai-providers/sdk": ["../packages/sdk/index.ts"],
+            "@obsidian-ai-providers/sdk/*": ["../packages/sdk/*"]
+        },
         "outDir": "./dist",
         "inlineSourceMap": true,
         "inlineSources": true,

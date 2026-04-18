@@ -5,12 +5,12 @@
     "main": "main.ts",
     "scripts": {
         "dev": "node esbuild.config.mjs",
-        "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+        "build": "npm --prefix ../sdk run build && tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
     },
     "author": "Pavel Frankov",
     "license": "MIT",
     "dependencies": {
-        "@obsidian-ai-providers/sdk": "^1.6.0"
+        "@obsidian-ai-providers/sdk": "^1.7.0"
     },
     "peerDependencies": {
         "obsidian": "latest"

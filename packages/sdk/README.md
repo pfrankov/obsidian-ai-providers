@@ -19,6 +19,8 @@ If you are upgrading from older versions, see:
 ### Version Notes
 SDK 1.5.0 (Service API v3) changes `execute()` to return a `Promise<string>` and introduces inline streaming via `onProgress` plus cancellation via `AbortController`. The old chainable `IChunkHandler` object is now deprecated and only returned when neither `onProgress` nor `abortController` are passed.
 
+SDK 1.7.0 (Service API v4) adds `toolsExecute()` for OpenAI-style tool-calling loops across providers (OpenAI-compatible, Anthropic, and Ollama). It is message-only: pass `messages`, `tools`, and optional top-level `tool_choice`. It returns an assistant message in OpenAI format (`{ role, content, tool_calls? }`) that can be appended directly to the next `messages` call. Also adds optional `model` override to `execute()` and `toolsExecute()`, `getModels()` to retrieve available models with their capabilities, `getModelCapabilities()` to read cached per-model capabilities, and `checkModelCapabilities()` to probe capabilities via real API calls and persist results.
+
 ### 1. Wait for AI Providers plugin in your plugin
 Any plugin can not be loaded instantly, so you need to wait for AI Providers plugin to be loaded.
 ```typescript
@@ -143,6 +145,17 @@ Removed (simplified API): `onEnd` and `onError` callbacks. Use promise resolve/r
 // Simple prompt-based request with streaming (returns final full text)
 const fullText = await aiProviders.execute({
     provider: aiProviders.providers[0],
+    prompt: "What is the capital of Great Britain?",
+    onProgress: (chunk, accumulatedText) => {
+        console.log(accumulatedText);
+    }
+});
+console.log('Returned:', fullText);
+
+// Use a different model than the provider's default
+const fullTextGpt4 = await aiProviders.execute({
+    provider: aiProviders.providers[0],
+    model: "gpt-4o",       // overrides provider.model
     prompt: "What is the capital of Great Britain?",
     onProgress: (chunk, accumulatedText) => {
         console.log(accumulatedText);
@@ -352,6 +365,57 @@ console.log(models); // ['smollm2:135m', 'llama2:latest']
 console.log(aiProviders.providers[0].availableModels) // ['smollm2:135m', 'llama2:latest']
 ```
 
+### Model capabilities
+Use `getModels` to retrieve the list of available models along with their capabilities for a provider.
+Capabilities are checked by the user in the AI Providers settings UI or programmatically via `checkModelCapabilities`.
+
+```typescript
+const provider = aiProviders.providers[0];
+
+const models = aiProviders.getModels({ provider });
+console.log(models);
+/*
+{
+    'gpt-4o': { text: true, embedding: false, tools: true, vision: true },
+    'text-embedding-3-small': { text: false, embedding: true, tools: false, vision: false },
+    'gpt-3.5-turbo': null,  // capabilities not checked yet
+}
+*/
+
+// Filter models by capability
+const textModels = Object.entries(models)
+    .filter(([, caps]) => caps?.text)
+    .map(([id]) => id);
+```
+
+### Check model capabilities
+Use `checkModelCapabilities` to probe a model's capabilities by making real API calls. Results are automatically saved in AI Providers settings.
+
+```typescript
+const provider = aiProviders.providers[0];
+
+// Check capabilities for the provider's default model
+const caps = await aiProviders.checkModelCapabilities({ provider });
+console.log(caps);
+// { text: true, embedding: false, tools: true, vision: true }
+
+// Check capabilities for a specific model (overrides provider's default)
+const embedCaps = await aiProviders.checkModelCapabilities({
+    provider,
+    model: 'text-embedding-3-small',
+});
+console.log(embedCaps);
+// { text: false, embedding: true, tools: false, vision: false }
+```
+
+`IAIModelCapabilities` fields:
+| Field | Type | Description |
+|-------|------|-------------|
+| `text` | `boolean` | Model supports text generation |
+| `embedding` | `boolean` | Model supports embeddings |
+| `tools` | `boolean` | Model supports tool/function calling |
+| `vision` | `boolean` | Model supports image inputs |
+
 ### Error handling
 All methods throw errors if something goes wrong.  
 In most cases it shows a Notice in the Obsidian UI.
@@ -392,6 +456,49 @@ try {
 } catch (error) {
 	console.error(error);
 }
+```
+
+### Tool-calling with `toolsExecute`
+
+Use `toolsExecute` when you need tool-call metadata (`tool_calls`) in addition to assistant text.
+It accepts only OpenAI-style message history. Do not pass `tools` or `tool_choice` through `options`.
+
+```typescript
+const history = [
+    { role: "user", content: "What is weather in London?" }
+];
+
+const assistantMessage = await aiProviders.toolsExecute({
+    provider: aiProviders.providers[0],
+    model: "gpt-4o",       // optional: override provider's default model
+    messages: history,
+    tools: [
+        {
+            type: "function",
+            function: {
+                name: "get_weather",
+                description: "Returns weather by city name",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        city: { type: "string" }
+                    },
+                    required: ["city"]
+                }
+            }
+        }
+    ],
+    tool_choice: "auto"
+});
+
+// OpenAI-style assistant message:
+// {
+//   role: "assistant",
+//   content: string | null,
+//   tool_calls?: [{ id, type: "function", function: { name, arguments } }]
+// }
+
+history.push(assistantMessage);
 ```
 
 If you have any questions, please contact me via Telegram [@pavel_frankov](https://t.me/pavel_frankov).

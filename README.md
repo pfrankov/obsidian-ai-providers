@@ -119,6 +119,8 @@ try {
 }
 ```
 
+Tool-calling loops are available via `toolsExecute()` (SDK 1.7.0 / Service API v4). It is message-only and uses top-level `tools` / `tool_choice`, returning an OpenAI-style assistant message (`role`, `content`, `tool_calls`) that you can append directly to `messages` history.
+
 Removed callbacks: onEnd / onError — promise resolve/reject covers them (only onProgress remains for streaming). Legacy chainable handler also deprecated.
 
 ## Roadmap

@@ -96,3 +96,75 @@
 .ai-providers-main-interface .setting-item-description {
     max-width: 100%;
 }
+
+.ai-providers-model-capabilities-setting {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.ai-providers-model-capabilities-setting .setting-item-info {
+    min-width: 0;
+}
+
+.ai-providers-model-capabilities-model {
+    color: var(--text-muted);
+    font-size: var(--font-small);
+    line-height: 1.3;
+    word-break: break-word;
+}
+
+.ai-providers-model-capabilities-status {
+    color: var(--text-muted);
+    font-size: var(--font-small);
+    line-height: 1.3;
+    margin-top: 0.15em;
+}
+
+.ai-providers-model-capabilities-control {
+    flex-shrink: 0;
+}
+
+.ai-providers-model-capabilities-layout {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5em;
+    width: min(100%, 320px);
+}
+
+.ai-providers-model-capabilities-check-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4em;
+    width: 100%;
+}
+
+.ai-providers-model-capabilities-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4em 0.75em;
+    width: 100%;
+}
+
+.ai-providers-model-capability {
+    display: flex;
+    align-items: center;
+    gap: 0.45em;
+    min-width: 0;
+}
+
+.ai-providers-model-capability span {
+    line-height: 1.3;
+    word-break: break-word;
+}
+
+@media (max-width: 768px) {
+    .ai-providers-model-capabilities-layout {
+        width: 100%;
+    }
+
+    .ai-providers-model-capabilities-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

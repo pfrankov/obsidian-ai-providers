@@ -1,6 +1,7 @@
 import { App, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
 import { initAI, waitForAI } from '@obsidian-ai-providers/sdk';
 import { RAGSearchComponent } from './RAGSearchComponent';
+import { ToolCallingComponent } from './ToolCallingComponent';
 
 interface AIProvidersExampleSettings {
     mySetting: string;
@@ -21,11 +22,13 @@ class SampleSettingTab extends PluginSettingTab {
     selectedProvider = '';
     selectedFile = '';
     private ragSearchComponent: RAGSearchComponent;
+    private toolCallingComponent: ToolCallingComponent;
 
     constructor(app: App, plugin: AIProvidersExamplePlugin) {
         super(app, plugin);
         this.plugin = plugin;
         this.ragSearchComponent = new RAGSearchComponent(app);
+        this.toolCallingComponent = new ToolCallingComponent(app);
     }
 
     async display(): Promise<void> {
@@ -118,6 +121,12 @@ class SampleSettingTab extends PluginSettingTab {
             // Output container placed immediately after the execute setting (single reusable block)
             const executeResultEl = containerEl.createEl('div');
             executeResultEl.addClass('ai-execute-result');
+
+            this.toolCallingComponent.render(
+                containerEl,
+                aiProviders,
+                provider
+            );
 
             // Embeddings section
             containerEl.createEl('h3', { text: 'Embeddings' });

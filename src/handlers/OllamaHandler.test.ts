@@ -219,7 +219,9 @@ describe('OllamaHandler edge cases', () => {
             ollama: mockClient,
         });
 
-        expect(result).toBe('ok');
+        expect(result).toEqual(
+            expect.objectContaining({ role: 'assistant', content: 'ok' })
+        );
         expect(mockClient.chat).toHaveBeenCalled();
     });
 
@@ -421,7 +423,9 @@ describe('OllamaHandler internal behaviors', () => {
             modelName: 'llama2',
         });
 
-        expect(result).toBe('ok');
+        expect(result).toEqual(
+            expect.objectContaining({ role: 'assistant', content: 'ok' })
+        );
         expect(setSpy).toHaveBeenCalled();
     });
 
@@ -468,7 +472,9 @@ describe('OllamaHandler internal behaviors', () => {
             ollama: mockClient,
         });
 
-        expect(result).toBe('ok');
+        expect(result).toEqual(
+            expect.objectContaining({ role: 'assistant', content: 'ok' })
+        );
         expect(mockClient.chat).toHaveBeenCalledWith(
             expect.objectContaining({ model: '' })
         );
@@ -552,5 +558,439 @@ describe('OllamaHandler internal behaviors', () => {
 
         expect(result.chatMessages[0].content).toContain('hello');
         expect(result.extractedImages.length).toBe(2);
+    });
+
+    it('maps OpenAI-style tool history and tools config to Ollama payload', async () => {
+        const handler = createHandler();
+        const provider = createMockProvider();
+        const mockClient = {
+            chat: vi.fn().mockResolvedValue({
+                async *[Symbol.asyncIterator]() {
+                    yield {
+                        message: {
+                            tool_calls: [
+                                {
+                                    function: {
+                                        name: 'lookup',
+                                        arguments: { city: 'Moscow' },
+                                    },
+                                },
+                            ],
+                        },
+                        done: true,
+                        total_duration: 1,
+                        context: [1],
+                    };
+                },
+            }),
+        };
+
+        vi.spyOn(handler as any, 'getCachedModelInfo').mockResolvedValue({
+            contextLength: 4096,
+            lastContextLength: 2048,
+        });
+        vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+
+        const message = await handler.toolsExecute({
+            provider,
+            messages: [
+                {
+                    role: 'assistant',
+                    content: null,
+                    tool_calls: [
+                        {
+                            id: 'call_1',
+                            type: 'function',
+                            function: {
+                                name: 'sum',
+                                arguments: '{"a":1}',
+                            },
+                        },
+                        {
+                            id: 'call_2',
+                            type: 'function',
+                            function: {
+                                name: 'broken',
+                                arguments: '{bad-json',
+                            },
+                        },
+                    ],
+                },
+                {
+                    role: 'tool',
+                    name: 'sum',
+                    tool_call_id: 'call_1',
+                    content: '42',
+                },
+            ],
+            tools: [
+                {
+                    type: 'function',
+                    function: {
+                        name: 'top_level_tool',
+                        parameters: { type: 'object', properties: {} },
+                    },
+                },
+            ],
+        } as any);
+
+        const [payload] = (mockClient.chat as Mock).mock.calls[0];
+        expect(payload.tools[0].function.name).toBe('top_level_tool');
+        expect(payload.messages).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    role: 'assistant',
+                    tool_calls: [
+                        expect.objectContaining({
+                            function: {
+                                name: 'sum',
+                                arguments: { a: 1 },
+                            },
+                        }),
+                        expect.objectContaining({
+                            function: {
+                                name: 'broken',
+                                arguments: { raw: '{bad-json' },
+                            },
+                        }),
+                    ],
+                }),
+                expect.objectContaining({
+                    role: 'tool',
+                    tool_name: 'sum',
+                    content: '42',
+                }),
+            ])
+        );
+        expect(message).toEqual({
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+                {
+                    id: 'call_1',
+                    type: 'function',
+                    function: {
+                        name: 'lookup',
+                        arguments: '{"city":"Moscow"}',
+                    },
+                },
+            ],
+        });
+    });
+
+    it('rejects tool config in options and unsupported tool_choice for Ollama', async () => {
+        const handler = createHandler();
+        const provider = createMockProvider();
+        const mockClient = createMockClient();
+
+        vi.spyOn(handler as any, 'getCachedModelInfo').mockResolvedValue({
+            contextLength: 4096,
+            lastContextLength: 2048,
+        });
+        vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+
+        await expect(
+            handler.toolsExecute({
+                provider,
+                messages: [{ role: 'user', content: 'hi' }],
+                tools: [
+                    {
+                        type: 'function',
+                        function: {
+                            name: 'top_level_tool',
+                            parameters: { type: 'object', properties: {} },
+                        },
+                    },
+                ],
+                options: {
+                    tools: [],
+                },
+            } as any)
+        ).rejects.toThrow(
+            'Pass tools and tool_choice as top-level toolsExecute params'
+        );
+
+        await expect(
+            handler.toolsExecute({
+                provider,
+                messages: [{ role: 'user', content: 'hi' }],
+                tools: [
+                    {
+                        type: 'function',
+                        function: {
+                            name: 'top_level_tool',
+                            parameters: { type: 'object', properties: {} },
+                        },
+                    },
+                ],
+                options: {
+                    tool_choice: 'auto',
+                },
+            } as any)
+        ).rejects.toThrow(
+            'Pass tools and tool_choice as top-level toolsExecute params'
+        );
+
+        await expect(
+            handler.toolsExecute({
+                provider,
+                messages: [{ role: 'user', content: 'hi' }],
+                tools: [
+                    {
+                        type: 'function',
+                        function: {
+                            name: 'top_level_tool',
+                            parameters: { type: 'object', properties: {} },
+                        },
+                    },
+                ],
+                tool_choice: 'required',
+            } as any)
+        ).rejects.toThrow('tool_choice is not supported for Ollama providers');
+    });
+
+    it('stringifyToolArguments supports string and fallback conversion', () => {
+        const handler = createHandler();
+
+        expect((handler as any).stringifyToolArguments('raw')).toBe('raw');
+        expect((handler as any).stringifyToolArguments(undefined)).toBe('{}');
+
+        const circular: any = {};
+        circular.self = circular;
+        expect((handler as any).stringifyToolArguments(circular)).toBe(
+            '[object Object]'
+        );
+    });
+
+    it('wraps non-object parsed tool arguments as value', () => {
+        const handler = createHandler();
+        const result = (handler as any).parseToolArguments({
+            id: 'call_1',
+            type: 'function',
+            function: {
+                name: 'numberTool',
+                arguments: '1',
+            },
+        });
+
+        expect(result).toEqual({ value: 1 });
+    });
+
+    it('execute returns empty string when stream has only tool calls', async () => {
+        const handler = createHandler();
+        const provider = createMockProvider();
+        const mockClient = {
+            chat: vi.fn().mockResolvedValue({
+                async *[Symbol.asyncIterator]() {
+                    yield {
+                        message: {
+                            tool_calls: [
+                                {
+                                    function: {
+                                        name: 'lookup',
+                                        arguments: { q: 'x' },
+                                    },
+                                },
+                            ],
+                        },
+                    };
+                },
+            }),
+        };
+
+        vi.spyOn(handler as any, 'getCachedModelInfo').mockResolvedValue({
+            contextLength: 4096,
+            lastContextLength: 2048,
+        });
+        vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+
+        const result = await handler.execute({
+            provider,
+            prompt: 'tool only',
+        } as any);
+
+        expect(result).toBe('');
+    });
+
+    it('toolsExecute passes regular options, empty model and abort signal', async () => {
+        const handler = createHandler();
+        const provider = { ...createMockProvider(), model: '' };
+        const abortController = new AbortController();
+        const onProgress = vi.fn();
+        const mockClient = {
+            abort: vi.fn(),
+            chat: vi.fn().mockResolvedValue({
+                async *[Symbol.asyncIterator]() {
+                    yield {
+                        message: { content: 'ok' },
+                        done: true,
+                        total_duration: 1,
+                        context: [1, 2, 3],
+                    };
+                },
+            }),
+        };
+
+        vi.spyOn(handler as any, 'getCachedModelInfo').mockResolvedValue({
+            contextLength: 4096,
+            lastContextLength: 2048,
+        });
+        vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+
+        await handler.toolsExecute({
+            provider,
+            messages: [
+                {
+                    role: 'developer',
+                    content: 'a'.repeat(10000),
+                },
+            ],
+            tools: [
+                {
+                    type: 'function',
+                    function: {
+                        name: 'tool_name',
+                        parameters: { type: 'object', properties: {} },
+                    },
+                },
+            ],
+            options: {
+                temperature: 0.2,
+            },
+            abortController,
+            onProgress,
+        } as any);
+
+        expect(mockClient.chat).toHaveBeenCalledWith(
+            expect.objectContaining({
+                model: '',
+                messages: [
+                    expect.objectContaining({
+                        role: 'system',
+                    }),
+                ],
+                options: expect.objectContaining({
+                    temperature: 0.2,
+                    num_ctx: expect.any(Number),
+                }),
+            })
+        );
+        expect(onProgress).toHaveBeenCalled();
+    });
+
+    it('toolsExecute wires abort listeners to Ollama client', async () => {
+        const handler = createHandler();
+        const provider = createMockProvider();
+        const abortController = new AbortController();
+        const addListenerSpy = vi.spyOn(
+            abortController.signal,
+            'addEventListener'
+        );
+        const mockClient = {
+            abort: vi.fn(),
+            chat: vi.fn().mockResolvedValue({
+                async *[Symbol.asyncIterator]() {
+                    yield {
+                        message: { content: 'ok' },
+                    };
+                },
+            }),
+        };
+
+        vi.spyOn(handler as any, 'getCachedModelInfo').mockResolvedValue({
+            contextLength: 4096,
+            lastContextLength: 2048,
+        });
+        vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+
+        const promise = handler.toolsExecute({
+            provider,
+            messages: [{ role: 'user', content: 'tool only' }],
+            tools: [
+                {
+                    type: 'function',
+                    function: {
+                        name: 'tool_name',
+                        parameters: { type: 'object', properties: {} },
+                    },
+                },
+            ],
+            abortController,
+        } as any);
+
+        await Promise.resolve();
+        const abortHandler = addListenerSpy.mock.calls.find(
+            call => call[0] === 'abort'
+        )?.[1] as (() => void) | undefined;
+        abortHandler?.();
+
+        await promise;
+        expect(mockClient.abort).toHaveBeenCalled();
+    });
+
+    it('toolsExecute falls back to default model info and propagates aborted errors', async () => {
+        const handler = createHandler();
+        const provider = createMockProvider();
+        const mockClient = {
+            abort: vi.fn(),
+            chat: vi.fn().mockResolvedValue({
+                async *[Symbol.asyncIterator]() {
+                    yield {
+                        message: { content: 'ok' },
+                    };
+                },
+            }),
+        };
+
+        vi.spyOn(handler as any, 'getCachedModelInfo').mockRejectedValue(
+            new Error('fail')
+        );
+        vi.spyOn(handler as any, 'getClient').mockReturnValue(mockClient);
+
+        const result = await handler.toolsExecute({
+            provider,
+            messages: [{ role: 'user', content: 'tool only' }],
+            tools: [
+                {
+                    type: 'function',
+                    function: {
+                        name: 'tool_name',
+                        parameters: { type: 'object', properties: {} },
+                    },
+                },
+            ],
+        } as any);
+        expect(result.content).toBe('ok');
+
+        vi.spyOn((handler as any).fetchSelector, 'execute').mockRejectedValue(
+            new Error('Aborted')
+        );
+
+        await expect(
+            handler.toolsExecute({
+                provider,
+                messages: [{ role: 'user', content: 'tool only' }],
+                tools: [
+                    {
+                        type: 'function',
+                        function: {
+                            name: 'tool_name',
+                            parameters: { type: 'object', properties: {} },
+                        },
+                    },
+                ],
+            } as any)
+        ).rejects.toThrow('Aborted');
+    });
+
+    it('normalizes developer role and rejects unsupported legacy roles', async () => {
+        const handler = createHandler();
+
+        expect((handler as any).normalizeMessageRole('developer')).toBe(
+            'system'
+        );
+        expect(() => (handler as any).normalizeMessageRole('function')).toThrow(
+            'Unsupported message role: function'
+        );
     });
 });

@@ -39,7 +39,18 @@
         "debugLogging": "Debug Logging",
         "debugLoggingDesc": "Enable debug logging for troubleshooting",
         "useNativeFetch": "Use native Fetch",
-        "useNativeFetchDesc": "Use native Fetch API instead of electron-specific implementation (may help with CORS issues)"
+        "useNativeFetchDesc": "Use native Fetch API instead of electron-specific implementation (may help with CORS issues)",
+        "modelCapabilities": "Capabilities",
+        "modelCapabilitiesCheck": "Check",
+        "modelCapabilitiesChecking": "Checking...",
+        "modelCapabilitiesUpdated": "Updated",
+        "modelCapabilitiesCheckFailed": "Check failed: {{message}}",
+        "modelCapabilitiesCheckTooltip": "Sends test requests to the model. This may use your provider requests and tokens.",
+        "modelCapabilityEmbedding": "Embedding",
+        "modelCapabilityText": "Text",
+        "modelCapabilityTools": "Tools",
+        "modelCapabilityVision": "Vision",
+        "selectModelFirst": "Select a model first"
     },
     "modals": {
         "confirm": "Confirm",
