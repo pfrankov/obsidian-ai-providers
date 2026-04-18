@@ -1,7 +1,14 @@
 import esbuild from "esbuild";
 import process from "process";
-import builtins from "builtin-modules";
+import { builtinModules } from "node:module";
 import { copyFilesPlugin } from "./copy-files-plugin.mjs";
+
+const builtins = Array.from(
+    new Set([
+        ...builtinModules,
+        ...builtinModules.map((moduleName) => `node:${moduleName.replace(/^node:/, "")}`)
+    ])
+);
 
 const banner =
 `/*

@@ -30,14 +30,12 @@ describe('RAGSearchComponent', () => {
             toolsExecute: vi.fn(),
             getModelCapabilities: vi.fn().mockReturnValue(null),
             getModels: vi.fn().mockReturnValue([]),
-            checkModelCapabilities: vi
-                .fn()
-                .mockResolvedValue({
-                    text: false,
-                    embedding: false,
-                    tools: false,
-                    vision: false,
-                }),
+            checkModelCapabilities: vi.fn().mockResolvedValue({
+                text: false,
+                embedding: false,
+                tools: false,
+                vision: false,
+            }),
             checkCompatibility: vi.fn(),
             migrateProvider: vi.fn(),
             retrieve: vi.fn().mockResolvedValue([]),
