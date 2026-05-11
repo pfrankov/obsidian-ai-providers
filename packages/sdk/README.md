@@ -17,7 +17,7 @@ If you are upgrading from older versions, see:
 - [execute() streaming change: IChunkHandler → Promise + onProgress (since 1.5.0)](./migrations/execute-streaming-migration.md)
 
 ### Version Notes
-SDK 1.5.0 (Service API v3) changes `execute()` to return a `Promise<string>` and introduces inline streaming via `onProgress` plus cancellation via `AbortController`. The old chainable `IChunkHandler` object is now deprecated and only returned when neither `onProgress` nor `abortController` are passed.
+SDK 1.5.0 (Service API v3) changes `execute()` to return a `Promise<string>` when `onProgress` or `abortController` is passed, and introduces inline streaming via `onProgress` plus cancellation via `AbortController`. The old chainable `IChunkHandler` object is now deprecated and only returned when neither `onProgress` nor `abortController` are passed.
 
 SDK 1.7.0 (Service API v4) adds `toolsExecute()` for OpenAI-style tool-calling loops across providers (OpenAI-compatible, Anthropic, and Ollama). It is message-only: pass `messages`, `tools`, and optional top-level `tool_choice`. It returns an assistant message in OpenAI format (`{ role, content, tool_calls? }`) that can be appended directly to the next `messages` call. Also adds optional `model` override to `execute()` and `toolsExecute()`, `getModels()` to retrieve available models with their capabilities, `getModelCapabilities()` to read cached per-model capabilities, and `checkModelCapabilities()` to probe capabilities via real API calls and persist results.
 
@@ -127,7 +127,9 @@ if (migratedOrExistingProvider === false) {
 
 ### Execute prompt
 
-`execute` returns a `Promise<string>` resolving to the final accumulated text. You can optionally pass a single streaming callback:
+`execute` returns a `Promise<string>` resolving to the final accumulated text when you pass `onProgress` or `abortController`. A bare call with neither field still returns the deprecated `IChunkHandler` compatibility object.
+
+You can optionally pass a single streaming callback:
 
 - `onProgress(chunk, accumulatedText)` – fires for each streamed piece.
 
@@ -137,7 +139,7 @@ Completion & errors:
 - Success: promise resolves with the full text (no separate onEnd needed).
 - Failure / abort: promise rejects (no onError callback). Catch the rejection.
 
-Cancellation: pass an `AbortController` via `abortController`. Calling `abort()` rejects the promise with `Error('Aborted')`.
+Cancellation: pass an `AbortController` via `abortController`. Calling `abort()` rejects the promise with `Error('Aborted')`. For a promise-only call without streaming, pass an `AbortController` even if you do not plan to abort.
 
 Removed (simplified API): `onEnd` and `onError` callbacks. Use promise resolve/reject instead. Legacy chainable handler remains deprecated.
 
@@ -151,6 +153,15 @@ const fullText = await aiProviders.execute({
     }
 });
 console.log('Returned:', fullText);
+
+// Simple prompt-based request without streaming (also returns final full text)
+const nonStreamingAbortController = new AbortController();
+const nonStreamingText = await aiProviders.execute({
+    provider: aiProviders.providers[0],
+    prompt: "What is the capital of Great Britain?",
+    abortController: nonStreamingAbortController
+});
+console.log('Returned:', nonStreamingText);
 
 // Use a different model than the provider's default
 const fullTextGpt4 = await aiProviders.execute({

@@ -1,8 +1,8 @@
 # Migration: execute() Streaming Change (IChunkHandler → Promise + onProgress) *(since SDK 1.5.0)*
 
-Introduced in **@obsidian-ai-providers/sdk 1.5.0** with service API version **3**. Earlier versions returned an `IChunkHandler` unconditionally. From 1.5.0 (API v3) the default return value is a `Promise<string>`; the legacy handler is only produced when no streaming / abort params are provided (deprecated path).
+Introduced in **@obsidian-ai-providers/sdk 1.5.0** with service API version **3**. Earlier versions returned an `IChunkHandler` unconditionally. From 1.5.0 (API v3), calls that pass `onProgress` or `abortController` return a `Promise<string>`; the legacy handler is only produced when no streaming / abort params are provided (deprecated path).
 
-This migration explains the change to `execute()`: it now returns a `Promise<string>` (final text) directly instead of a chainable `IChunkHandler`. Streaming is provided inline via the `onProgress` parameter; cancellation uses an `AbortController`.
+This migration explains the change to `execute()`: it now returns a `Promise<string>` (final text) directly instead of a chainable `IChunkHandler` when the new params are used. Streaming is provided inline via the `onProgress` parameter; cancellation uses an `AbortController`.
 
 Old pattern (before):
 - Call `execute()` → receive `IChunkHandler` object
@@ -10,7 +10,7 @@ Old pattern (before):
 - Call `abort()` on handler to cancel
 
 New pattern (now):
-- Call `execute()` → receive `Promise<string>`
+- Call `execute()` with `onProgress` or `abortController` → receive `Promise<string>`
 - Pass `onProgress` for partial chunks
 - Use `AbortController` (`abortController.abort()`) to cancel
 - Use `await` / `.then()` for completion, `try/catch` / `.catch()` for errors
@@ -52,7 +52,11 @@ handler.onError(err => console.error(err));
 New:
 ```ts
 try {
-  await aiProviders.execute({ provider, prompt: "Test" });
+  await aiProviders.execute({
+    provider,
+    prompt: "Test",
+    abortController: new AbortController()
+  });
 } catch (err) {
   console.error(err);
 }
@@ -112,7 +116,12 @@ handler.onEnd(full => use(full));
 ```
 New:
 ```ts
-const full = await aiProviders.execute({ provider, prompt: 'Plain request' });
+const abortController = new AbortController();
+const full = await aiProviders.execute({
+  provider,
+  prompt: 'Plain request',
+  abortController
+});
 use(full);
 ```
 

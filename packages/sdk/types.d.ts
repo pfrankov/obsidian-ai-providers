@@ -43,6 +43,11 @@ export interface IAIModelCapabilities {
     vision: boolean;
 }
 
+export type IAIProvidersTextProgressCallback = (
+    chunk: string,
+    accumulatedText: string
+) => void;
+
 /**
  * @deprecated Use execute({... onProgress ...}) without relying on the returned handler.
  * The execute method now accepts streaming callbacks directly via params; this object remains only for backward compatibility.
@@ -63,16 +68,28 @@ export interface IAIProvidersService {
     embed: (params: IAIProvidersEmbedParams) => Promise<number[][]>;
     /**
      * Execute text generation.
-     * If caller supplies onProgress or abortController (stream-style usage) -> Promise<string>.
+     * If caller supplies a real onProgress callback or AbortController -> Promise<string>.
      * If neither onProgress nor abortController provided (legacy usage) -> Promise<IChunkHandler>.
      */
     execute(
-        params: IAIProvidersExecuteParams &
-            ({ onProgress?: (chunk: string, accumulatedText: string) => void } | { abortController?: AbortController })
+        params: IAIProvidersExecuteParams & {
+            onProgress: IAIProvidersTextProgressCallback;
+            abortController?: AbortController;
+        }
     ): Promise<string>;
     execute(
-        params: IAIProvidersExecuteParams & { onProgress?: undefined; abortController?: undefined }
+        params: IAIProvidersExecuteParams & {
+            abortController: AbortController;
+            onProgress?: IAIProvidersTextProgressCallback;
+        }
+    ): Promise<string>;
+    execute(
+        params: IAIProvidersExecuteParams & {
+            onProgress?: undefined;
+            abortController?: undefined;
+        }
     ): Promise<IChunkHandler>;
+    execute(params: IAIProvidersExecuteParams): Promise<string | IChunkHandler>;
     toolsExecute: (params: IAIProvidersToolsExecuteParams) => Promise<IAIAssistantToolMessage>;
     getModelCapabilities: (params: {
         provider: IAIProvider;
@@ -174,7 +191,7 @@ export interface IAIProvidersExecuteParamsBase {
     /** Optional AbortController to cancel execution (stream) */
     abortController?: AbortController;
     /** Optional streaming progress callback for partial chunks. The promise resolves with the final text or rejects on error/abort. */
-    onProgress?: (chunk: string, accumulatedText: string) => void;
+    onProgress?: IAIProvidersTextProgressCallback;
 }
 
 export type IAIProvidersExecuteParamsWithPrompt = IAIProvidersExecuteParamsBase & {
@@ -200,7 +217,7 @@ export type IAIProvidersToolsExecuteParams = {
     tool_choice?: IAIToolChoice;
     options?: IAIProvidersExecuteParamsBase['options'];
     abortController?: AbortController;
-    onProgress?: (chunk: string, accumulatedText: string) => void;
+    onProgress?: IAIProvidersTextProgressCallback;
 };
 
 export type IAIProcessingType = 'embedding';

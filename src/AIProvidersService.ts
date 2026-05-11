@@ -171,22 +171,25 @@ export class AIProvidersService implements IAIProvidersService {
 
     async execute(
         params: IAIProvidersExecuteParams & {
+            onProgress: (chunk: string, accumulatedText: string) => void;
+            abortController?: AbortController;
+        }
+    ): Promise<string>;
+    async execute(
+        params: IAIProvidersExecuteParams & {
+            abortController: AbortController;
+            onProgress?: (chunk: string, accumulatedText: string) => void;
+        }
+    ): Promise<string>;
+    async execute(
+        params: IAIProvidersExecuteParams & {
             onProgress?: undefined;
             abortController?: undefined;
         }
     ): Promise<IChunkHandler>;
     async execute(
-        params: IAIProvidersExecuteParams &
-            (
-                | {
-                      onProgress?: (
-                          chunk: string,
-                          accumulatedText: string
-                      ) => void;
-                  }
-                | { abortController?: AbortController }
-            )
-    ): Promise<string>;
+        params: IAIProvidersExecuteParams
+    ): Promise<string | IChunkHandler>;
     async execute(
         params: IAIProvidersExecuteParams
     ): Promise<string | IChunkHandler> {
