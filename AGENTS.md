@@ -26,3 +26,8 @@
 
 ## Documentation Protocol
 Developers must verify the relevance of AGENTS.md and README.md at the start of every task. If the task involves changes to architecture, behavior, or protocol, update the affected documentation to keep it in sync with reality.
+
+## SDK Publishing
+- `@obsidian-ai-providers/sdk` is published from `.github/workflows/publish-sdk.yml`.
+- npm publishing uses Trusted Publisher / GitHub OIDC for package `@obsidian-ai-providers/sdk`, repository `pfrankov/obsidian-ai-providers`, workflow `publish-sdk.yml`; do not add `NPM_TOKEN`/`NODE_AUTH_TOKEN` back for normal SDK releases.
+- Keep `actions/setup-node` package manager cache disabled (`package-manager-cache: false`) in the SDK publish workflow so the job does not request unnecessary npm token handling.
