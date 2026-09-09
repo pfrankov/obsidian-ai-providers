@@ -50,7 +50,9 @@
         "modelCapabilityText": "Texto",
         "modelCapabilityTools": "Herramientas",
         "modelCapabilityVision": "Visión",
-        "selectModelFirst": "Primero selecciona un modelo"
+        "selectModelFirst": "Primero selecciona un modelo",
+        "ollamaContextScale": "Factor de tamaño de contexto de Ollama",
+        "ollamaContextScaleDesc": "Multiplica el tamaño estimado del prompt al dimensionar la ventana de contexto de Ollama, además de una reserva fija para la respuesta. Los valores más altos dejan más espacio para respuestas largas pero usan más memoria. Solo afecta a los proveedores Ollama."
     },
     "modals": {
         "confirm": "Confirmar",
@@ -66,6 +68,8 @@
         "pluginMustBeUpdated": "El plugin debe ser actualizado",
         "pluginMustBeUpdatedFormatted": "El plugin debe ser actualizado para funcionar con esta versión de AI Providers",
         "providerNameRequired": "Se requiere el nombre del proveedor",
-        "providerNameExists": "Ya existe un proveedor con el nombre \"{{name}}\""
+        "providerNameExists": "Ya existe un proveedor con el nombre \"{{name}}\"",
+        "ollamaPromptTruncated": "Ollama truncó el prompt de «{{model}}»: no cabía en la ventana de contexto de {{contextLength}} tokens, por lo que se descartó parte de la entrada. Aumente el factor de tamaño de contexto de Ollama en los ajustes.",
+        "ollamaOutputTruncated": "Ollama dejó de generar para «{{model}}»: la respuesta se quedó sin contexto. Se conservó la respuesta parcial. Aumente el factor de tamaño de contexto de Ollama en los ajustes."
     }
 }

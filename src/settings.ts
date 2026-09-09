@@ -15,12 +15,19 @@ import {
 } from '@obsidian-ai-providers/sdk';
 import { logger } from './utils/logger';
 import { ProviderFormModal } from './modals/ProviderFormModal';
+import {
+    CONTEXT_SCALE_STEP,
+    DEFAULT_CONTEXT_SCALE,
+    MAX_CONTEXT_SCALE,
+    MIN_CONTEXT_SCALE,
+} from './constants/ollamaContext';
 
 export const DEFAULT_SETTINGS: IAIProvidersPluginSettings = {
     _version: 1,
     debugLogging: false,
     debugChunkLogging: false,
     useNativeFetch: false,
+    ollamaContextScale: DEFAULT_CONTEXT_SCALE,
 };
 
 const IS_DEV_BUILD = process.env.NODE_ENV !== 'production';
@@ -336,6 +343,27 @@ export class AIProvidersSettingTab extends PluginSettingTab {
                         .setValue(this.plugin.settings.useNativeFetch ?? false)
                         .onChange(async value => {
                             this.plugin.settings.useNativeFetch = value;
+                            await this.plugin.saveSettings();
+                        })
+                );
+
+            new Setting(developerSection)
+                .setName(I18n.t('settings.ollamaContextScale'))
+                .setDesc(I18n.t('settings.ollamaContextScaleDesc'))
+                .addSlider(slider =>
+                    slider
+                        .setLimits(
+                            MIN_CONTEXT_SCALE,
+                            MAX_CONTEXT_SCALE,
+                            CONTEXT_SCALE_STEP
+                        )
+                        .setValue(
+                            this.plugin.settings.ollamaContextScale ??
+                                DEFAULT_CONTEXT_SCALE
+                        )
+                        .setDynamicTooltip()
+                        .onChange(async value => {
+                            this.plugin.settings.ollamaContextScale = value;
                             await this.plugin.saveSettings();
                         })
                 );

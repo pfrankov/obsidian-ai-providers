@@ -10,12 +10,23 @@ import {
     IAIToolCall,
     IAIToolDefinition,
 } from '@obsidian-ai-providers/sdk';
+import { Notice } from 'obsidian';
 import { Ollama } from 'ollama';
+import { I18n } from '../i18n';
 import { electronFetch } from '../utils/electronFetch';
 import { obsidianFetch } from '../utils/obsidianFetch';
 import { logger } from '../utils/logger';
 import { FetchSelector } from '../utils/FetchSelector';
 import { logToolsRequest, logToolsResponse } from '../utils/modelDebugSummary';
+import {
+    DEFAULT_CONTEXT_LENGTH,
+    DEFAULT_CONTEXT_SCALE,
+    EMBEDDING_CONTEXT_LENGTH,
+    FALLBACK_MAX_CONTEXT_LENGTH,
+    MAX_CONTEXT_SCALE,
+    MIN_CONTEXT_SCALE,
+    OUTPUT_RESERVE_TOKENS,
+} from '../constants/ollamaContext';
 
 // Add interface for model cache
 interface ModelInfo {
@@ -24,9 +35,19 @@ interface ModelInfo {
 }
 
 const SYMBOLS_PER_TOKEN = 2.5;
-const DEFAULT_CONTEXT_LENGTH = 2048;
-const EMBEDDING_CONTEXT_LENGTH = 2048;
-const CONTEXT_BUFFER_MULTIPLIER = 1.2; // 20% buffer
+
+// Chat/tool calls generate tokens, so they reserve output room; embeddings
+// return a vector rather than tokens and need none.
+const CHAT_CONTEXT_BUDGET = {
+    defaultContextLength: DEFAULT_CONTEXT_LENGTH,
+    fallbackLimit: FALLBACK_MAX_CONTEXT_LENGTH,
+    outputReserveTokens: OUTPUT_RESERVE_TOKENS,
+};
+const EMBEDDING_CONTEXT_BUDGET = {
+    defaultContextLength: EMBEDDING_CONTEXT_LENGTH,
+    fallbackLimit: EMBEDDING_CONTEXT_LENGTH,
+    outputReserveTokens: 0,
+};
 type TextContentBlock = Extract<IContentBlock, { type: 'text' }>;
 type ImageContentBlock = Extract<IContentBlock, { type: 'image_url' }>;
 type OllamaToolCall = {
@@ -58,8 +79,11 @@ type OllamaStreamChunk = {
         tool_name?: string;
     };
     done?: boolean;
+    done_reason?: string;
     total_duration?: number;
     context?: number[];
+    prompt_eval_count?: number;
+    eval_count?: number;
 };
 type OllamaClientConfig = {
     host?: string;
@@ -167,6 +191,72 @@ export class OllamaHandler implements IAIHandler {
         }
     }
 
+    private handleFinalChunk({
+        chunk,
+        provider,
+        modelName,
+        num_ctx,
+    }: {
+        chunk: OllamaStreamChunk;
+        provider: IAIProvider;
+        modelName: string;
+        num_ctx?: number;
+    }): void {
+        if (
+            typeof chunk.total_duration === 'number' &&
+            chunk.total_duration > 0
+        ) {
+            this.setModelInfoLastContextLength(
+                provider,
+                modelName,
+                chunk.context?.length
+            );
+        }
+
+        this.warnIfTruncated({ chunk, modelName, num_ctx });
+    }
+
+    /**
+     * Ollama silently drops the front of the prompt when it does not fit in
+     * num_ctx, and stops generating when the window fills up. Neither shows up
+     * as an error, so surface it: the caller keeps whatever text was produced
+     * (nothing is discarded or replaced) and the user gets told it was cut off.
+     */
+    private warnIfTruncated({
+        chunk,
+        modelName,
+        num_ctx,
+    }: {
+        chunk: OllamaStreamChunk;
+        modelName: string;
+        num_ctx?: number;
+    }): void {
+        const promptTokens = chunk.prompt_eval_count;
+        const promptTruncated =
+            typeof num_ctx === 'number' &&
+            typeof promptTokens === 'number' &&
+            promptTokens >= num_ctx;
+        const outputTruncated = chunk.done_reason === 'length';
+
+        if (!promptTruncated && !outputTruncated) {
+            return;
+        }
+
+        const message = promptTruncated
+            ? I18n.t('errors.ollamaPromptTruncated', {
+                  model: modelName,
+                  contextLength: String(num_ctx),
+              })
+            : I18n.t('errors.ollamaOutputTruncated', {
+                  model: modelName,
+              });
+
+        // Warn unconditionally: this is data loss the user needs to see, so it
+        // must not depend on the debug-logging setting.
+        console.warn(`[AI Providers] ${message}`);
+        new Notice(message);
+    }
+
     async fetchModels({
         provider,
         abortController,
@@ -191,45 +281,52 @@ export class OllamaHandler implements IAIHandler {
         return result;
     }
 
+    /**
+     * User-facing scaler for how generously the context window is sized.
+     * Clamped so a malformed setting can never produce an absurd num_ctx.
+     */
+    private getContextScale(): number {
+        const scale = this.settings.ollamaContextScale;
+        if (typeof scale !== 'number' || !Number.isFinite(scale)) {
+            return DEFAULT_CONTEXT_SCALE;
+        }
+        return Math.min(Math.max(scale, MIN_CONTEXT_SCALE), MAX_CONTEXT_SCALE);
+    }
+
     private optimizeContext({
         inputLength,
         lastContextLength,
         defaultContextLength,
         limit,
+        outputReserveTokens,
     }: {
         inputLength: number;
         lastContextLength: number;
         defaultContextLength: number;
         limit: number;
+        outputReserveTokens: number;
     }): { num_ctx?: number; shouldUpdate: boolean } {
         const estimatedTokens = Math.ceil(inputLength / SYMBOLS_PER_TOKEN);
 
-        // If current context is smaller than last used,
-        // use the last known context size
-        if (estimatedTokens <= lastContextLength) {
-            return {
-                num_ctx:
-                    lastContextLength > defaultContextLength
-                        ? lastContextLength
-                        : undefined,
-                shouldUpdate: false,
-            };
-        }
-
-        // For large inputs, calculate new size with buffer
-        const targetLength = Math.min(
+        // num_ctx has to hold the prompt *and* the answer: scale the prompt
+        // estimate (covering tokenizer guesswork) and add explicit output room.
+        const desired =
             Math.ceil(
                 Math.max(estimatedTokens, defaultContextLength) *
-                    CONTEXT_BUFFER_MULTIPLIER
-            ),
+                    this.getContextScale()
+            ) + outputReserveTokens;
+
+        // Never shrink below a window this model already ran with, never exceed
+        // what the model actually supports.
+        const targetLength = Math.min(
+            Math.max(desired, lastContextLength),
             limit
         );
 
-        // Update only if we need context larger than previous
-        const shouldUpdate = targetLength > lastContextLength;
         return {
-            num_ctx: targetLength,
-            shouldUpdate,
+            num_ctx:
+                targetLength > defaultContextLength ? targetLength : undefined,
+            shouldUpdate: targetLength > lastContextLength,
         };
     }
 
@@ -238,20 +335,27 @@ export class OllamaHandler implements IAIHandler {
         modelName,
         inputLength,
         modelInfo,
-        defaultContextLength,
+        contextBudget,
     }: {
         provider: IAIProvider;
         modelName: string;
         inputLength: number;
         modelInfo: ModelInfo;
-        defaultContextLength: number;
+        contextBudget: {
+            defaultContextLength: number;
+            fallbackLimit: number;
+            outputReserveTokens: number;
+        };
     }): number | undefined {
+        const { defaultContextLength, fallbackLimit, outputReserveTokens } =
+            contextBudget;
         const { num_ctx, shouldUpdate } = this.optimizeContext({
             inputLength,
             lastContextLength:
                 modelInfo.lastContextLength || defaultContextLength,
             defaultContextLength,
-            limit: modelInfo.contextLength || defaultContextLength,
+            limit: modelInfo.contextLength || fallbackLimit,
+            outputReserveTokens,
         });
 
         if (shouldUpdate) {
@@ -382,12 +486,14 @@ export class OllamaHandler implements IAIHandler {
         modelName,
         onProgress,
         abortController,
+        num_ctx,
     }: {
         response: AsyncIterable<OllamaStreamChunk>;
         provider: IAIProvider;
         modelName: string;
         onProgress?: (chunk: string, accumulatedText: string) => void;
         abortController?: AbortController;
+        num_ctx?: number;
     }): Promise<IAIAssistantToolMessage> {
         let fullText = '';
         const toolCallsByIndex = new Map<number, IAIToolCall>();
@@ -420,16 +526,8 @@ export class OllamaHandler implements IAIHandler {
                 toolCallsByIndex.set(index, existing);
             });
 
-            if (
-                chunk.done &&
-                typeof chunk.total_duration === 'number' &&
-                chunk.total_duration > 0
-            ) {
-                this.setModelInfoLastContextLength(
-                    provider,
-                    modelName,
-                    chunk.context?.length
-                );
+            if (chunk.done) {
+                this.handleFinalChunk({ chunk, provider, modelName, num_ctx });
             }
         }
 
@@ -587,18 +685,19 @@ export class OllamaHandler implements IAIHandler {
         const processedImages = this.normalizeImages(extractedImages);
         const requestOptions = this.buildRequestConfig(params).options;
 
+        let num_ctx: number | undefined;
         if (processedImages.length === 0) {
             const inputLength = chatMessages.reduce(
                 (acc, msg) => acc + msg.content.length,
                 0
             );
 
-            const num_ctx = this.applyContextOptimization({
+            num_ctx = this.applyContextOptimization({
                 provider: params.provider,
                 modelName,
                 inputLength,
                 modelInfo: effectiveModelInfo,
-                defaultContextLength: DEFAULT_CONTEXT_LENGTH,
+                contextBudget: CHAT_CONTEXT_BUDGET,
             });
 
             if (num_ctx) {
@@ -623,6 +722,7 @@ export class OllamaHandler implements IAIHandler {
             modelName,
             onProgress,
             abortController,
+            num_ctx,
         });
     }
 
@@ -654,7 +754,7 @@ export class OllamaHandler implements IAIHandler {
             modelName,
             inputLength: maxInputLength,
             modelInfo,
-            defaultContextLength: EMBEDDING_CONTEXT_LENGTH,
+            contextBudget: EMBEDDING_CONTEXT_BUDGET,
         });
 
         const operation = async (
@@ -783,18 +883,19 @@ export class OllamaHandler implements IAIHandler {
                     const requestConfig = this.buildToolsRequestConfig(params);
                     const requestOptions = requestConfig.options;
 
+                    let num_ctx: number | undefined;
                     if (processedImages.length === 0) {
                         const inputLength = chatMessages.reduce(
                             (acc, msg) => acc + msg.content.length,
                             0
                         );
 
-                        const num_ctx = this.applyContextOptimization({
+                        num_ctx = this.applyContextOptimization({
                             provider: params.provider,
                             modelName,
                             inputLength,
                             modelInfo: effectiveModelInfo,
-                            defaultContextLength: DEFAULT_CONTEXT_LENGTH,
+                            contextBudget: CHAT_CONTEXT_BUDGET,
                         });
 
                         if (num_ctx) {
@@ -824,6 +925,7 @@ export class OllamaHandler implements IAIHandler {
                             this.ensureNotAborted(externalAbort);
                         },
                         abortController: externalAbort,
+                        num_ctx,
                     });
                 }
             );

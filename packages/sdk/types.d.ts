@@ -274,6 +274,12 @@ export interface IAIProvidersPluginSettings {
     debugLogging?: boolean;
     debugChunkLogging?: boolean;
     useNativeFetch?: boolean;
+    /**
+     * Multiplier applied to the estimated prompt size when sizing Ollama's
+     * `num_ctx` window. Higher values leave more room for the model's answer
+     * at the cost of memory. Clamped to [1, 4]; defaults to 2.
+     */
+    ollamaContextScale?: number;
 }
 
 export interface ExtendedApp extends App {

@@ -175,6 +175,7 @@ describe('Ollama Specific Features', () => {
             lastContextLength: 2048,
             defaultContextLength: 2048,
             limit: 8192,
+            outputReserveTokens: 2048,
         });
         expect(result.shouldUpdate).toBe(true);
         expect(result.num_ctx).toBeGreaterThan(2048);
@@ -338,7 +339,7 @@ describe('OllamaHandler internal behaviors', () => {
         expect(mockClient.abort).toHaveBeenCalled();
     });
 
-    it('optimizes context without updates for small inputs', () => {
+    it('never exceeds the model limit even for tiny inputs', () => {
         const handler = createHandler();
         const optimizeContext = (handler as any).optimizeContext.bind(handler);
 
@@ -347,47 +348,208 @@ describe('OllamaHandler internal behaviors', () => {
             lastContextLength: 512,
             defaultContextLength: 2048,
             limit: 2048,
+            outputReserveTokens: 2048,
         });
 
-        expect(result.shouldUpdate).toBe(false);
+        // Clamped to the model limit, which equals the default here, so there
+        // is nothing to override and num_ctx stays unset.
+        expect(result.shouldUpdate).toBe(true);
         expect(result.num_ctx).toBeUndefined();
     });
 
-    it('reuses lastContextLength when larger than default', () => {
+    it('reserves output room even when the prompt is tiny', () => {
         const handler = createHandler();
         const optimizeContext = (handler as any).optimizeContext.bind(handler);
 
         const result = optimizeContext({
             inputLength: 10,
-            lastContextLength: 4096,
+            lastContextLength: 512,
             defaultContextLength: 2048,
-            limit: 8192,
+            limit: 32768,
+            outputReserveTokens: 2048,
+        });
+
+        // max(4, 2048) * scale 2 + 2048 reserve
+        expect(result.num_ctx).toBe(6144);
+        expect(result.shouldUpdate).toBe(true);
+    });
+
+    it('never shrinks below a window the model already ran with', () => {
+        const handler = createHandler();
+        const optimizeContext = (handler as any).optimizeContext.bind(handler);
+
+        const result = optimizeContext({
+            inputLength: 10,
+            lastContextLength: 16384,
+            defaultContextLength: 2048,
+            limit: 32768,
+            outputReserveTokens: 2048,
         });
 
         expect(result.shouldUpdate).toBe(false);
-        expect(result.num_ctx).toBe(4096);
+        expect(result.num_ctx).toBe(16384);
     });
 
-    it('uses default context lengths when model info is empty', () => {
+    it('falls back to a larger limit when the model context length is unknown', () => {
         const handler = createHandler();
         const optimizeSpy = vi.spyOn(handler as any, 'optimizeContext');
         const provider = createMockProvider();
 
-        const result = (handler as any).applyContextOptimization({
+        (handler as any).applyContextOptimization({
             provider,
             modelName: provider.model,
             inputLength: 10,
             modelInfo: { contextLength: 0, lastContextLength: 0 },
-            defaultContextLength: 2048,
+            contextBudget: {
+                defaultContextLength: 2048,
+                fallbackLimit: 8192,
+                outputReserveTokens: 2048,
+            },
         });
 
         expect(optimizeSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 lastContextLength: 2048,
-                limit: 2048,
+                limit: 8192,
             })
         );
-        expect(result).toBeUndefined();
+    });
+
+    describe('context truncation warnings', () => {
+        // jsdom in this setup exposes no window.localStorage, which I18n.t
+        // reads to pick a locale; Obsidian always provides it.
+        beforeEach(() => {
+            Object.defineProperty(window, 'localStorage', {
+                configurable: true,
+                value: { getItem: () => 'en' },
+            });
+        });
+
+        const streamWith = async (
+            handler: any,
+            chunk: Record<string, unknown>,
+            num_ctx?: number
+        ) => {
+            const response = {
+                async *[Symbol.asyncIterator]() {
+                    yield { message: { content: 'partial ' } };
+                    yield { message: { content: 'answer' }, ...chunk };
+                },
+            };
+            return handler.streamOllamaResponse({
+                response,
+                provider: createMockProvider(),
+                modelName: 'llama2',
+                num_ctx,
+            });
+        };
+
+        it('warns and keeps the text when the prompt overflows the window', async () => {
+            const handler = createHandler();
+            const warnSpy = vi
+                .spyOn(console, 'warn')
+                .mockImplementation(() => {});
+
+            const result = await streamWith(
+                handler,
+                { done: true, prompt_eval_count: 4096 },
+                4096
+            );
+
+            expect(warnSpy).toHaveBeenCalledWith(
+                expect.stringContaining('4096')
+            );
+            // The generated text must survive truncation untouched.
+            expect(result.content).toBe('partial answer');
+            warnSpy.mockRestore();
+        });
+
+        it('warns and keeps the partial text when generation runs out of context', async () => {
+            const handler = createHandler();
+            const warnSpy = vi
+                .spyOn(console, 'warn')
+                .mockImplementation(() => {});
+
+            const result = await streamWith(
+                handler,
+                { done: true, done_reason: 'length', prompt_eval_count: 10 },
+                4096
+            );
+
+            expect(warnSpy).toHaveBeenCalledTimes(1);
+            expect(result.content).toBe('partial answer');
+            warnSpy.mockRestore();
+        });
+
+        it('does not warn on a normal completion', async () => {
+            const handler = createHandler();
+            const warnSpy = vi
+                .spyOn(console, 'warn')
+                .mockImplementation(() => {});
+
+            const result = await streamWith(
+                handler,
+                { done: true, done_reason: 'stop', prompt_eval_count: 10 },
+                4096
+            );
+
+            expect(warnSpy).not.toHaveBeenCalled();
+            expect(result.content).toBe('partial answer');
+            warnSpy.mockRestore();
+        });
+
+        it('does not warn when the window size is unknown', async () => {
+            const handler = createHandler();
+            const warnSpy = vi
+                .spyOn(console, 'warn')
+                .mockImplementation(() => {});
+
+            await streamWith(handler, { done: true, prompt_eval_count: 9999 });
+
+            expect(warnSpy).not.toHaveBeenCalled();
+            warnSpy.mockRestore();
+        });
+    });
+
+    describe('context scale setting', () => {
+        const scaleOf = (ollamaContextScale?: number) => {
+            const handler = new OllamaHandler({
+                _version: 1,
+                ollamaContextScale,
+            } as any);
+            return (handler as any).getContextScale();
+        };
+
+        it('defaults when unset', () => {
+            expect(scaleOf(undefined)).toBe(2);
+        });
+
+        it('uses a configured value', () => {
+            expect(scaleOf(3)).toBe(3);
+        });
+
+        it('clamps out-of-range and malformed values', () => {
+            expect(scaleOf(0.1)).toBe(1);
+            expect(scaleOf(99)).toBe(4);
+            expect(scaleOf(NaN)).toBe(2);
+        });
+
+        it('feeds the configured scale into the sizing formula', () => {
+            const handler = new OllamaHandler({
+                _version: 1,
+                ollamaContextScale: 4,
+            } as any);
+
+            const result = (handler as any).optimizeContext({
+                inputLength: 10,
+                lastContextLength: 0,
+                defaultContextLength: 2048,
+                limit: 65536,
+                outputReserveTokens: 2048,
+            });
+
+            expect(result.num_ctx).toBe(2048 * 4 + 2048);
+        });
     });
 
     it('adds images to empty chat when none exist', () => {

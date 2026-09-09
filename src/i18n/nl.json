@@ -50,7 +50,9 @@
         "modelCapabilityText": "Tekst",
         "modelCapabilityTools": "Tools",
         "modelCapabilityVision": "Visueel",
-        "selectModelFirst": "Selecteer eerst een model"
+        "selectModelFirst": "Selecteer eerst een model",
+        "ollamaContextScale": "Ollama-contextgrootteschaal",
+        "ollamaContextScaleDesc": "Vermenigvuldigt de geschatte promptgrootte bij het bepalen van Ollama’s contextvenster, boven op een vaste reserve voor het antwoord. Hogere waarden laten meer ruimte voor lange antwoorden maar gebruiken meer geheugen. Geldt alleen voor Ollama-providers."
     },
     "modals": {
         "confirm": "Bevestigen",
@@ -66,6 +68,8 @@
         "pluginMustBeUpdated": "Plug-in moet worden bijgewerkt",
         "pluginMustBeUpdatedFormatted": "Plug-in moet worden bijgewerkt om te werken met deze versie van AI Providers",
         "providerNameRequired": "Providernaam is vereist",
-        "providerNameExists": "Er bestaat al een provider met de naam \"{{name}}\""
+        "providerNameExists": "Er bestaat al een provider met de naam \"{{name}}\"",
+        "ollamaPromptTruncated": "Ollama heeft de prompt voor \"{{model}}\" afgekapt: deze paste niet in het contextvenster van {{contextLength}} tokens, dus een deel van de invoer is weggelaten. Verhoog de Ollama-contextgrootteschaal in de instellingen.",
+        "ollamaOutputTruncated": "Ollama is gestopt met genereren voor \"{{model}}\": het antwoord had geen context meer. Het gedeeltelijke antwoord is behouden. Verhoog de Ollama-contextgrootteschaal in de instellingen."
     }
 }

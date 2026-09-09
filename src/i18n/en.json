@@ -50,7 +50,9 @@
         "modelCapabilityText": "Text",
         "modelCapabilityTools": "Tools",
         "modelCapabilityVision": "Vision",
-        "selectModelFirst": "Select a model first"
+        "selectModelFirst": "Select a model first",
+        "ollamaContextScale": "Ollama context size scale",
+        "ollamaContextScaleDesc": "Multiplies the estimated prompt size when sizing Ollama’s context window, on top of a fixed reserve for the response. Higher values leave more room for long answers but use more memory. Only affects Ollama providers."
     },
     "modals": {
         "confirm": "Confirm",
@@ -66,6 +68,8 @@
         "pluginMustBeUpdated": "Plugin must be updated",
         "pluginMustBeUpdatedFormatted": "Plugin must be updated to work with this version of AI Providers",
         "providerNameRequired": "Provider name is required",
-        "providerNameExists": "A provider with the name \"{{name}}\" already exists"
+        "providerNameExists": "A provider with the name \"{{name}}\" already exists",
+        "ollamaPromptTruncated": "Ollama truncated the prompt for \"{{model}}\": it did not fit in the {{contextLength}} token context window, so part of the input was dropped. Increase the Ollama context size scale in settings.",
+        "ollamaOutputTruncated": "Ollama stopped generating for \"{{model}}\": the response ran out of context. The partial answer was kept. Increase the Ollama context size scale in settings."
     }
 }
