@@ -69,7 +69,6 @@
         "pluginMustBeUpdatedFormatted": "このバージョンのAI Providersで使用するには、プラグインを更新する必要があります",
         "providerNameRequired": "プロバイダー名は必須です",
         "providerNameExists": "名前が \"{{name}}\" のプロバイダーは既に存在します",
-        "ollamaPromptTruncated": "Ollama が「{{model}}」のプロンプトを切り詰めました。{{contextLength}} トークンのコンテキストウィンドウに収まらず、入力の一部が破棄されました。設定で Ollama コンテキストサイズ係数を大きくしてください。",
-        "ollamaOutputTruncated": "Ollama が「{{model}}」の生成を停止しました。応答がコンテキストを使い切りました。途中までの回答は保持されています。設定で Ollama コンテキストサイズ係数を大きくしてください。"
+        "ollamaGenerationLimitReached": "Ollama は生成上限に達したため「{{model}}」の生成を停止しました。途中までの回答は保持されています。"
     }
 }

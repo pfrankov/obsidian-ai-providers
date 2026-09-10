@@ -69,7 +69,6 @@
         "pluginMustBeUpdatedFormatted": "Il plugin deve essere aggiornato per funzionare con questa versione di AI Providers",
         "providerNameRequired": "Il nome del provider è richiesto",
         "providerNameExists": "Esiste già un provider con il nome \"{{name}}\"",
-        "ollamaPromptTruncated": "Ollama ha troncato il prompt di «{{model}}»: non rientrava nella finestra di contesto di {{contextLength}} token, quindi parte dell’input è stata scartata. Aumenta il fattore di dimensione del contesto Ollama nelle impostazioni.",
-        "ollamaOutputTruncated": "Ollama ha interrotto la generazione per «{{model}}»: la risposta ha esaurito il contesto. La risposta parziale è stata conservata. Aumenta il fattore di dimensione del contesto Ollama nelle impostazioni."
+        "ollamaGenerationLimitReached": "Ollama ha interrotto la generazione per «{{model}}» dopo aver raggiunto un limite di generazione. La risposta parziale è stata conservata."
     }
 }

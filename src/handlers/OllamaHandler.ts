@@ -82,8 +82,6 @@ type OllamaStreamChunk = {
     done_reason?: string;
     total_duration?: number;
     context?: number[];
-    prompt_eval_count?: number;
-    eval_count?: number;
 };
 type OllamaClientConfig = {
     host?: string;
@@ -195,12 +193,10 @@ export class OllamaHandler implements IAIHandler {
         chunk,
         provider,
         modelName,
-        num_ctx,
     }: {
         chunk: OllamaStreamChunk;
         provider: IAIProvider;
         modelName: string;
-        num_ctx?: number;
     }): void {
         if (
             typeof chunk.total_duration === 'number' &&
@@ -213,46 +209,40 @@ export class OllamaHandler implements IAIHandler {
             );
         }
 
-        this.warnIfTruncated({ chunk, modelName, num_ctx });
+        this.warnIfGenerationLimitReached({ chunk, modelName });
     }
 
     /**
-     * Ollama silently drops the front of the prompt when it does not fit in
-     * num_ctx, and stops generating when the window fills up. Neither shows up
-     * as an error, so surface it: the caller keeps whatever text was produced
-     * (nothing is discarded or replaced) and the user gets told it was cut off.
+     * `done_reason === 'length'` means generation stopped at a limit, but
+     * Ollama does not say which: it reports the same reason for a filled
+     * context window and for a reached `num_predict`. The message is therefore
+     * deliberately neutral about the cause.
+     *
+     * There is no counterpart check for a dropped prompt. Ollama removes whole
+     * old messages before evaluation, so `prompt_eval_count` can sit well below
+     * `num_ctx` even when history was lost, and a prompt that exactly fills the
+     * window was not necessarily truncated. Token counts cannot prove it either
+     * way, so nothing is claimed.
+     *
+     * Whatever text arrived is kept untouched; only the notice is added.
      */
-    private warnIfTruncated({
+    private warnIfGenerationLimitReached({
         chunk,
         modelName,
-        num_ctx,
     }: {
         chunk: OllamaStreamChunk;
         modelName: string;
-        num_ctx?: number;
     }): void {
-        const promptTokens = chunk.prompt_eval_count;
-        const promptTruncated =
-            typeof num_ctx === 'number' &&
-            typeof promptTokens === 'number' &&
-            promptTokens >= num_ctx;
-        const outputTruncated = chunk.done_reason === 'length';
-
-        if (!promptTruncated && !outputTruncated) {
+        if (chunk.done_reason !== 'length') {
             return;
         }
 
-        const message = promptTruncated
-            ? I18n.t('errors.ollamaPromptTruncated', {
-                  model: modelName,
-                  contextLength: String(num_ctx),
-              })
-            : I18n.t('errors.ollamaOutputTruncated', {
-                  model: modelName,
-              });
+        const message = I18n.t('errors.ollamaGenerationLimitReached', {
+            model: modelName,
+        });
 
-        // Warn unconditionally: this is data loss the user needs to see, so it
-        // must not depend on the debug-logging setting.
+        // Warn unconditionally: the answer is incomplete and the user needs to
+        // see that, so it must not depend on the debug-logging setting.
         console.warn(`[AI Providers] ${message}`);
         new Notice(message);
     }
@@ -363,6 +353,55 @@ export class OllamaHandler implements IAIHandler {
         }
 
         return num_ctx;
+    }
+
+    /**
+     * Decides the context window for one chat/tools request and writes it into
+     * `requestOptions`.
+     *
+     * A caller-supplied `options.num_ctx` is authoritative and is never
+     * overridden: auto-sizing it could shrink a window the caller widened on
+     * purpose, or blow past a memory budget it deliberately capped.
+     */
+    private resolveContextWindow({
+        params,
+        requestOptions,
+        sizing,
+    }: {
+        params: { provider: IAIProvider; modelName: string };
+        requestOptions: Record<string, unknown>;
+        sizing: {
+            chatMessages: OllamaChatMessage[];
+            modelInfo: ModelInfo;
+            hasImages: boolean;
+        };
+    }): void {
+        if ('num_ctx' in requestOptions) {
+            return;
+        }
+
+        // Image payloads are not counted by the character-based estimate, so
+        // leave the window to Ollama rather than sizing it from text alone.
+        if (sizing.hasImages) {
+            return;
+        }
+
+        const inputLength = sizing.chatMessages.reduce(
+            (acc, msg) => acc + msg.content.length,
+            0
+        );
+
+        const num_ctx = this.applyContextOptimization({
+            provider: params.provider,
+            modelName: params.modelName,
+            inputLength,
+            modelInfo: sizing.modelInfo,
+            contextBudget: CHAT_CONTEXT_BUDGET,
+        });
+
+        if (num_ctx) {
+            requestOptions.num_ctx = num_ctx;
+        }
     }
 
     private normalizeImages(images: string[]): string[] {
@@ -486,14 +525,12 @@ export class OllamaHandler implements IAIHandler {
         modelName,
         onProgress,
         abortController,
-        num_ctx,
     }: {
         response: AsyncIterable<OllamaStreamChunk>;
         provider: IAIProvider;
         modelName: string;
         onProgress?: (chunk: string, accumulatedText: string) => void;
         abortController?: AbortController;
-        num_ctx?: number;
     }): Promise<IAIAssistantToolMessage> {
         let fullText = '';
         const toolCallsByIndex = new Map<number, IAIToolCall>();
@@ -527,7 +564,7 @@ export class OllamaHandler implements IAIHandler {
             });
 
             if (chunk.done) {
-                this.handleFinalChunk({ chunk, provider, modelName, num_ctx });
+                this.handleFinalChunk({ chunk, provider, modelName });
             }
         }
 
@@ -685,25 +722,15 @@ export class OllamaHandler implements IAIHandler {
         const processedImages = this.normalizeImages(extractedImages);
         const requestOptions = this.buildRequestConfig(params).options;
 
-        let num_ctx: number | undefined;
-        if (processedImages.length === 0) {
-            const inputLength = chatMessages.reduce(
-                (acc, msg) => acc + msg.content.length,
-                0
-            );
-
-            num_ctx = this.applyContextOptimization({
-                provider: params.provider,
-                modelName,
-                inputLength,
+        this.resolveContextWindow({
+            params: { provider: params.provider, modelName },
+            requestOptions,
+            sizing: {
+                chatMessages,
                 modelInfo: effectiveModelInfo,
-                contextBudget: CHAT_CONTEXT_BUDGET,
-            });
-
-            if (num_ctx) {
-                requestOptions.num_ctx = num_ctx;
-            }
-        }
+                hasImages: processedImages.length > 0,
+            },
+        });
 
         this.applyImagesToChatMessages(chatMessages, processedImages);
 
@@ -722,7 +749,6 @@ export class OllamaHandler implements IAIHandler {
             modelName,
             onProgress,
             abortController,
-            num_ctx,
         });
     }
 
@@ -883,25 +909,15 @@ export class OllamaHandler implements IAIHandler {
                     const requestConfig = this.buildToolsRequestConfig(params);
                     const requestOptions = requestConfig.options;
 
-                    let num_ctx: number | undefined;
-                    if (processedImages.length === 0) {
-                        const inputLength = chatMessages.reduce(
-                            (acc, msg) => acc + msg.content.length,
-                            0
-                        );
-
-                        num_ctx = this.applyContextOptimization({
-                            provider: params.provider,
-                            modelName,
-                            inputLength,
+                    this.resolveContextWindow({
+                        params: { provider: params.provider, modelName },
+                        requestOptions,
+                        sizing: {
+                            chatMessages,
                             modelInfo: effectiveModelInfo,
-                            contextBudget: CHAT_CONTEXT_BUDGET,
-                        });
-
-                        if (num_ctx) {
-                            requestOptions.num_ctx = num_ctx;
-                        }
-                    }
+                            hasImages: processedImages.length > 0,
+                        },
+                    });
 
                     this.applyImagesToChatMessages(
                         chatMessages,
@@ -925,7 +941,6 @@ export class OllamaHandler implements IAIHandler {
                             this.ensureNotAborted(externalAbort);
                         },
                         abortController: externalAbort,
-                        num_ctx,
                     });
                 }
             );

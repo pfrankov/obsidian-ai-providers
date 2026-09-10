@@ -69,7 +69,6 @@
         "pluginMustBeUpdatedFormatted": "이 버전의 AI Providers와 함께 사용하려면 플러그인을 업데이트해야 합니다",
         "providerNameRequired": "공급자 이름이 필요합니다",
         "providerNameExists": "\"{{name}}\" 이름을 가진 공급자가 이미 존재합니다",
-        "ollamaPromptTruncated": "Ollama가 \"{{model}}\"의 프롬프트를 잘랐습니다. {{contextLength}} 토큰 컨텍스트 창에 맞지 않아 입력 일부가 삭제되었습니다. 설정에서 Ollama 컨텍스트 크기 배율을 높이세요.",
-        "ollamaOutputTruncated": "Ollama가 \"{{model}}\"의 생성을 중단했습니다. 응답이 컨텍스트를 모두 사용했습니다. 부분 답변은 유지되었습니다. 설정에서 Ollama 컨텍스트 크기 배율을 높이세요."
+        "ollamaGenerationLimitReached": "Ollama가 생성 한도에 도달하여 \"{{model}}\"의 생성을 중단했습니다. 부분 답변은 유지되었습니다."
     }
 }

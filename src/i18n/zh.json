@@ -69,7 +69,6 @@
         "pluginMustBeUpdatedFormatted": "插件需要更新才能与此版本的 AI Providers 一起使用",
         "providerNameRequired": "需要提供商名称",
         "providerNameExists": "名为\"{{name}}\"的提供商已存在",
-        "ollamaPromptTruncated": "Ollama 截断了“{{model}}”的提示词：内容超出 {{contextLength}} 个令牌的上下文窗口，部分输入已被丢弃。请在设置中提高 Ollama 上下文大小系数。",
-        "ollamaOutputTruncated": "Ollama 停止为“{{model}}”生成：回复耗尽了上下文。已保留部分回复。请在设置中提高 Ollama 上下文大小系数。"
+        "ollamaGenerationLimitReached": "Ollama 在达到生成上限后停止为“{{model}}”生成。已保留部分回复。"
     }
 }
