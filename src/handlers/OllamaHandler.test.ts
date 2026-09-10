@@ -351,10 +351,11 @@ describe('OllamaHandler internal behaviors', () => {
             outputReserveTokens: 2048,
         });
 
-        // Clamped to the model limit, which equals the default here, so there
-        // is nothing to override and num_ctx stays unset.
+        // Clamped to the model limit. It equals the default here, but the
+        // value is still sent: omitting num_ctx would hand the choice to
+        // Ollama's own default, which may be smaller than what we computed.
         expect(result.shouldUpdate).toBe(true);
-        expect(result.num_ctx).toBeUndefined();
+        expect(result.num_ctx).toBe(2048);
     });
 
     it('reserves output room even when the prompt is tiny', () => {
@@ -1000,6 +1001,125 @@ describe('OllamaHandler internal behaviors', () => {
         } as any);
 
         expect(result).toBe('');
+    });
+
+    describe('computed num_ctx reaches the outgoing request', () => {
+        // Regression: the computed window used to be dropped whenever it
+        // landed at or below defaultContextLength, leaving num_ctx off the
+        // request. Ollama then applies its own configured default, which can
+        // be smaller than the window we computed.
+        const createChatClient = () => ({
+            abort: vi.fn(),
+            chat: vi.fn().mockResolvedValue({
+                async *[Symbol.asyncIterator]() {
+                    yield {
+                        message: { content: 'ok' },
+                        done: true,
+                        total_duration: 1,
+                        context: [1, 2, 3],
+                    };
+                },
+            }),
+        });
+
+        const withModelLimit = (handler: any, contextLength: number) => {
+            vi.spyOn(handler, 'getCachedModelInfo').mockResolvedValue({
+                contextLength,
+                lastContextLength: 2048,
+            });
+        };
+
+        it.each([512, 1024, 2048])(
+            'execute sends num_ctx for a model limit of %i',
+            async contextLength => {
+                const handler = createHandler();
+                const mockClient = createChatClient();
+                withModelLimit(handler, contextLength);
+                vi.spyOn(handler as any, 'getClient').mockReturnValue(
+                    mockClient
+                );
+
+                await handler.execute({
+                    provider: createMockProvider(),
+                    prompt: 'short',
+                } as any);
+
+                expect(mockClient.chat).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        options: expect.objectContaining({
+                            num_ctx: contextLength,
+                        }),
+                    })
+                );
+            }
+        );
+
+        it.each([512, 1024, 2048])(
+            'toolsExecute sends num_ctx for a model limit of %i',
+            async contextLength => {
+                const handler = createHandler();
+                const mockClient = createChatClient();
+                withModelLimit(handler, contextLength);
+                vi.spyOn(handler as any, 'getClient').mockReturnValue(
+                    mockClient
+                );
+
+                await handler.toolsExecute({
+                    provider: createMockProvider(),
+                    messages: [{ role: 'user', content: 'short' }],
+                    tools: [
+                        {
+                            type: 'function',
+                            function: {
+                                name: 'tool_name',
+                                parameters: {
+                                    type: 'object',
+                                    properties: {},
+                                },
+                            },
+                        },
+                    ],
+                } as any);
+
+                expect(mockClient.chat).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        options: expect.objectContaining({
+                            num_ctx: contextLength,
+                        }),
+                    })
+                );
+            }
+        );
+
+        it.each([512, 1024, 2048])(
+            'embed sends num_ctx for a model limit of %i',
+            async contextLength => {
+                const handler = createHandler();
+                const mockClient = {
+                    abort: vi.fn(),
+                    embed: vi.fn().mockResolvedValue({
+                        embeddings: [[0.1, 0.2, 0.3]],
+                    }),
+                };
+                withModelLimit(handler, contextLength);
+                vi.spyOn(handler as any, 'getClient').mockReturnValue(
+                    mockClient
+                );
+
+                await handler.embed({
+                    provider: createMockProvider(),
+                    input: ['short'],
+                } as any);
+
+                expect(mockClient.embed).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        options: expect.objectContaining({
+                            num_ctx: contextLength,
+                        }),
+                    })
+                );
+            }
+        );
     });
 
     describe('explicit options.num_ctx', () => {

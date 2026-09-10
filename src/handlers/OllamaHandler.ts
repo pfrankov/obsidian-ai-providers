@@ -295,7 +295,7 @@ export class OllamaHandler implements IAIHandler {
         defaultContextLength: number;
         limit: number;
         outputReserveTokens: number;
-    }): { num_ctx?: number; shouldUpdate: boolean } {
+    }): { num_ctx: number; shouldUpdate: boolean } {
         const estimatedTokens = Math.ceil(inputLength / SYMBOLS_PER_TOKEN);
 
         // num_ctx has to hold the prompt *and* the answer: scale the prompt
@@ -313,9 +313,12 @@ export class OllamaHandler implements IAIHandler {
             limit
         );
 
+        // Always send the computed window, even when it lands at or below
+        // defaultContextLength. Omitting num_ctx does not mean "use our
+        // default" — it hands the choice to Ollama's own configured default,
+        // which may be smaller still and would silently shrink the window.
         return {
-            num_ctx:
-                targetLength > defaultContextLength ? targetLength : undefined,
+            num_ctx: targetLength,
             shouldUpdate: targetLength > lastContextLength,
         };
     }
@@ -336,7 +339,7 @@ export class OllamaHandler implements IAIHandler {
             fallbackLimit: number;
             outputReserveTokens: number;
         };
-    }): number | undefined {
+    }): number {
         const { defaultContextLength, fallbackLimit, outputReserveTokens } =
             contextBudget;
         const { num_ctx, shouldUpdate } = this.optimizeContext({
@@ -391,17 +394,13 @@ export class OllamaHandler implements IAIHandler {
             0
         );
 
-        const num_ctx = this.applyContextOptimization({
+        requestOptions.num_ctx = this.applyContextOptimization({
             provider: params.provider,
             modelName: params.modelName,
             inputLength,
             modelInfo: sizing.modelInfo,
             contextBudget: CHAT_CONTEXT_BUDGET,
         });
-
-        if (num_ctx) {
-            requestOptions.num_ctx = num_ctx;
-        }
     }
 
     private normalizeImages(images: string[]): string[] {
