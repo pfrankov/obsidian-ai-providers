@@ -46,7 +46,13 @@ const resolveTranslation = (
 
 export class I18n {
     static t(key: string, params?: { [key: string]: string }): string {
-        const locale = window.localStorage.getItem('language') || 'en';
+        let locale = 'en';
+        try {
+            locale = window.localStorage.getItem('language') || 'en';
+        } catch {
+            // Storage can be unavailable or throw a SecurityError. Keep the
+            // English fallback without caching it or changing the preference.
+        }
         const keys = key.split('.');
 
         const translations = locales[locale] || locales['en'];

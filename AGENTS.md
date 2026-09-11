@@ -4,12 +4,14 @@
 - This plugin is a configuration hub for AI providers in Obsidian; it does not run AI itself.
 - Settings flow: users add/edit providers in the settings UI, which persists config and exposes it to other plugins via the SDK.
 - Runtime flow: SDK -> AIProvidersService -> provider handler -> provider API, with FetchSelector choosing the right fetch path and embeddings cached in IndexedDB.
+- I18n reads the saved language on each call. If localStorage is unavailable or access throws, use English without changing the saved preference or caching the fallback.
 
 ## Development & Quality Standards
 - 100% test coverage required (lines/branches/functions/statements) via Vitest coverage thresholds.
 - Linting required; Prettier formatting is enforced via pre-commit.
 - Cyclomatic complexity limit <= 10 enforced via eslint-plugin-sonarjs (cognitive complexity rule).
 - Use Context7 for up-to-date documentation when changing or adding integrations.
+- Test storage comes from the original `jsdom.window.localStorage`, explicitly exposed in `vitest.setup.ts` and restored/cleared around each test. Do not depend on Node's native storage or use a getItem-only global mock.
 
 ## Code Style Rules
 - Max three arguments per function; use an options object for anything more.

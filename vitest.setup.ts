@@ -1,8 +1,25 @@
+import type {} from 'vitest/jsdom';
+
 import '@testing-library/jest-dom/vitest';
 import { TextEncoder } from 'util';
-import { vi } from 'vitest';
+import { afterEach, beforeEach, vi } from 'vitest';
 
 process.env.NODE_ENV = 'test';
+
+// Node's native storage can shadow jsdom's Storage in Vitest's globals.
+// Use the original browser instance, not a partial mock or file-backed store.
+const browserLocalStorage: Storage = jsdom.window.localStorage;
+const resetLocalStorage = () => {
+    Object.defineProperty(globalThis, 'localStorage', {
+        configurable: true,
+        get: () => browserLocalStorage,
+    });
+    browserLocalStorage.clear();
+};
+
+resetLocalStorage();
+beforeEach(resetLocalStorage);
+afterEach(resetLocalStorage);
 
 // Add missing DOM methods for Obsidian compatibility
 HTMLElement.prototype.empty = function () {
