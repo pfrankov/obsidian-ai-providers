@@ -50,7 +50,9 @@
         "modelCapabilityText": "Текст",
         "modelCapabilityTools": "Инструменты",
         "modelCapabilityVision": "Визуальный контент",
-        "selectModelFirst": "Сначала выберите модель"
+        "selectModelFirst": "Сначала выберите модель",
+        "ollamaContextScale": "Множитель размера контекста Ollama",
+        "ollamaContextScaleDesc": "Умножает оценочный размер запроса при расчёте окна контекста Ollama — в дополнение к фиксированному резерву под ответ. Большие значения дают больше места для длинных ответов, но требуют больше памяти. Влияет только на провайдеров Ollama."
     },
     "modals": {
         "confirm": "Подтвердить",
@@ -66,6 +68,7 @@
         "pluginMustBeUpdated": "Плагин требует обновления",
         "pluginMustBeUpdatedFormatted": "Для работы с этой версией AI Providers требуется обновление плагина",
         "providerNameRequired": "Требуется имя провайдера",
-        "providerNameExists": "Провайдер с именем \"{{name}}\" уже существует"
+        "providerNameExists": "Провайдер с именем \"{{name}}\" уже существует",
+        "ollamaGenerationLimitReached": "Ollama прекратил генерацию для «{{model}}», достигнув предела генерации. Частичный ответ сохранён."
     }
 }

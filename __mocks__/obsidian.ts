@@ -199,6 +199,46 @@ export class Setting {
         cb(toggle);
         return this;
     }
+    addSlider(cb: (slider: SliderComponent) => any): this {
+        const slider = new SliderComponent(this.controlEl);
+        cb(slider);
+        return this;
+    }
+}
+
+export class SliderComponent {
+    sliderEl: HTMLInputElement;
+
+    constructor(containerEl: HTMLElement) {
+        this.sliderEl = document.createElement('input');
+        this.sliderEl.type = 'range';
+        containerEl.appendChild(this.sliderEl as any);
+    }
+
+    setLimits(min: number, max: number, step: number): this {
+        this.sliderEl.min = String(min);
+        this.sliderEl.max = String(max);
+        this.sliderEl.step = String(step);
+        return this;
+    }
+
+    setValue(value: number): this {
+        this.sliderEl.value = String(value);
+        return this;
+    }
+
+    getValue(): number {
+        return Number(this.sliderEl.value);
+    }
+
+    setDynamicTooltip(): this {
+        return this;
+    }
+
+    onChange(cb: (value: number) => any): this {
+        this.sliderEl.addEventListener('input', () => cb(this.getValue()));
+        return this;
+    }
 }
 
 export class ButtonComponent {

@@ -50,7 +50,9 @@
         "modelCapabilityText": "文本",
         "modelCapabilityTools": "工具",
         "modelCapabilityVision": "视觉",
-        "selectModelFirst": "请先选择一个模型"
+        "selectModelFirst": "请先选择一个模型",
+        "ollamaContextScale": "Ollama 上下文大小系数",
+        "ollamaContextScaleDesc": "在设定 Ollama 上下文窗口时，将估算的提示词大小乘以该系数，并另外为回复预留固定空间。数值越大，长回复的空间越多，但占用内存也越多。仅影响 Ollama 提供商。"
     },
     "modals": {
         "confirm": "确认",
@@ -66,6 +68,7 @@
         "pluginMustBeUpdated": "插件需要更新",
         "pluginMustBeUpdatedFormatted": "插件需要更新才能与此版本的 AI Providers 一起使用",
         "providerNameRequired": "需要提供商名称",
-        "providerNameExists": "名为\"{{name}}\"的提供商已存在"
+        "providerNameExists": "名为\"{{name}}\"的提供商已存在",
+        "ollamaGenerationLimitReached": "Ollama 在达到生成上限后停止为“{{model}}”生成。已保留部分回复。"
     }
 }

@@ -489,6 +489,44 @@ describe('AIProvidersSettingTab', () => {
         expect(plugin.saveSettings).toHaveBeenCalled();
     });
 
+    it('persists the Ollama context scale from the slider', async () => {
+        (settingTab as any).isDeveloperMode = true;
+        settingTab.display();
+
+        const slider = containerEl.querySelector(
+            'input[type="range"]'
+        ) as unknown as HTMLInputElement;
+
+        expect(slider.min).toBe('1');
+        expect(slider.max).toBe('4');
+        expect(slider.value).toBe('2');
+
+        slider.value = '3.5';
+        slider.dispatchEvent(new Event('input'));
+
+        expect(plugin.settings.ollamaContextScale).toBe(3.5);
+        expect(plugin.saveSettings).toHaveBeenCalled();
+    });
+
+    it('hides the context scale slider outside developer mode', () => {
+        (settingTab as any).isDeveloperMode = false;
+        settingTab.display();
+
+        expect(containerEl.querySelector('input[type="range"]')).toBeNull();
+    });
+
+    it('falls back to the default context scale when unset', () => {
+        plugin.settings.ollamaContextScale = undefined;
+        (settingTab as any).isDeveloperMode = true;
+        settingTab.display();
+
+        const slider = containerEl.querySelector(
+            'input[type="range"]'
+        ) as unknown as HTMLInputElement;
+
+        expect(slider.value).toBe('2');
+    });
+
     it('falls back to false chunk logging when enabling debug logging without a stored chunk flag', async () => {
         plugin.settings.debugChunkLogging = undefined;
         (settingTab as any).isDeveloperMode = true;

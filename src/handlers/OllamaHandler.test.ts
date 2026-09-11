@@ -175,6 +175,7 @@ describe('Ollama Specific Features', () => {
             lastContextLength: 2048,
             defaultContextLength: 2048,
             limit: 8192,
+            outputReserveTokens: 2048,
         });
         expect(result.shouldUpdate).toBe(true);
         expect(result.num_ctx).toBeGreaterThan(2048);
@@ -338,7 +339,7 @@ describe('OllamaHandler internal behaviors', () => {
         expect(mockClient.abort).toHaveBeenCalled();
     });
 
-    it('optimizes context without updates for small inputs', () => {
+    it('never exceeds the model limit even for tiny inputs', () => {
         const handler = createHandler();
         const optimizeContext = (handler as any).optimizeContext.bind(handler);
 
@@ -347,47 +348,237 @@ describe('OllamaHandler internal behaviors', () => {
             lastContextLength: 512,
             defaultContextLength: 2048,
             limit: 2048,
+            outputReserveTokens: 2048,
         });
 
-        expect(result.shouldUpdate).toBe(false);
-        expect(result.num_ctx).toBeUndefined();
+        // Clamped to the model limit. It equals the default here, but the
+        // value is still sent: omitting num_ctx would hand the choice to
+        // Ollama's own default, which may be smaller than what we computed.
+        expect(result.shouldUpdate).toBe(true);
+        expect(result.num_ctx).toBe(2048);
     });
 
-    it('reuses lastContextLength when larger than default', () => {
+    it('reserves output room even when the prompt is tiny', () => {
         const handler = createHandler();
         const optimizeContext = (handler as any).optimizeContext.bind(handler);
 
         const result = optimizeContext({
             inputLength: 10,
-            lastContextLength: 4096,
+            lastContextLength: 512,
             defaultContextLength: 2048,
-            limit: 8192,
+            limit: 32768,
+            outputReserveTokens: 2048,
+        });
+
+        // max(4, 2048) * scale 2 + 2048 reserve
+        expect(result.num_ctx).toBe(6144);
+        expect(result.shouldUpdate).toBe(true);
+    });
+
+    it('never shrinks below a window the model already ran with', () => {
+        const handler = createHandler();
+        const optimizeContext = (handler as any).optimizeContext.bind(handler);
+
+        const result = optimizeContext({
+            inputLength: 10,
+            lastContextLength: 16384,
+            defaultContextLength: 2048,
+            limit: 32768,
+            outputReserveTokens: 2048,
         });
 
         expect(result.shouldUpdate).toBe(false);
-        expect(result.num_ctx).toBe(4096);
+        expect(result.num_ctx).toBe(16384);
     });
 
-    it('uses default context lengths when model info is empty', () => {
+    it('falls back to a larger limit when the model context length is unknown', () => {
         const handler = createHandler();
         const optimizeSpy = vi.spyOn(handler as any, 'optimizeContext');
         const provider = createMockProvider();
 
-        const result = (handler as any).applyContextOptimization({
+        (handler as any).applyContextOptimization({
             provider,
             modelName: provider.model,
             inputLength: 10,
             modelInfo: { contextLength: 0, lastContextLength: 0 },
-            defaultContextLength: 2048,
+            contextBudget: {
+                defaultContextLength: 2048,
+                fallbackLimit: 8192,
+                outputReserveTokens: 2048,
+            },
         });
 
         expect(optimizeSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 lastContextLength: 2048,
-                limit: 2048,
+                limit: 8192,
             })
         );
-        expect(result).toBeUndefined();
+    });
+
+    describe('generation limit warnings', () => {
+        // jsdom in this setup exposes no window.localStorage, which I18n.t
+        // reads to pick a locale; Obsidian always provides it.
+        beforeEach(() => {
+            Object.defineProperty(window, 'localStorage', {
+                configurable: true,
+                value: { getItem: () => 'en' },
+            });
+        });
+
+        const streamWith = async (
+            handler: any,
+            chunk: Record<string, unknown>
+        ) => {
+            const response = {
+                async *[Symbol.asyncIterator]() {
+                    yield { message: { content: 'partial ' } };
+                    yield { message: { content: 'answer' }, ...chunk };
+                },
+            };
+            return handler.streamOllamaResponse({
+                response,
+                provider: createMockProvider(),
+                modelName: 'llama2',
+            });
+        };
+
+        it('warns neutrally and keeps the partial text on done_reason length', async () => {
+            const handler = createHandler();
+            const warnSpy = vi
+                .spyOn(console, 'warn')
+                .mockImplementation(() => {});
+
+            const result = await streamWith(handler, {
+                done: true,
+                done_reason: 'length',
+            });
+
+            expect(warnSpy).toHaveBeenCalledTimes(1);
+            // Ollama reports 'length' for a filled context window and for a
+            // reached num_predict alike, so the message must not blame either.
+            const message = warnSpy.mock.calls[0][0] as string;
+            expect(message).toContain('generation limit');
+            expect(message).not.toContain('context');
+            // Whatever was generated must survive untouched.
+            expect(result.content).toBe('partial answer');
+            warnSpy.mockRestore();
+        });
+
+        it('warns the same way when a small num_predict stops a short answer', async () => {
+            const handler = createHandler();
+            const warnSpy = vi
+                .spyOn(console, 'warn')
+                .mockImplementation(() => {});
+
+            // 10-token prompt, 32-token cap, roomy window: nothing to do with
+            // the context size, but Ollama still reports 'length'.
+            const result = await streamWith(handler, {
+                done: true,
+                done_reason: 'length',
+                prompt_eval_count: 10,
+                eval_count: 32,
+            });
+
+            expect(warnSpy).toHaveBeenCalledTimes(1);
+            expect(warnSpy.mock.calls[0][0]).not.toContain('context');
+            expect(result.content).toBe('partial answer');
+            warnSpy.mockRestore();
+        });
+
+        it('does not warn on a normal completion', async () => {
+            const handler = createHandler();
+            const warnSpy = vi
+                .spyOn(console, 'warn')
+                .mockImplementation(() => {});
+
+            const result = await streamWith(handler, {
+                done: true,
+                done_reason: 'stop',
+                prompt_eval_count: 10,
+            });
+
+            expect(warnSpy).not.toHaveBeenCalled();
+            expect(result.content).toBe('partial answer');
+            warnSpy.mockRestore();
+        });
+
+        it('stays silent when Ollama dropped old messages before evaluation', async () => {
+            const handler = createHandler();
+            const warnSpy = vi
+                .spyOn(console, 'warn')
+                .mockImplementation(() => {});
+
+            // Ollama removes whole old messages before evaluating, so history
+            // can be lost while prompt_eval_count sits far below the window.
+            // Token counts cannot detect that, so nothing may be claimed.
+            await streamWith(handler, {
+                done: true,
+                done_reason: 'stop',
+                prompt_eval_count: 900,
+            });
+
+            expect(warnSpy).not.toHaveBeenCalled();
+            warnSpy.mockRestore();
+        });
+
+        it('stays silent when the prompt exactly fills the window', async () => {
+            const handler = createHandler();
+            const warnSpy = vi
+                .spyOn(console, 'warn')
+                .mockImplementation(() => {});
+
+            // An exact fit is not evidence of truncation either.
+            await streamWith(handler, {
+                done: true,
+                done_reason: 'stop',
+                prompt_eval_count: 4096,
+            });
+
+            expect(warnSpy).not.toHaveBeenCalled();
+            warnSpy.mockRestore();
+        });
+    });
+
+    describe('context scale setting', () => {
+        const scaleOf = (ollamaContextScale?: number) => {
+            const handler = new OllamaHandler({
+                _version: 1,
+                ollamaContextScale,
+            } as any);
+            return (handler as any).getContextScale();
+        };
+
+        it('defaults when unset', () => {
+            expect(scaleOf(undefined)).toBe(2);
+        });
+
+        it('uses a configured value', () => {
+            expect(scaleOf(3)).toBe(3);
+        });
+
+        it('clamps out-of-range and malformed values', () => {
+            expect(scaleOf(0.1)).toBe(1);
+            expect(scaleOf(99)).toBe(4);
+            expect(scaleOf(NaN)).toBe(2);
+        });
+
+        it('feeds the configured scale into the sizing formula', () => {
+            const handler = new OllamaHandler({
+                _version: 1,
+                ollamaContextScale: 4,
+            } as any);
+
+            const result = (handler as any).optimizeContext({
+                inputLength: 10,
+                lastContextLength: 0,
+                defaultContextLength: 2048,
+                limit: 65536,
+                outputReserveTokens: 2048,
+            });
+
+            expect(result.num_ctx).toBe(2048 * 4 + 2048);
+        });
     });
 
     it('adds images to empty chat when none exist', () => {
@@ -810,6 +1001,226 @@ describe('OllamaHandler internal behaviors', () => {
         } as any);
 
         expect(result).toBe('');
+    });
+
+    describe('computed num_ctx reaches the outgoing request', () => {
+        // Regression: the computed window used to be dropped whenever it
+        // landed at or below defaultContextLength, leaving num_ctx off the
+        // request. Ollama then applies its own configured default, which can
+        // be smaller than the window we computed.
+        const createChatClient = () => ({
+            abort: vi.fn(),
+            chat: vi.fn().mockResolvedValue({
+                async *[Symbol.asyncIterator]() {
+                    yield {
+                        message: { content: 'ok' },
+                        done: true,
+                        total_duration: 1,
+                        context: [1, 2, 3],
+                    };
+                },
+            }),
+        });
+
+        const withModelLimit = (handler: any, contextLength: number) => {
+            vi.spyOn(handler, 'getCachedModelInfo').mockResolvedValue({
+                contextLength,
+                lastContextLength: 2048,
+            });
+        };
+
+        it.each([512, 1024, 2048])(
+            'execute sends num_ctx for a model limit of %i',
+            async contextLength => {
+                const handler = createHandler();
+                const mockClient = createChatClient();
+                withModelLimit(handler, contextLength);
+                vi.spyOn(handler as any, 'getClient').mockReturnValue(
+                    mockClient
+                );
+
+                await handler.execute({
+                    provider: createMockProvider(),
+                    prompt: 'short',
+                } as any);
+
+                expect(mockClient.chat).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        options: expect.objectContaining({
+                            num_ctx: contextLength,
+                        }),
+                    })
+                );
+            }
+        );
+
+        it.each([512, 1024, 2048])(
+            'toolsExecute sends num_ctx for a model limit of %i',
+            async contextLength => {
+                const handler = createHandler();
+                const mockClient = createChatClient();
+                withModelLimit(handler, contextLength);
+                vi.spyOn(handler as any, 'getClient').mockReturnValue(
+                    mockClient
+                );
+
+                await handler.toolsExecute({
+                    provider: createMockProvider(),
+                    messages: [{ role: 'user', content: 'short' }],
+                    tools: [
+                        {
+                            type: 'function',
+                            function: {
+                                name: 'tool_name',
+                                parameters: {
+                                    type: 'object',
+                                    properties: {},
+                                },
+                            },
+                        },
+                    ],
+                } as any);
+
+                expect(mockClient.chat).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        options: expect.objectContaining({
+                            num_ctx: contextLength,
+                        }),
+                    })
+                );
+            }
+        );
+
+        it.each([512, 1024, 2048])(
+            'embed sends num_ctx for a model limit of %i',
+            async contextLength => {
+                const handler = createHandler();
+                const mockClient = {
+                    abort: vi.fn(),
+                    embed: vi.fn().mockResolvedValue({
+                        embeddings: [[0.1, 0.2, 0.3]],
+                    }),
+                };
+                withModelLimit(handler, contextLength);
+                vi.spyOn(handler as any, 'getClient').mockReturnValue(
+                    mockClient
+                );
+
+                await handler.embed({
+                    provider: createMockProvider(),
+                    input: ['short'],
+                } as any);
+
+                expect(mockClient.embed).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        options: expect.objectContaining({
+                            num_ctx: contextLength,
+                        }),
+                    })
+                );
+            }
+        );
+    });
+
+    describe('explicit options.num_ctx', () => {
+        const createChatClient = () => ({
+            abort: vi.fn(),
+            chat: vi.fn().mockResolvedValue({
+                async *[Symbol.asyncIterator]() {
+                    yield {
+                        message: { content: 'ok' },
+                        done: true,
+                        total_duration: 1,
+                        context: [1, 2, 3],
+                    };
+                },
+            }),
+        });
+
+        const prepare = (handler: any) => {
+            const mockClient = createChatClient();
+            vi.spyOn(handler, 'getCachedModelInfo').mockResolvedValue({
+                contextLength: 4096,
+                lastContextLength: 2048,
+            });
+            vi.spyOn(handler, 'getClient').mockReturnValue(mockClient);
+            return mockClient;
+        };
+
+        // A caller that pins num_ctx must get exactly that window: auto-sizing
+        // over it could shrink a deliberately widened context, or overshoot a
+        // deliberately capped memory budget.
+        it.each([32768, 2048])(
+            'execute preserves an explicit num_ctx of %i',
+            async num_ctx => {
+                const handler = createHandler();
+                const mockClient = prepare(handler);
+
+                await handler.execute({
+                    provider: createMockProvider(),
+                    prompt: 'short',
+                    options: { num_ctx },
+                } as any);
+
+                expect(mockClient.chat).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        options: expect.objectContaining({ num_ctx }),
+                    })
+                );
+            }
+        );
+
+        it.each([32768, 2048])(
+            'toolsExecute preserves an explicit num_ctx of %i',
+            async num_ctx => {
+                const handler = createHandler();
+                const mockClient = prepare(handler);
+
+                await handler.toolsExecute({
+                    provider: createMockProvider(),
+                    messages: [{ role: 'user', content: 'short' }],
+                    tools: [
+                        {
+                            type: 'function',
+                            function: {
+                                name: 'tool_name',
+                                parameters: {
+                                    type: 'object',
+                                    properties: {},
+                                },
+                            },
+                        },
+                    ],
+                    options: { num_ctx },
+                } as any);
+
+                expect(mockClient.chat).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        options: expect.objectContaining({ num_ctx }),
+                    })
+                );
+            }
+        );
+
+        it('still auto-sizes when the caller passes other options', async () => {
+            const handler = createHandler();
+            const mockClient = prepare(handler);
+
+            await handler.execute({
+                provider: createMockProvider(),
+                prompt: 'short',
+                options: { temperature: 0.2 },
+            } as any);
+
+            expect(mockClient.chat).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    options: expect.objectContaining({
+                        temperature: 0.2,
+                        num_ctx: expect.any(Number),
+                    }),
+                })
+            );
+        });
     });
 
     it('toolsExecute passes regular options, empty model and abort signal', async () => {

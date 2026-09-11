@@ -50,7 +50,9 @@
         "modelCapabilityText": "텍스트",
         "modelCapabilityTools": "도구",
         "modelCapabilityVision": "이미지",
-        "selectModelFirst": "먼저 모델을 선택하세요"
+        "selectModelFirst": "먼저 모델을 선택하세요",
+        "ollamaContextScale": "Ollama 컨텍스트 크기 배율",
+        "ollamaContextScaleDesc": "Ollama 컨텍스트 창 크기를 계산할 때 추정 프롬프트 크기에 곱하는 배율입니다. 응답을 위한 고정 예약 공간이 추가로 적용됩니다. 값이 클수록 긴 답변에 여유가 생기지만 메모리를 더 사용합니다. Ollama 공급자에만 적용됩니다."
     },
     "modals": {
         "confirm": "확인",
@@ -66,6 +68,7 @@
         "pluginMustBeUpdated": "플러그인 업데이트 필요",
         "pluginMustBeUpdatedFormatted": "이 버전의 AI Providers와 함께 사용하려면 플러그인을 업데이트해야 합니다",
         "providerNameRequired": "공급자 이름이 필요합니다",
-        "providerNameExists": "\"{{name}}\" 이름을 가진 공급자가 이미 존재합니다"
+        "providerNameExists": "\"{{name}}\" 이름을 가진 공급자가 이미 존재합니다",
+        "ollamaGenerationLimitReached": "Ollama가 생성 한도에 도달하여 \"{{model}}\"의 생성을 중단했습니다. 부분 답변은 유지되었습니다."
     }
 }

@@ -10,12 +10,23 @@ import {
     IAIToolCall,
     IAIToolDefinition,
 } from '@obsidian-ai-providers/sdk';
+import { Notice } from 'obsidian';
 import { Ollama } from 'ollama';
+import { I18n } from '../i18n';
 import { electronFetch } from '../utils/electronFetch';
 import { obsidianFetch } from '../utils/obsidianFetch';
 import { logger } from '../utils/logger';
 import { FetchSelector } from '../utils/FetchSelector';
 import { logToolsRequest, logToolsResponse } from '../utils/modelDebugSummary';
+import {
+    DEFAULT_CONTEXT_LENGTH,
+    DEFAULT_CONTEXT_SCALE,
+    EMBEDDING_CONTEXT_LENGTH,
+    FALLBACK_MAX_CONTEXT_LENGTH,
+    MAX_CONTEXT_SCALE,
+    MIN_CONTEXT_SCALE,
+    OUTPUT_RESERVE_TOKENS,
+} from '../constants/ollamaContext';
 
 // Add interface for model cache
 interface ModelInfo {
@@ -24,9 +35,19 @@ interface ModelInfo {
 }
 
 const SYMBOLS_PER_TOKEN = 2.5;
-const DEFAULT_CONTEXT_LENGTH = 2048;
-const EMBEDDING_CONTEXT_LENGTH = 2048;
-const CONTEXT_BUFFER_MULTIPLIER = 1.2; // 20% buffer
+
+// Chat/tool calls generate tokens, so they reserve output room; embeddings
+// return a vector rather than tokens and need none.
+const CHAT_CONTEXT_BUDGET = {
+    defaultContextLength: DEFAULT_CONTEXT_LENGTH,
+    fallbackLimit: FALLBACK_MAX_CONTEXT_LENGTH,
+    outputReserveTokens: OUTPUT_RESERVE_TOKENS,
+};
+const EMBEDDING_CONTEXT_BUDGET = {
+    defaultContextLength: EMBEDDING_CONTEXT_LENGTH,
+    fallbackLimit: EMBEDDING_CONTEXT_LENGTH,
+    outputReserveTokens: 0,
+};
 type TextContentBlock = Extract<IContentBlock, { type: 'text' }>;
 type ImageContentBlock = Extract<IContentBlock, { type: 'image_url' }>;
 type OllamaToolCall = {
@@ -58,6 +79,7 @@ type OllamaStreamChunk = {
         tool_name?: string;
     };
     done?: boolean;
+    done_reason?: string;
     total_duration?: number;
     context?: number[];
 };
@@ -167,6 +189,64 @@ export class OllamaHandler implements IAIHandler {
         }
     }
 
+    private handleFinalChunk({
+        chunk,
+        provider,
+        modelName,
+    }: {
+        chunk: OllamaStreamChunk;
+        provider: IAIProvider;
+        modelName: string;
+    }): void {
+        if (
+            typeof chunk.total_duration === 'number' &&
+            chunk.total_duration > 0
+        ) {
+            this.setModelInfoLastContextLength(
+                provider,
+                modelName,
+                chunk.context?.length
+            );
+        }
+
+        this.warnIfGenerationLimitReached({ chunk, modelName });
+    }
+
+    /**
+     * `done_reason === 'length'` means generation stopped at a limit, but
+     * Ollama does not say which: it reports the same reason for a filled
+     * context window and for a reached `num_predict`. The message is therefore
+     * deliberately neutral about the cause.
+     *
+     * There is no counterpart check for a dropped prompt. Ollama removes whole
+     * old messages before evaluation, so `prompt_eval_count` can sit well below
+     * `num_ctx` even when history was lost, and a prompt that exactly fills the
+     * window was not necessarily truncated. Token counts cannot prove it either
+     * way, so nothing is claimed.
+     *
+     * Whatever text arrived is kept untouched; only the notice is added.
+     */
+    private warnIfGenerationLimitReached({
+        chunk,
+        modelName,
+    }: {
+        chunk: OllamaStreamChunk;
+        modelName: string;
+    }): void {
+        if (chunk.done_reason !== 'length') {
+            return;
+        }
+
+        const message = I18n.t('errors.ollamaGenerationLimitReached', {
+            model: modelName,
+        });
+
+        // Warn unconditionally: the answer is incomplete and the user needs to
+        // see that, so it must not depend on the debug-logging setting.
+        console.warn(`[AI Providers] ${message}`);
+        new Notice(message);
+    }
+
     async fetchModels({
         provider,
         abortController,
@@ -191,45 +271,55 @@ export class OllamaHandler implements IAIHandler {
         return result;
     }
 
+    /**
+     * User-facing scaler for how generously the context window is sized.
+     * Clamped so a malformed setting can never produce an absurd num_ctx.
+     */
+    private getContextScale(): number {
+        const scale = this.settings.ollamaContextScale;
+        if (typeof scale !== 'number' || !Number.isFinite(scale)) {
+            return DEFAULT_CONTEXT_SCALE;
+        }
+        return Math.min(Math.max(scale, MIN_CONTEXT_SCALE), MAX_CONTEXT_SCALE);
+    }
+
     private optimizeContext({
         inputLength,
         lastContextLength,
         defaultContextLength,
         limit,
+        outputReserveTokens,
     }: {
         inputLength: number;
         lastContextLength: number;
         defaultContextLength: number;
         limit: number;
-    }): { num_ctx?: number; shouldUpdate: boolean } {
+        outputReserveTokens: number;
+    }): { num_ctx: number; shouldUpdate: boolean } {
         const estimatedTokens = Math.ceil(inputLength / SYMBOLS_PER_TOKEN);
 
-        // If current context is smaller than last used,
-        // use the last known context size
-        if (estimatedTokens <= lastContextLength) {
-            return {
-                num_ctx:
-                    lastContextLength > defaultContextLength
-                        ? lastContextLength
-                        : undefined,
-                shouldUpdate: false,
-            };
-        }
-
-        // For large inputs, calculate new size with buffer
-        const targetLength = Math.min(
+        // num_ctx has to hold the prompt *and* the answer: scale the prompt
+        // estimate (covering tokenizer guesswork) and add explicit output room.
+        const desired =
             Math.ceil(
                 Math.max(estimatedTokens, defaultContextLength) *
-                    CONTEXT_BUFFER_MULTIPLIER
-            ),
+                    this.getContextScale()
+            ) + outputReserveTokens;
+
+        // Never shrink below a window this model already ran with, never exceed
+        // what the model actually supports.
+        const targetLength = Math.min(
+            Math.max(desired, lastContextLength),
             limit
         );
 
-        // Update only if we need context larger than previous
-        const shouldUpdate = targetLength > lastContextLength;
+        // Always send the computed window, even when it lands at or below
+        // defaultContextLength. Omitting num_ctx does not mean "use our
+        // default" — it hands the choice to Ollama's own configured default,
+        // which may be smaller still and would silently shrink the window.
         return {
             num_ctx: targetLength,
-            shouldUpdate,
+            shouldUpdate: targetLength > lastContextLength,
         };
     }
 
@@ -238,20 +328,27 @@ export class OllamaHandler implements IAIHandler {
         modelName,
         inputLength,
         modelInfo,
-        defaultContextLength,
+        contextBudget,
     }: {
         provider: IAIProvider;
         modelName: string;
         inputLength: number;
         modelInfo: ModelInfo;
-        defaultContextLength: number;
-    }): number | undefined {
+        contextBudget: {
+            defaultContextLength: number;
+            fallbackLimit: number;
+            outputReserveTokens: number;
+        };
+    }): number {
+        const { defaultContextLength, fallbackLimit, outputReserveTokens } =
+            contextBudget;
         const { num_ctx, shouldUpdate } = this.optimizeContext({
             inputLength,
             lastContextLength:
                 modelInfo.lastContextLength || defaultContextLength,
             defaultContextLength,
-            limit: modelInfo.contextLength || defaultContextLength,
+            limit: modelInfo.contextLength || fallbackLimit,
+            outputReserveTokens,
         });
 
         if (shouldUpdate) {
@@ -259,6 +356,51 @@ export class OllamaHandler implements IAIHandler {
         }
 
         return num_ctx;
+    }
+
+    /**
+     * Decides the context window for one chat/tools request and writes it into
+     * `requestOptions`.
+     *
+     * A caller-supplied `options.num_ctx` is authoritative and is never
+     * overridden: auto-sizing it could shrink a window the caller widened on
+     * purpose, or blow past a memory budget it deliberately capped.
+     */
+    private resolveContextWindow({
+        params,
+        requestOptions,
+        sizing,
+    }: {
+        params: { provider: IAIProvider; modelName: string };
+        requestOptions: Record<string, unknown>;
+        sizing: {
+            chatMessages: OllamaChatMessage[];
+            modelInfo: ModelInfo;
+            hasImages: boolean;
+        };
+    }): void {
+        if ('num_ctx' in requestOptions) {
+            return;
+        }
+
+        // Image payloads are not counted by the character-based estimate, so
+        // leave the window to Ollama rather than sizing it from text alone.
+        if (sizing.hasImages) {
+            return;
+        }
+
+        const inputLength = sizing.chatMessages.reduce(
+            (acc, msg) => acc + msg.content.length,
+            0
+        );
+
+        requestOptions.num_ctx = this.applyContextOptimization({
+            provider: params.provider,
+            modelName: params.modelName,
+            inputLength,
+            modelInfo: sizing.modelInfo,
+            contextBudget: CHAT_CONTEXT_BUDGET,
+        });
     }
 
     private normalizeImages(images: string[]): string[] {
@@ -420,16 +562,8 @@ export class OllamaHandler implements IAIHandler {
                 toolCallsByIndex.set(index, existing);
             });
 
-            if (
-                chunk.done &&
-                typeof chunk.total_duration === 'number' &&
-                chunk.total_duration > 0
-            ) {
-                this.setModelInfoLastContextLength(
-                    provider,
-                    modelName,
-                    chunk.context?.length
-                );
+            if (chunk.done) {
+                this.handleFinalChunk({ chunk, provider, modelName });
             }
         }
 
@@ -587,24 +721,15 @@ export class OllamaHandler implements IAIHandler {
         const processedImages = this.normalizeImages(extractedImages);
         const requestOptions = this.buildRequestConfig(params).options;
 
-        if (processedImages.length === 0) {
-            const inputLength = chatMessages.reduce(
-                (acc, msg) => acc + msg.content.length,
-                0
-            );
-
-            const num_ctx = this.applyContextOptimization({
-                provider: params.provider,
-                modelName,
-                inputLength,
+        this.resolveContextWindow({
+            params: { provider: params.provider, modelName },
+            requestOptions,
+            sizing: {
+                chatMessages,
                 modelInfo: effectiveModelInfo,
-                defaultContextLength: DEFAULT_CONTEXT_LENGTH,
-            });
-
-            if (num_ctx) {
-                requestOptions.num_ctx = num_ctx;
-            }
-        }
+                hasImages: processedImages.length > 0,
+            },
+        });
 
         this.applyImagesToChatMessages(chatMessages, processedImages);
 
@@ -654,7 +779,7 @@ export class OllamaHandler implements IAIHandler {
             modelName,
             inputLength: maxInputLength,
             modelInfo,
-            defaultContextLength: EMBEDDING_CONTEXT_LENGTH,
+            contextBudget: EMBEDDING_CONTEXT_BUDGET,
         });
 
         const operation = async (
@@ -783,24 +908,15 @@ export class OllamaHandler implements IAIHandler {
                     const requestConfig = this.buildToolsRequestConfig(params);
                     const requestOptions = requestConfig.options;
 
-                    if (processedImages.length === 0) {
-                        const inputLength = chatMessages.reduce(
-                            (acc, msg) => acc + msg.content.length,
-                            0
-                        );
-
-                        const num_ctx = this.applyContextOptimization({
-                            provider: params.provider,
-                            modelName,
-                            inputLength,
+                    this.resolveContextWindow({
+                        params: { provider: params.provider, modelName },
+                        requestOptions,
+                        sizing: {
+                            chatMessages,
                             modelInfo: effectiveModelInfo,
-                            defaultContextLength: DEFAULT_CONTEXT_LENGTH,
-                        });
-
-                        if (num_ctx) {
-                            requestOptions.num_ctx = num_ctx;
-                        }
-                    }
+                            hasImages: processedImages.length > 0,
+                        },
+                    });
 
                     this.applyImagesToChatMessages(
                         chatMessages,

@@ -50,7 +50,9 @@
         "modelCapabilityText": "Texte",
         "modelCapabilityTools": "Outils",
         "modelCapabilityVision": "Visuel",
-        "selectModelFirst": "Sélectionnez d'abord un modèle"
+        "selectModelFirst": "Sélectionnez d'abord un modèle",
+        "ollamaContextScale": "Facteur de taille de contexte Ollama",
+        "ollamaContextScaleDesc": "Multiplie la taille estimée du prompt lors du dimensionnement de la fenêtre de contexte d’Ollama, en plus d’une réserve fixe pour la réponse. Des valeurs plus élevées laissent plus de place aux longues réponses mais consomment plus de mémoire. N’affecte que les fournisseurs Ollama."
     },
     "modals": {
         "confirm": "Confirmer",
@@ -66,6 +68,7 @@
         "pluginMustBeUpdated": "Le plugin doit être mis à jour",
         "pluginMustBeUpdatedFormatted": "Le plugin doit être mis à jour pour fonctionner avec cette version de AI Providers",
         "providerNameRequired": "Le nom du fournisseur est requis",
-        "providerNameExists": "Un fournisseur portant le nom \"{{name}}\" existe déjà"
+        "providerNameExists": "Un fournisseur portant le nom \"{{name}}\" existe déjà",
+        "ollamaGenerationLimitReached": "Ollama a cessé de générer pour « {{model}} » après avoir atteint une limite de génération. La réponse partielle a été conservée."
     }
 }
