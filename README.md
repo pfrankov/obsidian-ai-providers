@@ -1,14 +1,16 @@
 # Obsidian AI Providers
 
-⚠️ Important Note:
-This plugin is a configuration tool - it helps you manage your AI settings in one place.
+AI Providers manages shared AI provider settings and gives other Obsidian plugins
+a common API for generation, tool calling, embeddings, and vector retrieval.
 
 Think of it like a control panel where you can:
 - Store your API keys and settings for AI services
 - Share these settings with other Obsidian plugins
 - Avoid entering the same AI settings multiple times
 
-**The plugin itself doesn't do any AI processing - it just helps other plugins connect to AI services more easily.**
+When another plugin calls the SDK, AI Providers sends generation, tool-calling,
+and embedding requests to the configured local or remote provider. It also caches
+embeddings and ranks document chunks locally for vector-based retrieval.
 
 <img width="700" alt="image" src="https://github.com/user-attachments/assets/09b6313d-726c-440b-9201-1b2f2e839fa7" />
 
@@ -180,7 +182,7 @@ Removed callbacks: onEnd / onError — promise resolve/reject covers them (only 
 - [x] Anthropic Provider support
 - [x] Shared embeddings to avoid re-embedding the same documents multiple times
 - [x] Spanish, Italian, French, Dutch, Portuguese, Japanese, Korean translations
-- [x] Incapsulated basic RAG search with optional BM25 search
+- [x] Encapsulated vector-based retrieval for RAG
 
 ## My other Obsidian plugins
 - [Local GPT](https://github.com/pfrankov/obsidian-local-gpt) that assists with local AI for maximum privacy and offline access.
