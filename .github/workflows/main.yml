@@ -11,23 +11,80 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
         with:
-          node-version: 20
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
 
       - name: Build plugin
         run: |
-          npm install
+          npm ci
           npm run build
 
-      - name: Create release
+      - name: Create release or upload missing assets
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          tag="${GITHUB_REF#refs/tags/}"
+          set -euo pipefail
 
-          gh release create "$tag" \
-            --title="$tag" \
-            --draft \
-            dist/main.js dist/manifest.json dist/styles.css
+          tag="${GITHUB_REF#refs/tags/}"
+          manifest_version="$(jq -er '.version' dist/manifest.json)"
+          package_version="$(jq -er '.version' package.json)"
+          if [[ "$tag" != "$manifest_version" || "$tag" != "$package_version" ]]; then
+            echo "Tag must match the built manifest and package version" >&2
+            exit 1
+          fi
+
+          release="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" |
+            jq -cs --arg tag "$tag" '
+              if length == 0 or any(.[]; type != "array") then error("Invalid releases response") else
+                [.[][] | select(.tag_name == $tag)] |
+                if length > 1 then error("Duplicate release") else .[0] end
+              end')"
+
+          assets=(dist/main.js dist/manifest.json dist/styles.css)
+          missing=()
+          for file in "${assets[@]}"; do
+            test -s "$file"
+            if [[ "$release" == null ]]; then
+              missing+=("$file")
+              continue
+            fi
+
+            asset="$(jq -c --arg name "${file##*/}" '
+              [.assets[] | select(.name == $name)] |
+              if length > 1 then error("Duplicate asset") else .[0] end' <<< "$release")"
+            if [[ "$asset" == null ]]; then
+              missing+=("$file")
+              continue
+            fi
+
+            digest="sha256:$(sha256sum "$file" | cut -d ' ' -f 1)"
+            if ! jq -e --arg digest "$digest" \
+              '.state == "uploaded" and .digest == $digest' <<< "$asset" > /dev/null; then
+              echo "Existing asset ${file##*/} is incomplete or does not match this build" >&2
+              exit 1
+            fi
+          done
+
+          head="$(git rev-parse HEAD)"
+          remote_commit="$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$tag" | jq -er '.sha')"
+          if [[ "$remote_commit" != "$head" ]]; then
+            echo "Remote tag no longer matches the checked-out commit" >&2
+            exit 1
+          fi
+
+          if [[ ${#missing[@]} == 0 ]]; then
+            echo "All release assets already match this build"
+            exit 0
+          fi
+
+          if [[ "$release" == null ]]; then
+            gh release create "$tag" --verify-tag --title="$tag" --draft "${missing[@]}"
+          else
+            gh release upload "$tag" "${missing[@]}"
+          fi

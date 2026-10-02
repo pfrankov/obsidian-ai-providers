@@ -1,15 +1,15 @@
 # AGENTS
 
 ## Purpose and Main Flow
-- This plugin is a configuration hub for AI providers in Obsidian; it does not run AI itself.
+- This plugin manages shared AI provider configuration in Obsidian and exposes generation, tool calling, embeddings, and vector retrieval through its SDK.
 - Settings flow: users add/edit providers in the settings UI, which persists config and exposes it to other plugins via the SDK.
-- Runtime flow: SDK -> AIProvidersService -> provider handler -> provider API, with FetchSelector choosing the right fetch path and embeddings cached in IndexedDB.
+- Runtime flow: SDK -> AIProvidersService -> provider handler -> local or remote provider API, with FetchSelector choosing the right fetch path and embeddings cached in IndexedDB. Retrieval chunks documents and ranks their embeddings locally using cosine similarity; it is vector-only.
 - I18n reads the saved language on each call. If localStorage is unavailable or access throws, use English without changing the saved preference or caching the fallback.
 
 ## Development & Quality Standards
 - 100% test coverage required (lines/branches/functions/statements) via Vitest coverage thresholds.
-- Linting required; Prettier formatting is enforced via pre-commit.
-- Cyclomatic complexity limit <= 10 enforced via eslint-plugin-sonarjs (cognitive complexity rule).
+- Linting required; Prettier formatting is enforced in CI via `npm run format:check`.
+- Cognitive complexity limit <= 10 enforced via eslint-plugin-sonarjs.
 - Use Context7 for up-to-date documentation when changing or adding integrations.
 - Test storage comes from the original `jsdom.window.localStorage`, explicitly exposed in `vitest.setup.ts` and restored/cleared around each test. Do not depend on Node's native storage or use a getItem-only global mock.
 - Pull requests and `master` pushes run formatting, `npm run check`, and plugin/SDK/example builds in `.github/workflows/check.yml` using the committed lockfile.
