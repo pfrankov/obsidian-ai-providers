@@ -126,14 +126,12 @@ export async function initAI(
         return;
     }
 
-    try {
-        const timeout = setTimeout(async () => {
-            plugin.addSettingTab(
-                new AIProvidersFallbackSettingsTab(app, plugin)
-            );
-            isFallbackShown = true;
-        }, FALLBACK_TIMEOUT);
+    const timeout = setTimeout(async () => {
+        plugin.addSettingTab(new AIProvidersFallbackSettingsTab(app, plugin));
+        isFallbackShown = true;
+    }, FALLBACK_TIMEOUT);
 
+    try {
         const aiProvidersAiResolver = await waitForAIProviders(app, plugin);
         const aiProviders = await aiProvidersAiResolver.promise;
         clearTimeout(timeout);
@@ -156,6 +154,7 @@ export async function initAI(
 
         await onDone();
     } finally {
+        clearTimeout(timeout);
         if (isFallbackShown && app.plugins) {
             await app.plugins.disablePlugin(plugin.manifest.id);
             await app.plugins.enablePlugin(plugin.manifest.id);

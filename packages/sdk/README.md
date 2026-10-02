@@ -1,7 +1,7 @@
 # Obsidian AI Providers SDK
-This SDK is used to interact with the [AI Providers](https://github.com/obsidian-ai-providers/obsidian-ai-providers) plugin.
+This SDK is used to interact with the [AI Providers](https://github.com/pfrankov/obsidian-ai-providers) plugin.
 
-Take a look at the [example plugin](../example-plugin/main.ts) to see how to use the SDK.
+Take a look at the [example plugin](https://github.com/pfrankov/obsidian-ai-providers/blob/master/packages/example-plugin/main.ts) to see how to use the SDK.
 
 ## Installation
 Install the SDK in your Obsidian plugin.
@@ -14,7 +14,7 @@ npm install @obsidian-ai-providers/sdk
 
 ### Migration Guides
 If you are upgrading from older versions, see:
-- [execute() streaming change: IChunkHandler → Promise + onProgress (since 1.5.0)](./migrations/execute-streaming-migration.md)
+- [execute() streaming change: IChunkHandler → Promise + onProgress (since 1.5.0)](https://github.com/pfrankov/obsidian-ai-providers/blob/master/packages/sdk/migrations/execute-streaming-migration.md)
 
 ### Version Notes
 SDK 1.5.0 (Service API v3) changes `execute()` to return a `Promise<string>` when `onProgress` or `abortController` is passed, and introduces inline streaming via `onProgress` plus cancellation via `AbortController`. The old chainable `IChunkHandler` object is now deprecated and only returned when neither `onProgress` nor `abortController` are passed.
@@ -53,6 +53,10 @@ aiProviders.providers;
 ### 2. Fallback settings tab
 Before AI Providers plugin is loaded and activated, you need to show fallback settings tab.  
 `initAI` function takes care of showing fallback settings tab and runs callback when AI Providers plugin is loaded and activated.
+The fallback timer is cleared when the wait succeeds or fails. Canceling the wait
+before the 100 ms fallback deadline prevents a stale settings tab from appearing.
+If the timeout has already shown the fallback, initialization still reloads the
+plugin when Obsidian's plugin manager is available, including on cancellation.
 
 ```typescript
 import { initAI } from '@obsidian-ai-providers/sdk';
@@ -372,15 +376,14 @@ console.log(mlResults[0].content);
 
 ### Fetch models
 There is no need to fetch models manually, but you can do it if you want to.
-You can fetch models for any provider using `fetchModels` method.
+You can fetch models for any provider using `fetchModels` method. It returns model
+IDs without changing the provider's saved `availableModels` or settings.
 
 ```typescript
-// Makes request to the provider and returns list of models
-// Also updates the list of available models in the provider object
-const models = await aiProviders.fetchModels(aiProviders.providers[0]);
+// Makes a request to the provider and returns a list of model IDs
+const models = await aiProviders.fetchModels({ provider: aiProviders.providers[0] });
 
 console.log(models); // ['smollm2:135m', 'llama2:latest']
-console.log(aiProviders.providers[0].availableModels) // ['smollm2:135m', 'llama2:latest']
 ```
 
 ### Model capabilities
