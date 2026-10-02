@@ -99,6 +99,9 @@ Alternatively you can copy the content of `@obsidian-ai-providers/sdk/styles.css
 ### 4. Migrate existing provider
 If you want to add providers to the AI Providers plugin, you can use the `migrateProvider` method.
 It will show a confirmation dialog and if the user confirms, it will add the provider to the plugin settings.
+The promise resolves with the provider after settings are saved. Canceling or
+dismissing the dialog (including Escape or clicking outside) resolves to `false`
+without adding or saving a provider.
 
 ```typescript
 // The migrateProvider method takes an IAIProvider object and returns a promise

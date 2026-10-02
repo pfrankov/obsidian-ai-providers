@@ -116,6 +116,10 @@ There are several options to run local OpenAI-like server:
 ## For plugin developers
 [Docs: How to integrate AI Providers in your plugin.](./packages/sdk/README.md)
 
+Provider migration returns `false` if its confirmation dialog is canceled or
+dismissed (including Escape or clicking outside), without adding or saving a
+provider. Confirmed migrations resolve with the provider after settings are saved.
+
 Requests using Obsidian's HTTP transport preserve provider error status, headers,
 and body for the provider SDK's error handling and retries, including `Retry-After`.
 
