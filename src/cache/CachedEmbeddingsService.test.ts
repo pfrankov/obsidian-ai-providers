@@ -49,7 +49,7 @@ describe('CachedEmbeddingsService', () => {
         const result = await service.embedWithCache(params);
 
         expect(embeddingsCache.getEmbeddings).toHaveBeenCalledWith(
-            'embed:test-provider:test-model'
+            expect.stringMatching(/^embed:v2:[a-f0-9]{64}$/)
         );
         expect(mockEmbedFunction).not.toHaveBeenCalled();
         expect(result).toEqual([[0.1, 0.2, 0.3]]);
@@ -224,7 +224,7 @@ describe('CachedEmbeddingsService', () => {
         const result = await service.embedWithCache(params);
 
         expect(embeddingsCache.getEmbeddings).toHaveBeenCalledWith(
-            'embed:test-provider:test-model'
+            expect.stringMatching(/^embed:v2:[a-f0-9]{64}$/)
         );
         expect(mockEmbedFunction).toHaveBeenCalledWith({
             ...params,
@@ -237,13 +237,12 @@ describe('CachedEmbeddingsService', () => {
         ]);
 
         const expectedChunksToCache: EmbeddingChunk[] = [
-            { content: 'cached text', embedding: [0.1, 0.2, 0.3] },
             { content: 'new text', embedding: [0.4, 0.5, 0.6] },
         ];
 
         // Use expect.any(Array) for the chunks because the order is not guaranteed
         expect(embeddingsCache.setEmbeddings).toHaveBeenCalledWith(
-            'embed:test-provider:test-model',
+            expect.stringMatching(/^embed:v2:[a-f0-9]{64}$/),
             {
                 providerId: 'test-provider',
                 providerModel: 'test-model',
@@ -253,9 +252,7 @@ describe('CachedEmbeddingsService', () => {
 
         const actualCachedChunks = (embeddingsCache.setEmbeddings as Mock).mock
             .calls[0][1].chunks;
-        expect(actualCachedChunks).toHaveLength(2);
-        expect(actualCachedChunks).toContainEqual(expectedChunksToCache[0]);
-        expect(actualCachedChunks).toContainEqual(expectedChunksToCache[1]);
+        expect(actualCachedChunks).toEqual(expectedChunksToCache);
     });
 
     it('reports progress for cached chunks', async () => {

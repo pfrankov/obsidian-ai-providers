@@ -4,6 +4,7 @@ import {
 } from '@obsidian-ai-providers/sdk';
 import { embeddingsCache } from './EmbeddingsCache';
 import { logger } from '../utils/logger';
+import { createSecureHash } from '../utils/hashUtils';
 
 export interface EmbeddingChunk {
     content: string;
@@ -25,6 +26,7 @@ export class CachedEmbeddingsService {
      * Generate embeddings with caching support
      */
     async embedWithCache(params: CachedEmbedParams): Promise<number[][]> {
+        params = { ...params, provider: { ...params.provider } };
         if (!params.chunks) {
             return this.embedFunction(params);
         }
@@ -87,7 +89,7 @@ export class CachedEmbeddingsService {
     private async embedAndCacheChunks(
         params: CachedEmbedParams,
         uncachedChunks: string[],
-        cache: { chunksMap: Map<string, number[]>; cacheKey: string }
+        cache: { chunksMap: Map<string, number[]>; cacheKey: string | null }
     ) {
         const { chunksMap, cacheKey } = cache;
         const abortController = params.abortController;
@@ -97,17 +99,20 @@ export class CachedEmbeddingsService {
             input: uncachedChunks,
         });
         this.ensureNotAborted(abortController);
-        uncachedChunks.forEach((content, i) =>
-            chunksMap.set(content, newEmbeddings[i])
-        );
-        await this.saveCachedChunks(cacheKey, params.provider, chunksMap);
+        const additions = uncachedChunks.map((content, i) => {
+            const embedding = newEmbeddings[i];
+            chunksMap.set(content, embedding);
+            return { content, embedding };
+        });
+        await this.saveCachedChunks(cacheKey, params.provider, additions);
         this.ensureNotAborted(abortController);
     }
 
     private async loadCachedChunks(
         params: CachedEmbedParams,
-        cacheKey: string
+        cacheKey: string | null
     ): Promise<Map<string, number[]>> {
+        if (cacheKey === null) return new Map();
         const cached = await embeddingsCache
             .getEmbeddings(cacheKey)
             .catch(error => {
@@ -126,22 +131,17 @@ export class CachedEmbeddingsService {
     }
 
     private async saveCachedChunks(
-        cacheKey: string,
+        cacheKey: string | null,
         provider: IAIProvider,
-        chunksMap: Map<string, number[]>
+        additions: EmbeddingChunk[]
     ): Promise<void> {
-        if (!provider.model) return;
-
-        const chunksToCache = Array.from(chunksMap, ([content, embedding]) => ({
-            content,
-            embedding,
-        }));
+        if (cacheKey === null || !provider.model) return;
 
         await embeddingsCache
             .setEmbeddings(cacheKey, {
                 providerId: provider.id,
                 providerModel: provider.model,
-                chunks: chunksToCache,
+                chunks: additions,
             })
             .catch(error => {
                 logger.error('Error writing to embeddings cache:', error);
@@ -150,7 +150,17 @@ export class CachedEmbeddingsService {
 
     private async generateCacheKey(
         params: IAIProvidersEmbedParams
-    ): Promise<string> {
-        return `embed:${params.provider.id}:${params.provider.model}`;
+    ): Promise<string | null> {
+        const { id, type, url, model } = params.provider;
+        try {
+            const hash = await createSecureHash(
+                JSON.stringify([id, type, url || '', model]),
+                64
+            );
+            return `embed:v2:${hash}`;
+        } catch {
+            logger.error('Error generating embeddings cache key');
+            return null;
+        }
     }
 }
