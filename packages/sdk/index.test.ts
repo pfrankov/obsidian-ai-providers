@@ -90,6 +90,184 @@ describe('initAI', () => {
         );
     });
 
+    describe('fallback timeout lifecycle', () => {
+        beforeEach(() => {
+            vi.useFakeTimers();
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+            vi.restoreAllMocks();
+        });
+
+        it('cancels the pending fallback when the shared wait is canceled before the deadline', async () => {
+            const { initAI, waitForAI } = await import('./index');
+            const initResult = initAI(mockApp, mockPlugin, mockCallback).catch(
+                error => error
+            );
+            const resolver = await waitForAI();
+            expect(await waitForAI()).toBe(resolver);
+            const waitResult = resolver.promise.catch(error => error);
+
+            await vi.advanceTimersByTimeAsync(99);
+            resolver.cancel();
+            const error = await waitResult;
+            expect(error).toEqual(
+                new Error('Waiting for AI Providers was cancelled')
+            );
+            expect(await initResult).toBe(error);
+            const remainingTimers = vi.getTimerCount();
+            await vi.advanceTimersByTimeAsync(100);
+
+            expect(mockPlugin.addSettingTab).not.toHaveBeenCalled();
+            expect(mockCallback).not.toHaveBeenCalled();
+            expect(mockApp.plugins.disablePlugin).not.toHaveBeenCalled();
+            expect(mockApp.plugins.enablePlugin).not.toHaveBeenCalled();
+            expect(remainingTimers).toBe(0);
+            expect(vi.getTimerCount()).toBe(0);
+        });
+
+        it('clears the fallback at readiness even while the callback is pending', async () => {
+            const { initAI } = await import('./index');
+            let finishCallback!: () => void;
+            mockCallback.mockReturnValue(
+                new Promise<void>(resolve => {
+                    finishCallback = resolve;
+                })
+            );
+            const initPromise = initAI(mockApp, mockPlugin, mockCallback);
+            await vi.advanceTimersByTimeAsync(99);
+            mockApp.aiProviders = { checkCompatibility: vi.fn() };
+            readyHandler!();
+            await vi.advanceTimersByTimeAsync(0);
+
+            expect(mockCallback).toHaveBeenCalledTimes(1);
+            expect(vi.getTimerCount()).toBe(0);
+            await vi.advanceTimersByTimeAsync(100);
+            expect(mockPlugin.addSettingTab).not.toHaveBeenCalled();
+            finishCallback();
+            await initPromise;
+
+            expect(mockApp.plugins.disablePlugin).not.toHaveBeenCalled();
+            expect(mockApp.plugins.enablePlugin).not.toHaveBeenCalled();
+            expect(vi.getTimerCount()).toBe(0);
+        });
+
+        it.each(['ready', 'canceled'])(
+            'still reloads after the fallback when waiting ends as %s',
+            async outcome => {
+                const { initAI, waitForAI } = await import('./index');
+                const initResult = initAI(
+                    mockApp,
+                    mockPlugin,
+                    mockCallback
+                ).catch(error => error);
+                const resolver = await waitForAI();
+                const waitResult = resolver.promise.catch(error => error);
+                await vi.advanceTimersByTimeAsync(99);
+                expect(mockPlugin.addSettingTab).not.toHaveBeenCalled();
+                await vi.advanceTimersByTimeAsync(1);
+                expect(mockPlugin.addSettingTab).toHaveBeenCalledTimes(1);
+                expect(mockCallback).not.toHaveBeenCalled();
+                expect(mockApp.plugins.disablePlugin).not.toHaveBeenCalled();
+
+                if (outcome === 'ready') {
+                    mockApp.aiProviders = { checkCompatibility: vi.fn() };
+                    readyHandler!();
+                    expect(await waitResult).toBe(mockApp.aiProviders);
+                    expect(await initResult).toBeUndefined();
+                    expect(mockCallback).toHaveBeenCalledTimes(1);
+                } else {
+                    resolver.cancel();
+                    const error = await waitResult;
+                    expect(error.message).toBe(
+                        'Waiting for AI Providers was cancelled'
+                    );
+                    expect(await initResult).toBe(error);
+                    expect(mockCallback).not.toHaveBeenCalled();
+                }
+
+                expect(
+                    mockApp.plugins.disablePlugin
+                ).toHaveBeenCalledExactlyOnceWith(mockPlugin.manifest.id);
+                expect(
+                    mockApp.plugins.enablePlugin
+                ).toHaveBeenCalledExactlyOnceWith(mockPlugin.manifest.id);
+                expect(
+                    mockApp.plugins.disablePlugin.mock.invocationCallOrder[0]
+                ).toBeLessThan(
+                    mockApp.plugins.enablePlugin.mock.invocationCallOrder[0]
+                );
+                expect(vi.getTimerCount()).toBe(0);
+            }
+        );
+
+        it('finishes after showing fallback when app.plugins is absent', async () => {
+            const { initAI } = await import('./index');
+            delete mockApp.plugins;
+            const initPromise = initAI(mockApp, mockPlugin, mockCallback);
+            await vi.advanceTimersByTimeAsync(100);
+            mockApp.aiProviders = { checkCompatibility: vi.fn() };
+            readyHandler!();
+            await expect(initPromise).resolves.toBeUndefined();
+
+            expect(mockPlugin.addSettingTab).toHaveBeenCalledTimes(1);
+            expect(mockCallback).toHaveBeenCalledTimes(1);
+            expect(vi.getTimerCount()).toBe(0);
+        });
+
+        it.each([0, 100])(
+            'preserves callback rejection and reload behavior after waiting %i ms',
+            async delay => {
+                const { initAI } = await import('./index');
+                const error = new Error('callback failed');
+                mockCallback.mockRejectedValue(error);
+                const initResult = initAI(
+                    mockApp,
+                    mockPlugin,
+                    mockCallback
+                ).catch(error => error);
+                await vi.advanceTimersByTimeAsync(delay);
+                mockApp.aiProviders = { checkCompatibility: vi.fn() };
+                readyHandler!();
+                expect(await initResult).toBe(error);
+                expect(vi.getTimerCount()).toBe(0);
+                await vi.advanceTimersByTimeAsync(100);
+
+                expect(mockCallback).toHaveBeenCalledTimes(1);
+                const expectedReloads = delay === 100 ? 1 : 0;
+                expect(mockPlugin.addSettingTab).toHaveBeenCalledTimes(
+                    expectedReloads
+                );
+                expect(mockApp.plugins.disablePlugin).toHaveBeenCalledTimes(
+                    expectedReloads
+                );
+                expect(mockApp.plugins.enablePlugin).toHaveBeenCalledTimes(
+                    expectedReloads
+                );
+            }
+        );
+
+        it('does not start a fallback timer or wait when disableFallback is true and the callback rejects', async () => {
+            const { initAI } = await import('./index');
+            const error = new Error('callback failed');
+            mockCallback.mockRejectedValue(error);
+            await expect(
+                initAI(mockApp, mockPlugin, mockCallback, {
+                    disableFallback: true,
+                })
+            ).rejects.toBe(error);
+            expect(vi.getTimerCount()).toBe(0);
+            await vi.advanceTimersByTimeAsync(100);
+
+            expect(mockCallback).toHaveBeenCalledTimes(1);
+            expect(mockPlugin.addSettingTab).not.toHaveBeenCalled();
+            expect(mockApp.workspace.on).not.toHaveBeenCalled();
+            expect(mockApp.plugins.disablePlugin).not.toHaveBeenCalled();
+            expect(mockApp.plugins.enablePlugin).not.toHaveBeenCalled();
+        });
+    });
+
     it('should call callback immediately when disableFallback is true', async () => {
         const { initAI } = await import('./index');
         await initAI(mockApp, mockPlugin, mockCallback, {
