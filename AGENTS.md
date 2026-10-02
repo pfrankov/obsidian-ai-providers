@@ -12,6 +12,7 @@
 - Cyclomatic complexity limit <= 10 enforced via eslint-plugin-sonarjs (cognitive complexity rule).
 - Use Context7 for up-to-date documentation when changing or adding integrations.
 - Test storage comes from the original `jsdom.window.localStorage`, explicitly exposed in `vitest.setup.ts` and restored/cleared around each test. Do not depend on Node's native storage or use a getItem-only global mock.
+- Pull requests and `master` pushes run formatting, `npm run check`, and plugin/SDK/example builds in `.github/workflows/check.yml` using the committed lockfile.
 
 ## Code Style Rules
 - Max three arguments per function; use an options object for anything more.
@@ -21,6 +22,7 @@
 - Input parsing and mapping: provider settings (id/name/type/url/apiKey/model) map to handler-specific request payloads.
 - Derived features/metrics: embeddings are chunked and cached per vault in IndexedDB using hashed keys.
 - External API JSON: OpenAI-compatible providers use messages/model/stream payloads and return streaming deltas; embeddings return data[].embedding.
+- Desktop streaming cancellation must settle both the fetch promise before headers and the response body after headers. Cancelling a body reader also stops the native request. Cover these paths with real Web Streams, and release the signal listener after success or failure.
 - Tool-calling: `toolsExecute()` is message-only, returns an OpenAI-style assistant message (`content`, `tool_calls`), and normalizes provider-specific tool formats (OpenAI-compatible, Anthropic, Ollama) for multi-step agent loops.
 - Model override: `execute()` and `toolsExecute()` accept an optional `model` param; when set, it overrides the provider's default model for that call.
 - Model capabilities: providers store per-model capabilities (`text`, `embedding`, `tools`, `vision`) in `modelCapabilities`; `getModelCapabilities()` retrieves them; `checkModelCapabilities()` probes a model via real API calls and persists results to settings.

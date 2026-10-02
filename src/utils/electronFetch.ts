@@ -47,9 +47,32 @@ export async function electronFetch(
     }
 
     return new Promise((resolve, reject) => {
+        let writer: WritableStreamDefaultWriter<Buffer> | undefined;
+        let finished = false;
+
         const cleanup = () => {
-            request.removeAllListeners();
+            signal?.removeEventListener('abort', onAbort);
+            // Keep guarded native error listeners: Electron may report the
+            // same failure on request and response, even after writable close.
             logger.debug('Request cleanup completed');
+        };
+
+        const fail = (error: unknown) => {
+            if (finished) return;
+            finished = true;
+            cleanup();
+            // After headers, the fetch promise is already resolved. Terminate
+            // its body too, so a consumer waiting for the next chunk rejects.
+            void writer?.abort(error).catch(abortError => {
+                logger.error('Error aborting writer:', abortError);
+            });
+            request.abort();
+            reject(error);
+        };
+
+        const onAbort = () => {
+            logger.debug('Request aborted by controller');
+            fail(new Error('Aborted'));
         };
 
         const request = remote.net.request({
@@ -63,20 +86,14 @@ export async function electronFetch(
 
         if (signal?.aborted) {
             logger.debug('Request aborted before start');
-            request.abort();
-            reject(new Error('Aborted'));
+            onAbort();
             return;
         }
 
-        signal?.addEventListener('abort', () => {
-            logger.debug('Request aborted by controller');
-            cleanup();
-            request.abort();
-            reject(new Error('Aborted'));
-        });
+        signal?.addEventListener('abort', onAbort);
 
         request.on('response', (response: IncomingMessage) => {
-            if (signal?.aborted) {
+            if (finished) {
                 logger.debug('Request aborted during response');
                 return;
             }
@@ -91,7 +108,11 @@ export async function electronFetch(
                     controller.enqueue(new Uint8Array(chunk));
                 },
             });
-            const writer = writable.getWriter();
+            const responseWriter = writable.getWriter();
+            writer = responseWriter;
+            // Cancelling the returned readable rejects writer.closed even
+            // while no data is arriving. Stop the native request in that case.
+            void responseWriter.closed.catch(fail);
 
             const responseInit: ResponseInit = {
                 status: response.statusCode || 200,
@@ -99,28 +120,15 @@ export async function electronFetch(
             };
             resolve(new Response(readable, responseInit));
 
-            response.on('data', async (chunk: Buffer) => {
-                try {
-                    await writer.ready;
-                    await writer.write(chunk);
-                    logger.debugChunk('Chunk received:', {
-                        size: chunk.length,
-                        text: chunk.toString('utf-8'),
-                    });
-                } catch (error) {
-                    logger.error('Error writing chunk:', error);
-                    cleanup();
-                    writer.abort(error);
-                }
-            });
-
             response.on('end', async () => {
                 try {
-                    await writer.ready;
-                    await writer.close();
+                    await responseWriter.ready;
+                    await responseWriter.close();
+                    finished = true;
                     logger.debug('Response stream completed');
                 } catch (error) {
                     logger.error('Error closing writer:', error);
+                    fail(error);
                 } finally {
                     cleanup();
                 }
@@ -128,16 +136,29 @@ export async function electronFetch(
 
             response.on('error', (error: Error) => {
                 logger.error('Response error:', error);
-                cleanup();
-                writer.abort(error);
-                reject(error);
+                fail(error);
+            });
+
+            response.on('aborted', () => fail(new Error('Aborted')));
+
+            response.on('data', async (chunk: Buffer) => {
+                try {
+                    await responseWriter.ready;
+                    await responseWriter.write(chunk);
+                    logger.debugChunk('Chunk received:', {
+                        size: chunk.length,
+                        text: chunk.toString('utf-8'),
+                    });
+                } catch (error) {
+                    logger.error('Error writing chunk:', error);
+                    fail(error);
+                }
             });
         });
 
         request.on('error', (error: Error) => {
             logger.error('Request error:', error);
-            cleanup();
-            reject(error);
+            fail(error);
         });
 
         if (options.body) {
