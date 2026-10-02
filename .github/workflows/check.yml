@@ -1,0 +1,29 @@
+name: Check
+
+on:
+    pull_request:
+    push:
+        branches: [master]
+
+permissions:
+    contents: read
+
+jobs:
+    check:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                  persist-credentials: false
+            - uses: actions/setup-node@v6
+              with:
+                  node-version: 24
+                  cache: npm
+            - run: npm ci
+            - run: npm run format:check
+            - run: npm run check
+            - run: npm run build
+            - run: npm run sdk:build
+            - run: npm run example:build
+            - name: Smoke test Electron streaming
+              run: xvfb-run -a node_modules/.bin/electron test-utils/electronFetch.smoke.cjs
