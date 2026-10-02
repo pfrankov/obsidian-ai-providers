@@ -53,6 +53,7 @@ describe('obsidianFetch', () => {
             url,
             method: 'GET',
             headers: {},
+            throw: false,
         });
 
         expect(response).toBeInstanceOf(Response);
@@ -85,6 +86,7 @@ describe('obsidianFetch', () => {
             method: 'POST',
             body: JSON.stringify(body),
             headers,
+            throw: false,
         });
 
         expect(response).toBeInstanceOf(Response);
@@ -176,6 +178,7 @@ describe('obsidianFetch', () => {
             url,
             method: 'GET',
             headers,
+            throw: false,
         });
     });
 });

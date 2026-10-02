@@ -36,6 +36,7 @@ export const obsidianFetch = async (
         url,
         method: options.method || 'GET',
         headers,
+        throw: false,
     };
 
     if (options.body) {

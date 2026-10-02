@@ -116,6 +116,9 @@ There are several options to run local OpenAI-like server:
 ## For plugin developers
 [Docs: How to integrate AI Providers in your plugin.](./packages/sdk/README.md)
 
+Requests using Obsidian's HTTP transport preserve provider error status, headers,
+and body for the provider SDK's error handling and retries, including `Retry-After`.
+
 ### Embedding cache
 
 Cached embeddings are isolated by provider ID, type, full URL, and model.
