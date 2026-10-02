@@ -51,6 +51,19 @@ This plugin is available in the Obsidian community plugin store https://obsidian
 You can install this plugin via [BRAT](https://obsidian.md/plugins?id=obsidian42-brat): `pfrankov/obsidian-ai-providers`
 
 ## Create AI provider
+
+### Models and capabilities
+
+Refreshing models selects the first returned model. An empty list or a failed
+refresh keeps the current model selection. Capability checkbox edits and accepted
+Check results save immediately for existing providers; new providers keep them
+locally until Save.
+
+Changing the provider type, URL, or API key, or closing the form, discards pending
+refresh/check results. Changing the selected model or editing its capability
+checkboxes also discards a pending check. Requests already sent to the provider
+continue running and may still incur charges.
+
 ### Ollama
 1. Install [Ollama](https://ollama.com/).
 2. Install Gemma 2 `ollama pull gemma2` or any preferred model [from the library](https://ollama.com/library).

@@ -421,12 +421,13 @@ describe('ProviderFormModal', () => {
         );
         expect(button).toBeTruthy();
 
+        const requestedProvider = { ...provider };
         button.click();
         await flushPromises();
 
         expect(probeModelCapabilities).toHaveBeenCalledWith({
             aiProviders: plugin.aiProviders,
-            provider,
+            provider: requestedProvider,
         });
         expect(provider.modelCapabilities?.['gpt-4']).toEqual({
             embedding: true,
@@ -1331,11 +1332,12 @@ describe('ProviderFormModal', () => {
         expect((modal as any).urlModified).toBe(false);
     });
 
-    it('recreates form when model fetching capability changes', () => {
+    it('replaces the model control when model fetching capability changes', () => {
         modal.onOpen();
-        const displaySpy = vi.spyOn(modal, 'display');
-        const updateSpy = vi.spyOn(modal as any, 'updateFields');
-
+        const nameInput = getElement<HTMLInputElement>(
+            modal.contentEl,
+            'input[data-field="provider-name"]'
+        );
         const providerDropdown = getElement<HTMLSelectElement>(
             modal.contentEl,
             '[data-testid="provider-type-dropdown"]'
@@ -1343,31 +1345,46 @@ describe('ProviderFormModal', () => {
         providerDropdown.value = 'ai302';
         providerDropdown.dispatchEvent(new Event('change'));
 
-        expect(displaySpy).toHaveBeenCalled();
-        expect(updateSpy).not.toHaveBeenCalled();
+        expect(
+            modal.contentEl.querySelector(
+                '[data-testid="model-combobox-input"]'
+            )
+        ).toBeNull();
+        expect(
+            getElement<HTMLInputElement>(
+                modal.contentEl,
+                '[data-testid="model-input"]'
+            ).value
+        ).toBe('');
+        expect(
+            getElement<HTMLInputElement>(
+                modal.contentEl,
+                'input[data-field="provider-name"]'
+            )
+        ).toBe(nameInput);
+        expect(nameInput.value).toBe('302.AI');
     });
 
-    it('updates fields when provider type changes without re-creating form', () => {
+    it('updates fields and clears models when provider type changes', () => {
         modal.onOpen();
-        provider.url = '';
-
-        const updateSpy = vi.spyOn(modal as any, 'updateFields');
         const providerDropdown = getElement<HTMLSelectElement>(
             modal.contentEl,
             '[data-testid="provider-type-dropdown"]'
         );
-
         providerDropdown.value = 'openrouter';
         providerDropdown.dispatchEvent(new Event('change'));
-
-        expect(updateSpy).toHaveBeenCalled();
-        (modal as any).updateFields();
 
         const urlInput = getElement<HTMLInputElement>(
             modal.contentEl,
             'input[data-field="provider-url"]'
         );
-        expect(urlInput.value).toBe(provider.url || '');
+        expect(urlInput.value).toBe('https://openrouter.ai/api/v1');
+        const modelInput = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-combobox-input"]'
+        );
+        expect(modelInput.value).toBe('');
+        expect(modelInput.disabled).toBe(true);
     });
 
     it('falls back to empty url when updating fields', () => {

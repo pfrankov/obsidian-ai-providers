@@ -249,8 +249,10 @@ class ModelSuggest extends AbstractInputSuggest<string> {
 export class ProviderFormModal extends Modal {
     private nameModified = false;
     private urlModified = false;
-    private isLoadingModels = false;
-    private isCheckingModelCapabilities = false;
+    // Each captured provider also identifies its request, even after reopen or A→B→A edits.
+    private modelRefreshRequest?: IAIProvider;
+    private capabilityCheckRequest?: IAIProvider;
+    private modelSettingContainer?: HTMLElement;
     private modelCapabilitiesStatus = '';
     private modelCapabilitiesSetting?: Setting;
     private modelSuggest?: ModelSuggest;
@@ -280,8 +282,8 @@ export class ProviderFormModal extends Modal {
     private getModelControlState(): ModelControlState {
         const models = this.provider.availableModels || [];
         const hasModels = models.length > 0;
-        const isDisabled = this.isLoadingModels || !hasModels;
-        const placeholder = this.isLoadingModels
+        const isDisabled = Boolean(this.modelRefreshRequest) || !hasModels;
+        const placeholder = this.modelRefreshRequest
             ? I18n.t('settings.loadingModels')
             : hasModels
               ? I18n.t('settings.modelSearchPlaceholder')
@@ -331,10 +333,10 @@ export class ProviderFormModal extends Modal {
             return;
         }
 
-        if (!this.provider.modelCapabilities) {
-            this.provider.modelCapabilities = {};
-        }
-        this.provider.modelCapabilities[selectedModel] = capabilities;
+        this.provider.modelCapabilities = {
+            ...this.provider.modelCapabilities,
+            [selectedModel]: capabilities,
+        };
         this.persistModelCapabilities();
     }
 
@@ -354,11 +356,33 @@ export class ProviderFormModal extends Modal {
         key: keyof IAIModelCapabilities,
         value: boolean
     ) {
+        this.invalidateCapabilityCheck();
         const current = this.getSelectedModelCapabilities();
         this.setSelectedModelCapabilities({
             ...current,
             [key]: value,
         });
+        this.renderModelCapabilitiesSection();
+    }
+
+    private invalidateCapabilityCheck() {
+        this.capabilityCheckRequest = undefined;
+        this.modelCapabilitiesStatus = '';
+    }
+
+    private invalidateModelRequests() {
+        this.modelRefreshRequest = undefined;
+        this.invalidateCapabilityCheck();
+        this.renderModelSetting();
+        this.renderModelCapabilitiesSection();
+    }
+
+    private selectModel(value: string) {
+        if (this.provider.model !== value) {
+            this.provider.model = value;
+            this.invalidateCapabilityCheck();
+            this.renderModelCapabilitiesSection();
+        }
     }
 
     private renderModelCapabilitiesSection() {
@@ -405,11 +429,11 @@ export class ProviderFormModal extends Modal {
         const checkTooltip = I18n.t('settings.modelCapabilitiesCheckTooltip');
         checkButton.setAttribute('aria-label', checkTooltip);
         checkButton.createEl('span', {
-            text: this.isCheckingModelCapabilities
+            text: this.capabilityCheckRequest
                 ? I18n.t('settings.modelCapabilitiesChecking')
                 : I18n.t('settings.modelCapabilitiesCheck'),
         });
-        checkButton.disabled = this.isCheckingModelCapabilities;
+        checkButton.disabled = Boolean(this.capabilityCheckRequest);
         checkButton.setAttribute('data-testid', 'check-model-capabilities');
         checkButton.addEventListener('click', async () => {
             await this.checkModelCapabilities();
@@ -434,7 +458,14 @@ export class ProviderFormModal extends Modal {
             checkbox.checked = capabilities[key];
             checkbox.setAttribute('data-testid', `model-capability-${key}`);
             checkbox.addEventListener('change', () => {
+                const hadFocus = checkbox.matches(':focus');
                 this.setSelectedModelCapability(key, checkbox.checked);
+                if (hadFocus) {
+                    const updatedCheckbox = this.contentEl.querySelector(
+                        `[data-testid="model-capability-${key}"]`
+                    ) as HTMLInputElement | null;
+                    updatedCheckbox?.focus();
+                }
             });
             labelEl.createEl('span', { text: label });
         });
@@ -447,8 +478,9 @@ export class ProviderFormModal extends Modal {
             return;
         }
 
+        const request = { ...this.provider };
+        this.capabilityCheckRequest = request;
         try {
-            this.isCheckingModelCapabilities = true;
             this.modelCapabilitiesStatus = I18n.t(
                 'settings.modelCapabilitiesChecking'
             );
@@ -456,14 +488,20 @@ export class ProviderFormModal extends Modal {
 
             const capabilities = await probeModelCapabilities({
                 aiProviders: this.plugin.aiProviders,
-                provider: this.provider,
+                provider: request,
             });
+            if (this.capabilityCheckRequest !== request) {
+                return;
+            }
 
             this.setSelectedModelCapabilities(capabilities);
             this.modelCapabilitiesStatus = I18n.t(
                 'settings.modelCapabilitiesUpdated'
             );
         } catch (error) {
+            if (this.capabilityCheckRequest !== request) {
+                return;
+            }
             logger.error('Failed to probe model capabilities:', error);
             this.modelCapabilitiesStatus = I18n.t(
                 'settings.modelCapabilitiesCheckFailed',
@@ -472,8 +510,10 @@ export class ProviderFormModal extends Modal {
                 }
             );
         } finally {
-            this.isCheckingModelCapabilities = false;
-            this.renderModelCapabilitiesSection();
+            if (this.capabilityCheckRequest === request) {
+                this.capabilityCheckRequest = undefined;
+                this.renderModelCapabilitiesSection();
+            }
         }
     }
 
@@ -493,15 +533,21 @@ export class ProviderFormModal extends Modal {
         }
     }
 
+    private renderModelSetting() {
+        if (this.modelSettingContainer) {
+            this.modelSuggest?.close();
+            this.modelSuggest = undefined;
+            this.modelSettingContainer.empty();
+            this.createModelSetting(this.modelSettingContainer);
+        }
+    }
+
     private createModelSetting(contentEl: HTMLElement) {
         const forceTextMode = !this.hasModelFetching(this.provider.type);
 
         const modelSetting = new Setting(contentEl)
             .setName(I18n.t('settings.model'))
             .setDesc(this.getModelDescription(forceTextMode));
-
-        this.modelSuggest?.close();
-        this.modelSuggest = undefined;
 
         if (forceTextMode) {
             this.createTextInput(modelSetting);
@@ -534,8 +580,7 @@ export class ProviderFormModal extends Modal {
 
                 dropdown.setValue(modelState.currentModel);
                 dropdown.onChange(value => {
-                    this.provider.model = value;
-                    this.renderModelCapabilitiesSection();
+                    this.selectModel(value);
                 });
                 return dropdown;
             });
@@ -551,8 +596,7 @@ export class ProviderFormModal extends Modal {
     private createTextInput(modelSetting: Setting) {
         modelSetting.addText(text => {
             text.setValue(this.provider.model || '').onChange(value => {
-                this.provider.model = value;
-                this.renderModelCapabilitiesSection();
+                this.selectModel(value);
             });
             text.inputEl.setAttribute('data-testid', 'model-input');
             return text;
@@ -573,9 +617,8 @@ export class ProviderFormModal extends Modal {
         input.setValue(currentModel);
         input.setDisabled(isDisabled);
         input.onChange(value => {
-            this.provider.model = value;
+            this.selectModel(value);
             input.inputEl.title = value;
-            this.renderModelCapabilitiesSection();
         });
 
         input.inputEl.setAttribute('data-testid', 'model-combobox-input');
@@ -590,10 +633,9 @@ export class ProviderFormModal extends Modal {
         this.modelSuggest = new ModelSuggest(this.app, input.inputEl, {
             models,
             onSelect: value => {
-                this.provider.model = value;
+                this.selectModel(value);
                 input.setValue(value);
                 input.inputEl.title = value;
-                this.renderModelCapabilitiesSection();
             },
         });
     }
@@ -610,7 +652,7 @@ export class ProviderFormModal extends Modal {
                 'refresh-models-button'
             );
 
-            if (this.isLoadingModels) {
+            if (this.modelRefreshRequest) {
                 button.setDisabled(true);
                 button.buttonEl.addClass('loading');
             }
@@ -622,26 +664,32 @@ export class ProviderFormModal extends Modal {
     }
 
     private async refreshModels() {
+        const request = { ...this.provider };
+        this.modelRefreshRequest = request;
+        this.renderModelSetting();
         try {
-            this.isLoadingModels = true;
-            this.display();
-
-            const models = await this.plugin.aiProviders.fetchModels(
-                this.provider
-            );
+            const models = await this.plugin.aiProviders.fetchModels(request);
+            if (this.modelRefreshRequest !== request) {
+                return;
+            }
             this.provider.availableModels = models;
 
             if (models.length > 0) {
-                this.provider.model = models[0] || '';
+                this.selectModel(models[0] || '');
             }
 
             new Notice(I18n.t('settings.modelsUpdated'));
         } catch (error) {
+            if (this.modelRefreshRequest !== request) {
+                return;
+            }
             logger.error('Failed to fetch models:', error);
             new Notice(I18n.t('errors.failedToFetchModels'));
         } finally {
-            this.isLoadingModels = false;
-            this.display();
+            if (this.modelRefreshRequest === request) {
+                this.modelRefreshRequest = undefined;
+                this.renderModelSetting();
+            }
         }
     }
 
@@ -717,6 +765,7 @@ export class ProviderFormModal extends Modal {
                         this.provider.url = value;
                         // Track that the URL has been manually modified
                         this.urlModified = true;
+                        this.invalidateModelRequests();
                     });
                 text.inputEl.setAttribute('data-field', 'provider-url');
                 return text;
@@ -730,6 +779,7 @@ export class ProviderFormModal extends Modal {
                     .setValue(this.provider.apiKey || '')
                     .onChange(value => {
                         this.provider.apiKey = value;
+                        this.invalidateModelRequests();
                     });
 
                 text.inputEl.type = 'password';
@@ -743,7 +793,8 @@ export class ProviderFormModal extends Modal {
                 return text;
             });
 
-        this.createModelSetting(contentEl);
+        this.modelSettingContainer = contentEl.createDiv();
+        this.renderModelSetting();
         this.modelCapabilitiesSetting = new Setting(contentEl);
         this.renderModelCapabilitiesSection();
 
@@ -773,14 +824,15 @@ export class ProviderFormModal extends Modal {
         this.modelSuggest?.close();
         this.modelSuggest = undefined;
         this.modelCapabilitiesSetting = undefined;
+        this.modelSettingContainer = undefined;
+        this.modelRefreshRequest = undefined;
+        this.invalidateCapabilityCheck();
         contentEl.empty();
     }
 
     private changeProviderType(newType: AIProviderType) {
         const currentDefaultName = this.getDefaultName(this.provider.type);
         const currentDefaultUrl = PROVIDER_CONFIGS[this.provider.type].url;
-        const currentHasFetching = this.hasModelFetching(this.provider.type);
-        const newHasFetching = this.hasModelFetching(newType);
 
         // Update provider properties
         this.provider.type = newType;
@@ -806,14 +858,8 @@ export class ProviderFormModal extends Modal {
             this.nameModified = false;
         }
 
-        // Check if form needs recreation for different model input modes
-        const needsRecreation = currentHasFetching !== newHasFetching;
-        if (needsRecreation) {
-            this.display();
-        } else {
-            this.updateFields();
-            this.renderModelCapabilitiesSection();
-        }
+        this.updateFields();
+        this.invalidateModelRequests();
     }
 
     private updateFields() {
