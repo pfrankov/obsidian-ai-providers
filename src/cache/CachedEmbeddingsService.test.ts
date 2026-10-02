@@ -1,7 +1,10 @@
 import type { Mock } from 'vitest';
 import { CachedEmbeddingsService } from './CachedEmbeddingsService';
 import { embeddingsCache } from './EmbeddingsCache';
-import { IAIProvider } from '@obsidian-ai-providers/sdk';
+import {
+    IAIProvider,
+    IAIProvidersEmbedParams,
+} from '@obsidian-ai-providers/sdk';
 import { EmbeddingChunk } from './CachedEmbeddingsService';
 
 // Mock dependencies
@@ -87,6 +90,7 @@ describe('CachedEmbeddingsService', () => {
         expect(mockEmbedFunction).toHaveBeenCalledWith({
             ...params,
             input: ['test text'],
+            onProgress: undefined,
         });
         expect(result).toEqual([[0.4, 0.5, 0.6]]);
     });
@@ -141,8 +145,10 @@ describe('CachedEmbeddingsService', () => {
                     abortController,
                 },
                 ['test text'],
-                new Map(),
-                'embed:test-provider:test-model'
+                {
+                    chunksMap: new Map(),
+                    cacheKey: 'embed:test-provider:test-model',
+                }
             )
         ).rejects.toThrow('Aborted');
     });
@@ -164,6 +170,7 @@ describe('CachedEmbeddingsService', () => {
         expect(mockEmbedFunction).toHaveBeenCalledWith({
             ...params,
             input: ['test text'],
+            onProgress: undefined,
         });
         expect(result).toEqual([[0.1, 0.2, 0.3]]);
     });
@@ -222,6 +229,7 @@ describe('CachedEmbeddingsService', () => {
         expect(mockEmbedFunction).toHaveBeenCalledWith({
             ...params,
             input: ['new text'],
+            onProgress: undefined,
         });
         expect(result).toEqual([
             [0.1, 0.2, 0.3], // from cache
@@ -268,6 +276,290 @@ describe('CachedEmbeddingsService', () => {
         await service.embedWithCache(params as any);
 
         expect(onProgress).toHaveBeenCalledWith(['test text']);
+    });
+
+    it('deduplicates missing inputs and reports cached and processed occurrences in input order', async () => {
+        const chunks = ['first', 'cached', 'later', 'first', 'cached', 'later'];
+        const cachedEmbedding = [1, 1];
+        const firstEmbedding = [1, 0];
+        const laterEmbedding = [0, 1];
+        const onProgress = vi.fn();
+        (embeddingsCache.getEmbeddings as Mock).mockResolvedValue({
+            providerId: mockProvider.id,
+            providerModel: mockProvider.model,
+            chunks: [{ content: 'cached', embedding: cachedEmbedding }],
+        });
+        mockEmbedFunction.mockImplementation(
+            async (params: IAIProvidersEmbedParams) => {
+                params.onProgress?.([]);
+                params.onProgress?.(['later', 'unrelated']);
+                params.onProgress?.(['later', 'first']);
+                return [firstEmbedding, laterEmbedding];
+            }
+        );
+
+        const result = await service.embedWithCache({
+            provider: mockProvider,
+            input: chunks,
+            chunks,
+            onProgress,
+        });
+
+        expect(mockEmbedFunction.mock.calls[0][0].input).toEqual([
+            'first',
+            'later',
+        ]);
+        expect(onProgress.mock.calls).toEqual([
+            [['cached', 'cached']],
+            [['cached', 'later', 'cached', 'later']],
+            [chunks],
+            [chunks],
+        ]);
+        expect(result).toEqual([
+            firstEmbedding,
+            cachedEmbedding,
+            laterEmbedding,
+            firstEmbedding,
+            cachedEmbedding,
+            laterEmbedding,
+        ]);
+        expect(result[0]).toBe(result[3]);
+        expect(result[2]).toBe(result[5]);
+    });
+
+    it('retains duplicate occurrences in all-hit progress and results', async () => {
+        const chunks = ['cached', 'cached'];
+        const onProgress = vi.fn();
+        (embeddingsCache.getEmbeddings as Mock).mockResolvedValue({
+            providerId: mockProvider.id,
+            providerModel: mockProvider.model,
+            chunks: [{ content: 'cached', embedding: [1, 0] }],
+        });
+
+        const result = await service.embedWithCache({
+            provider: mockProvider,
+            input: chunks,
+            chunks,
+            onProgress,
+        });
+
+        expect(mockEmbedFunction).not.toHaveBeenCalled();
+        expect(embeddingsCache.setEmbeddings).not.toHaveBeenCalled();
+        expect(onProgress.mock.calls).toEqual([[chunks]]);
+        expect(result).toEqual([
+            [1, 0],
+            [1, 0],
+        ]);
+    });
+
+    it('observes cancellation after generating the cache key before reading', async () => {
+        const abortController = new AbortController();
+        const onProgress = vi.fn();
+        vi.spyOn(service as any, 'generateCacheKey').mockImplementation(
+            async () => {
+                abortController.abort();
+                return 'cache-key';
+            }
+        );
+
+        await expect(
+            service.embedWithCache({
+                provider: mockProvider,
+                input: ['text'],
+                chunks: ['text'],
+                abortController,
+                onProgress,
+            })
+        ).rejects.toThrow('Aborted');
+        expect(embeddingsCache.getEmbeddings).not.toHaveBeenCalled();
+        expect(mockEmbedFunction).not.toHaveBeenCalled();
+        expect(onProgress).not.toHaveBeenCalled();
+    });
+
+    it.each(['hit', 'miss', 'failure'])(
+        'observes cancellation during a cache read: %s',
+        async outcome => {
+            const abortController = new AbortController();
+            const onProgress = vi.fn();
+            (embeddingsCache.getEmbeddings as Mock).mockImplementation(
+                async () => {
+                    abortController.abort();
+                    if (outcome === 'failure') throw new Error('read failed');
+                    return outcome === 'hit'
+                        ? {
+                              providerId: mockProvider.id,
+                              providerModel: mockProvider.model,
+                              chunks: [{ content: 'text', embedding: [1, 0] }],
+                          }
+                        : undefined;
+                }
+            );
+
+            await expect(
+                service.embedWithCache({
+                    provider: mockProvider,
+                    input: ['text'],
+                    chunks: ['text'],
+                    abortController,
+                    onProgress,
+                })
+            ).rejects.toThrow('Aborted');
+            expect(mockEmbedFunction).not.toHaveBeenCalled();
+            expect(embeddingsCache.setEmbeddings).not.toHaveBeenCalled();
+            expect(onProgress).not.toHaveBeenCalled();
+        }
+    );
+
+    it.each([false, true])(
+        'observes cancellation at provider completion, with progress: %s',
+        async reportsProgress => {
+            const abortController = new AbortController();
+            const onProgress = vi.fn();
+            (embeddingsCache.getEmbeddings as Mock).mockResolvedValue(
+                undefined
+            );
+            mockEmbedFunction.mockImplementation(
+                async (params: IAIProvidersEmbedParams) => {
+                    abortController.abort();
+                    if (reportsProgress) params.onProgress?.(['text']);
+                    return [[1, 0]];
+                }
+            );
+
+            await expect(
+                service.embedWithCache({
+                    provider: mockProvider,
+                    input: ['text'],
+                    chunks: ['text'],
+                    abortController,
+                    onProgress,
+                })
+            ).rejects.toThrow('Aborted');
+            expect(embeddingsCache.setEmbeddings).not.toHaveBeenCalled();
+            expect(onProgress).not.toHaveBeenCalled();
+        }
+    );
+
+    it('preserves a provider rejection during cancellation', async () => {
+        const abortController = new AbortController();
+        const onProgress = vi.fn();
+        const providerError = new Error('Request was aborted.');
+        providerError.name = 'AbortError';
+        (embeddingsCache.getEmbeddings as Mock).mockResolvedValue(undefined);
+        mockEmbedFunction.mockImplementation(async () => {
+            abortController.abort();
+            throw providerError;
+        });
+
+        await expect(
+            service.embedWithCache({
+                provider: mockProvider,
+                input: ['text'],
+                chunks: ['text'],
+                abortController,
+                onProgress,
+            })
+        ).rejects.toBe(providerError);
+        expect(embeddingsCache.setEmbeddings).not.toHaveBeenCalled();
+        expect(onProgress).not.toHaveBeenCalled();
+    });
+
+    it('does not save when a provider progress callback cancels the request', async () => {
+        const abortController = new AbortController();
+        const onProgress = vi.fn(() => abortController.abort());
+        (embeddingsCache.getEmbeddings as Mock).mockResolvedValue(undefined);
+        mockEmbedFunction.mockImplementation(
+            async (params: IAIProvidersEmbedParams) => {
+                params.onProgress?.(['text']);
+                return [[1, 0]];
+            }
+        );
+
+        await expect(
+            service.embedWithCache({
+                provider: mockProvider,
+                input: ['text'],
+                chunks: ['text'],
+                abortController,
+                onProgress,
+            })
+        ).rejects.toThrow('Aborted');
+        expect(onProgress).toHaveBeenCalledTimes(1);
+        expect(embeddingsCache.setEmbeddings).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])(
+        'observes cancellation after a cache write, with write failure: %s',
+        async fails => {
+            const abortController = new AbortController();
+            const onProgress = vi.fn();
+            (embeddingsCache.getEmbeddings as Mock).mockResolvedValue(
+                undefined
+            );
+            mockEmbedFunction.mockResolvedValue([[1, 0]]);
+            (embeddingsCache.setEmbeddings as Mock).mockImplementation(
+                async () => {
+                    abortController.abort();
+                    if (fails) throw new Error('write failed');
+                }
+            );
+
+            await expect(
+                service.embedWithCache({
+                    provider: mockProvider,
+                    input: ['text'],
+                    chunks: ['text'],
+                    abortController,
+                    onProgress,
+                })
+            ).rejects.toThrow('Aborted');
+            expect(onProgress).not.toHaveBeenCalled();
+        }
+    );
+
+    it.each([false, true])(
+        'observes cancellation in final progress, with cache hit: %s',
+        async cached => {
+            const abortController = new AbortController();
+            const onProgress = vi.fn(() => abortController.abort());
+            (embeddingsCache.getEmbeddings as Mock).mockResolvedValue(
+                cached
+                    ? {
+                          providerId: mockProvider.id,
+                          providerModel: mockProvider.model,
+                          chunks: [{ content: 'text', embedding: [1, 0] }],
+                      }
+                    : undefined
+            );
+            mockEmbedFunction.mockResolvedValue([[1, 0]]);
+
+            await expect(
+                service.embedWithCache({
+                    provider: mockProvider,
+                    input: ['text'],
+                    chunks: ['text'],
+                    abortController,
+                    onProgress,
+                })
+            ).rejects.toThrow('Aborted');
+            expect(onProgress.mock.calls).toEqual([[['text']]]);
+        }
+    );
+
+    it('rejects an incomplete provider result before final progress', async () => {
+        const onProgress = vi.fn();
+        (embeddingsCache.getEmbeddings as Mock).mockResolvedValue(undefined);
+        mockEmbedFunction.mockResolvedValue([]);
+
+        await expect(
+            service.embedWithCache({
+                provider: mockProvider,
+                input: ['missing'],
+                chunks: ['missing'],
+                onProgress,
+            })
+        ).rejects.toThrow('Missing embedding for chunk');
+        expect(onProgress).not.toHaveBeenCalled();
     });
 
     it('throws when a chunk embedding is missing', async () => {

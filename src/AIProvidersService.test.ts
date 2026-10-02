@@ -923,17 +923,16 @@ describe('AIProvidersService', () => {
     });
 
     it('processes documents without meta ids', () => {
-        const result = (service as any).processDocuments([
-            { content: 'Doc content' },
-        ]);
+        const document = { content: 'Doc content' };
+        const result = (service as any).processDocuments([document]);
 
-        expect(result.documentChunkCounts).toHaveProperty('Doc content');
+        expect(result.documentChunkCounts).toEqual(new Map([[document, 1]]));
     });
 
-    it('falls back to content for processed docs without meta ids', () => {
+    it('tracks processed documents by reference without meta ids', () => {
         const documents = [{ content: 'Doc content' }];
         const processedChunks = [{ content: 'chunk', document: documents[0] }];
-        const documentChunkCounts = { 'Doc content': 1 };
+        const documentChunkCounts = new Map([[documents[0], 1]]);
 
         const processedDocs = (service as any).getProcessedDocs(
             processedChunks,
@@ -1108,11 +1107,7 @@ describe('AIProvidersService', () => {
                 .mockImplementation(params => {
                     // Simulate progress callback from embed method
                     if (params.onProgress) {
-                        params.onProgress({
-                            totalChunks: 3,
-                            processedChunks: ['chunk1', 'chunk2', 'chunk3'],
-                            processingType: 'embedding',
-                        });
+                        params.onProgress(params.input);
                     }
                     return Promise.resolve([[0.1, 0.2, 0.3]]);
                 })
@@ -1123,11 +1118,7 @@ describe('AIProvidersService', () => {
                 .mockImplementationOnce(params => {
                     // Document chunks embedding - with progress callback
                     if (params.onProgress) {
-                        params.onProgress({
-                            totalChunks: 3,
-                            processedChunks: ['chunk1', 'chunk2', 'chunk3'],
-                            processingType: 'embedding',
-                        });
+                        params.onProgress(params.input);
                     }
                     return Promise.resolve([
                         [0.9, 0.1, 0.1], // High similarity to query
@@ -1177,14 +1168,259 @@ describe('AIProvidersService', () => {
                     return [[0.1, 0.2, 0.3]];
                 });
 
+            await expect(
+                service.retrieve({
+                    ...testParams,
+                    abortController,
+                    onProgress,
+                })
+            ).rejects.toThrow('Aborted');
+
+            expect(onProgress).toHaveBeenCalledTimes(1);
+            embedSpy.mockRestore();
+        });
+
+        it('reports later document progress before an earlier document and preserves ranking', async () => {
+            const onProgress = vi.fn();
+            (service as any).cachedEmbeddingsService = {
+                embedWithCache: vi
+                    .fn()
+                    .mockResolvedValueOnce([[1, 0]])
+                    .mockImplementationOnce(
+                        async (params: IAIProvidersEmbedParams) => {
+                            params.onProgress?.([
+                                testDocuments[2].content,
+                                'unrelated',
+                            ]);
+                            params.onProgress?.([
+                                testDocuments[2].content,
+                                testDocuments[0].content,
+                            ]);
+                            return [
+                                [0, 1],
+                                [1, 1],
+                                [1, 0],
+                            ];
+                        }
+                    ),
+            };
+
+            const result = await service.retrieve({
+                ...testParams,
+                onProgress,
+            });
+
+            const snapshots = onProgress.mock.calls.map(
+                ([progress]) => progress
+            );
+            expect(snapshots[1].processedDocuments).toEqual([testDocuments[2]]);
+            expect(snapshots[1].processedChunks).toEqual([
+                {
+                    content: testDocuments[2].content,
+                    document: testDocuments[2],
+                },
+            ]);
+            expect(snapshots[2].processedDocuments).toEqual([
+                testDocuments[0],
+                testDocuments[2],
+            ]);
+            expect(
+                snapshots[2].processedChunks.map((chunk: any) => chunk.document)
+            ).toEqual([testDocuments[0], testDocuments[2]]);
+            expect(result).toHaveLength(3);
+            expect(result[0].document).toBe(testDocuments[2]);
+            expect(result[1].document).toBe(testDocuments[1]);
+            expect(result[2].document).toBe(testDocuments[0]);
+            expect(result.map(item => item.score)).toEqual([
+                1,
+                1 / Math.sqrt(2),
+                0,
+            ]);
+        });
+
+        it.each([
+            ['same content', [{ content: 'same' }, { content: 'same' }]],
+            [
+                'colliding ids',
+                [
+                    { content: 'first', meta: { id: 'same' } },
+                    { content: 'later', meta: { id: 'same' } },
+                ],
+            ],
+            [
+                'prototype names',
+                [{ content: '__proto__' }, { content: 'constructor' }],
+            ],
+            [
+                'prototype ids',
+                [
+                    { content: 'first', meta: { id: '__proto__' } },
+                    { content: 'later', meta: { id: 'constructor' } },
+                ],
+            ],
+        ] as [string, IAIDocument[]][])(
+            'keeps distinct document references in completed progress: %s',
+            async (_name, documents) => {
+                const onProgress = vi.fn();
+                (service as any).cachedEmbeddingsService = {
+                    embedWithCache: vi
+                        .fn()
+                        .mockResolvedValueOnce([[1, 0]])
+                        .mockImplementationOnce(
+                            async (params: IAIProvidersEmbedParams) => {
+                                params.onProgress?.(params.input as string[]);
+                                return [
+                                    [1, 0],
+                                    [1, 0],
+                                ];
+                            }
+                        ),
+                };
+
+                const results = await service.retrieve({
+                    ...testParams,
+                    documents,
+                    onProgress,
+                });
+
+                for (const [snapshot] of onProgress.mock.calls.slice(1)) {
+                    expect(snapshot.processedDocuments).toHaveLength(
+                        documents.length
+                    );
+                    snapshot.processedDocuments.forEach(
+                        (document: IAIDocument, index: number) => {
+                            expect(document).toBe(documents[index]);
+                        }
+                    );
+                }
+                expect(results).toHaveLength(documents.length);
+                results.forEach((result, index) =>
+                    expect(result.document).toBe(documents[index])
+                );
+            }
+        );
+
+        it('aggregates repeated references and waits for every chunk while excluding empty documents', async () => {
+            const shared = { content: 'shared' };
+            const firstChunk = 'a'.repeat(700);
+            const lastChunk = 'b'.repeat(700);
+            const multiChunk = { content: firstChunk + '\n' + lastChunk };
+            const empty = { content: '   ' };
+            const documents = [shared, multiChunk, shared, empty];
+            const onProgress = vi.fn();
+            const processed = (service as any).processDocuments(documents);
+            expect(processed.documentChunkCounts.get(shared)).toBe(2);
+            expect(processed.documentChunkCounts.get(multiChunk)).toBe(2);
+            expect(
+                (service as any).getProcessedDocs(
+                    [processed.chunks[0]],
+                    processed.documentChunkCounts,
+                    documents
+                )
+            ).toEqual([]);
+            (service as any).cachedEmbeddingsService = {
+                embedWithCache: vi
+                    .fn()
+                    .mockResolvedValueOnce([[1, 0]])
+                    .mockImplementationOnce(
+                        async (params: IAIProvidersEmbedParams) => {
+                            params.onProgress?.([lastChunk]);
+                            params.onProgress?.([lastChunk, 'shared']);
+                            params.onProgress?.([
+                                lastChunk,
+                                'shared',
+                                firstChunk,
+                            ]);
+                            return (params.input as string[]).map(() => [1, 0]);
+                        }
+                    ),
+            };
+
             const results = await service.retrieve({
+                ...testParams,
+                documents,
+                onProgress,
+            });
+
+            const snapshots = onProgress.mock.calls.map(
+                ([progress]) => progress
+            );
+            expect(snapshots[1].processedDocuments).toEqual([]);
+            expect(
+                snapshots[1].processedChunks.map((chunk: any) => chunk.content)
+            ).toEqual([lastChunk]);
+            expect(snapshots[2].processedDocuments).toEqual([shared, shared]);
+            expect(
+                snapshots[2].processedChunks.map((chunk: any) => chunk.content)
+            ).toEqual(['shared', lastChunk, 'shared']);
+            expect(snapshots[3].processedDocuments).toEqual([
+                shared,
+                multiChunk,
+                shared,
+            ]);
+            expect(snapshots[4].processedDocuments).toEqual([
+                shared,
+                multiChunk,
+                shared,
+            ]);
+            expect(snapshots[4].totalDocuments).toBe(4);
+            expect(snapshots[4].totalChunks).toBe(4);
+            expect(results).toHaveLength(4);
+            expect(results[0].document).toBe(shared);
+            expect(results[1].document).toBe(multiChunk);
+            expect(results[2].document).toBe(multiChunk);
+            expect(results[3].document).toBe(shared);
+        });
+
+        it('starts query and document embeddings concurrently and observes cancellation after they settle', async () => {
+            const abortController = new AbortController();
+            const onProgress = vi.fn();
+            let resolveQuery!: (value: number[][]) => void;
+            const query = new Promise<number[][]>(resolve => {
+                resolveQuery = resolve;
+            });
+            const embedWithCache = vi
+                .fn()
+                .mockReturnValueOnce(query)
+                .mockResolvedValueOnce(testDocuments.map(() => [1, 0]));
+            (service as any).cachedEmbeddingsService = { embedWithCache };
+
+            const result = service.retrieve({
                 ...testParams,
                 abortController,
                 onProgress,
             });
+            expect(embedWithCache).toHaveBeenCalledTimes(2);
+            expect(embedWithCache.mock.calls[0][0].input).toEqual([
+                testParams.query,
+            ]);
+            expect(embedWithCache.mock.calls[1][0].input).toEqual(
+                testDocuments.map(document => document.content)
+            );
+            abortController.abort();
+            resolveQuery([[1, 0]]);
 
-            expect(Array.isArray(results)).toBe(true);
-            embedSpy.mockRestore();
+            await expect(result).rejects.toThrow('Aborted');
+            expect(onProgress).toHaveBeenCalledTimes(1);
+        });
+
+        it('rejects when final retrieval progress cancels the request', async () => {
+            const abortController = new AbortController();
+            const onProgress = vi.fn(progress => {
+                if (progress.processedChunks.length === progress.totalChunks)
+                    abortController.abort();
+            });
+            (service as any).cachedEmbeddingsService = {
+                embedWithCache: vi
+                    .fn()
+                    .mockResolvedValueOnce([[1, 0]])
+                    .mockResolvedValueOnce(testDocuments.map(() => [1, 0])),
+            };
+
+            await expect(
+                service.retrieve({ ...testParams, abortController, onProgress })
+            ).rejects.toThrow('Aborted');
+            expect(onProgress).toHaveBeenCalledTimes(2);
         });
 
         it('throws aborted when embeddings fail after cancellation', async () => {

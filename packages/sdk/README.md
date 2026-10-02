@@ -226,12 +226,14 @@ const embeddings = await aiProviders.embed({
     input: "What is the capital of Great Britain?",  // Use 'input' parameter
 });
 
-// embeddings is just an array of numbers
-embeddings; // [0.1, 0.2, 0.3, ...]
+// One vector per input, including a single string input
+embeddings; // [[0.1, 0.2, 0.3, ...]]
 ```
 
 #### Progress tracking for embeddings
-You can track the progress of embedding generation, especially useful when processing multiple text chunks:
+You can track the progress of embedding generation, especially useful when processing multiple text chunks. Each callback receives the processed input texts in their original order, including cache hits and duplicate occurrences. These texts need not form a prefix of the input. Repeated uncached texts are sent to the provider once per call; the returned vectors still match every original input position.
+
+Pass an `abortController` to cancel embedding or retrieval. Cancellation is checked after pending cache/provider operations settle and before returning success, including after the final progress callback. Service cancellation checks reject with `Error('Aborted')`. A provider call that rejects directly during embedding may propagate its own error instead. Cancellation does not roll back completed cache writes.
 
 ```typescript
 const embeddings = await aiProviders.embed({
@@ -248,6 +250,8 @@ const embeddings = await aiProviders.embed({
 
 ### Retrieve relevant documents
 The `retrieve` method performs semantic search to find the most relevant text chunks from a collection of documents based on a query. This is useful for implementing RAG (Retrieval-Augmented Generation) functionality.
+
+Progress refers to the actual processed chunks and the original document objects. Documents with identical content or metadata IDs remain distinct. Repeated references retain their occurrences in progress and results; a document is complete only when all its chunks are processed. Documents producing no chunks are excluded from `processedDocuments` but remain part of `totalDocuments`.
 
 ```typescript
 // Reading documents from Obsidian vault

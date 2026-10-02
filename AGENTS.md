@@ -21,6 +21,7 @@
 ## Protocol and Data Details
 - Input parsing and mapping: provider settings (id/name/type/url/apiKey/model) map to handler-specific request payloads.
 - Derived features/metrics: embeddings are chunked and cached per vault in IndexedDB using hashed keys.
+- Cached embeddings send each missing text once per call, while returned vectors and progress preserve original input order and duplicate occurrences. Progress includes cache hits and texts in the provider’s processed snapshot; retrieval maps those actual texts to chunks rather than treating the count as a prefix. Document completion counts use object identity, aggregate repeated references, and exclude documents with no chunks. Check cancellation after awaited cache/provider work and after final progress before returning success.
 - External API JSON: OpenAI-compatible providers use messages/model/stream payloads and return streaming deltas; embeddings return data[].embedding.
 - Desktop streaming cancellation must settle both the fetch promise before headers and the response body after headers. Cancelling a body reader also stops the native request. Cover these paths with real Web Streams, and release the signal listener after success or failure.
 - Tool-calling: `toolsExecute()` is message-only, returns an OpenAI-style assistant message (`content`, `tool_calls`), and normalizes provider-specific tool formats (OpenAI-compatible, Anthropic, Ollama) for multi-step agent loops.
