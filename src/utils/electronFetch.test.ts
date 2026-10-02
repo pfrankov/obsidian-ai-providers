@@ -353,9 +353,10 @@ describe('electronFetch', () => {
         const enqueueSpy = vi.fn();
         const writer = {
             ready: Promise.resolve(),
+            closed: new Promise(() => {}),
             write: vi.fn().mockResolvedValue(undefined),
             close: vi.fn().mockResolvedValue(undefined),
-            abort: vi.fn(),
+            abort: vi.fn().mockResolvedValue(undefined),
         };
 
         globalThis.TransformStream = class {
@@ -442,15 +443,16 @@ describe('electronFetch', () => {
         expect(response).toBeInstanceOf(Response);
     });
 
-    it('handles stream write and close errors', async () => {
+    it('handles stream write, close and abort errors', async () => {
         const mockRequest = getMockRequest();
         const error = new Error('write failed');
         const handlers = new Map<string, (...args: any[]) => void>();
         const writer = {
             ready: Promise.resolve(),
+            closed: new Promise(() => {}),
             write: vi.fn().mockRejectedValue(error),
             close: vi.fn().mockRejectedValue(new Error('close failed')),
-            abort: vi.fn(),
+            abort: vi.fn().mockRejectedValue(new Error('abort failed')),
         };
 
         globalThis.TransformStream = class {
