@@ -103,6 +103,20 @@ There are several options to run local OpenAI-like server:
 ## For plugin developers
 [Docs: How to integrate AI Providers in your plugin.](./packages/sdk/README.md)
 
+### Embedding cache
+
+Cached embeddings are isolated by provider ID, type, full URL, and model.
+Renaming a provider or rotating its API key preserves cache hits. Changing the
+model behind an unchanged endpoint/model name, or account-specific routing,
+cannot be detected by this identity.
+
+Older cache records do not identify their endpoint, so they are retained but
+ignored. The first subsequent use of each previously cached text recomputes its
+embedding and sends that text to the current provider again. This one-time lazy
+rebuild can take time and incur provider charges; no background rebuild or
+startup provider request is performed. Concurrent writes preserve each call's
+new entries, but simultaneous misses can still send the same text more than once.
+
 ### Development checks
 
 Use Node.js 24 and install the committed dependencies with `npm ci`.

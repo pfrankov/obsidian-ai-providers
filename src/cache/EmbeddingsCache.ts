@@ -72,7 +72,29 @@ export class EmbeddingsCache {
     ): Promise<void> {
         if (!this.db) return;
         try {
-            await this.db.put('embeddings', value, key);
+            const tx = this.db.transaction('embeddings', 'readwrite');
+            try {
+                const latest = await tx.store.get(key);
+                const chunks = new Map<string, EmbeddingChunk>();
+                if (
+                    latest?.providerId === value.providerId &&
+                    latest?.providerModel === value.providerModel
+                ) {
+                    for (const chunk of latest.chunks) {
+                        chunks.set(chunk.content, chunk);
+                    }
+                }
+                for (const chunk of value.chunks) {
+                    chunks.set(chunk.content, chunk);
+                }
+                await tx.store.put(
+                    { ...value, chunks: [...chunks.values()] },
+                    key
+                );
+            } finally {
+                // Request failure can also reject the transaction's promise.
+                await tx.done;
+            }
         } catch (error) {
             console.error('Error setting embeddings in cache:', error);
         }
