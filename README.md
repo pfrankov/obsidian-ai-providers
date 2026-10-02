@@ -103,6 +103,14 @@ There are several options to run local OpenAI-like server:
 ## For plugin developers
 [Docs: How to integrate AI Providers in your plugin.](./packages/sdk/README.md)
 
+### Development checks
+
+Use Node.js 24 and install the committed dependencies with `npm ci`.
+Run `npm run format:check`, `npm run check`, `npm run build`,
+`npm run sdk:build`, and `npm run example:build` before submitting a change.
+The check command runs lint, tests with 100% coverage thresholds, and type checks.
+These checks and builds also run on pull requests.
+
 Quick reference (details in SDK docs):
 
 ```ts
