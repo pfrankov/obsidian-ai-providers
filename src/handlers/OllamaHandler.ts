@@ -532,7 +532,7 @@ export class OllamaHandler implements IAIHandler {
         abortController?: AbortController;
     }): Promise<IAIAssistantToolMessage> {
         let fullText = '';
-        const toolCallsByIndex = new Map<number, IAIToolCall>();
+        const toolCalls: IAIToolCall[] = [];
 
         for await (const chunk of response) {
             this.ensureNotAborted(abortController);
@@ -542,24 +542,21 @@ export class OllamaHandler implements IAIHandler {
                 onProgress?.(content, fullText);
             }
 
-            chunk.message?.tool_calls?.forEach((toolCall, index) => {
-                const existing = toolCallsByIndex.get(index) || {
-                    id: `call_${index + 1}`,
-                    type: 'function' as const,
+            // Ollama streams complete calls, not indexed argument deltas.
+            chunk.message?.tool_calls?.forEach(toolCall => {
+                toolCalls.push({
+                    id: `call_${toolCalls.length + 1}`,
+                    type: 'function',
                     function: {
-                        name: '',
-                        arguments: '',
+                        name:
+                            typeof toolCall.function.name === 'string'
+                                ? toolCall.function.name
+                                : '',
+                        arguments: this.stringifyToolArguments(
+                            toolCall.function.arguments
+                        ),
                     },
-                };
-
-                if (typeof toolCall.function.name === 'string') {
-                    existing.function.name = toolCall.function.name;
-                }
-
-                existing.function.arguments = this.stringifyToolArguments(
-                    toolCall.function.arguments
-                );
-                toolCallsByIndex.set(index, existing);
+                });
             });
 
             if (chunk.done) {
@@ -571,10 +568,6 @@ export class OllamaHandler implements IAIHandler {
             role: 'assistant',
             content: fullText || null,
         };
-
-        const toolCalls = [...toolCallsByIndex.entries()]
-            .sort(([a], [b]) => a - b)
-            .map(([, toolCall]) => toolCall);
 
         if (toolCalls.length > 0) {
             assistantMessage.tool_calls = toolCalls;
