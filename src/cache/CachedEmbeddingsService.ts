@@ -30,58 +30,78 @@ export class CachedEmbeddingsService {
         }
 
         const abortController = params.abortController;
-        if (abortController?.signal.aborted) {
-            throw new Error('Aborted');
-        }
+        this.ensureNotAborted(abortController);
 
         const cacheKey = await this.generateCacheKey(params);
+        this.ensureNotAborted(abortController);
 
-        const { chunks } = params;
+        const { chunks, onProgress } = params;
         const chunksMap = await this.loadCachedChunks(params, cacheKey);
-        const uncachedChunks = chunks.filter(
-            content => !chunksMap.has(content)
-        );
+        this.ensureNotAborted(abortController);
+        const uncachedChunks = [
+            ...new Set(chunks.filter(content => !chunksMap.has(content))),
+        ];
 
         if (uncachedChunks.length > 0) {
-            if (abortController?.signal.aborted) {
-                throw new Error('Aborted');
-            }
             await this.embedAndCacheChunks(
-                params,
+                {
+                    ...params,
+                    onProgress: onProgress
+                        ? processedChunkTexts => {
+                              this.ensureNotAborted(abortController);
+                              const processed = new Set(processedChunkTexts);
+                              onProgress(
+                                  chunks.filter(
+                                      content =>
+                                          chunksMap.has(content) ||
+                                          processed.has(content)
+                                  )
+                              );
+                          }
+                        : undefined,
+                },
                 uncachedChunks,
-                chunksMap,
-                cacheKey
+                { chunksMap, cacheKey }
             );
         }
 
-        params.onProgress?.(chunks);
-        return chunks.map(content => {
+        const embeddings = chunks.map(content => {
             const embedding = chunksMap.get(content);
             if (!embedding) {
                 throw new Error('Missing embedding for chunk');
             }
             return embedding;
         });
+        this.ensureNotAborted(abortController);
+        onProgress?.(chunks);
+        this.ensureNotAborted(abortController);
+        return embeddings;
+    }
+
+    private ensureNotAborted(abortController?: AbortController): void {
+        if (abortController?.signal.aborted) {
+            throw new Error('Aborted');
+        }
     }
 
     private async embedAndCacheChunks(
         params: CachedEmbedParams,
         uncachedChunks: string[],
-        chunksMap: Map<string, number[]>,
-        cacheKey: string
+        cache: { chunksMap: Map<string, number[]>; cacheKey: string }
     ) {
+        const { chunksMap, cacheKey } = cache;
         const abortController = params.abortController;
-        if (abortController?.signal.aborted) {
-            throw new Error('Aborted');
-        }
+        this.ensureNotAborted(abortController);
         const newEmbeddings = await this.embedFunction({
             ...params,
             input: uncachedChunks,
         });
+        this.ensureNotAborted(abortController);
         uncachedChunks.forEach((content, i) =>
             chunksMap.set(content, newEmbeddings[i])
         );
         await this.saveCachedChunks(cacheKey, params.provider, chunksMap);
+        this.ensureNotAborted(abortController);
     }
 
     private async loadCachedChunks(

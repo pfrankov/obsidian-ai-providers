@@ -399,9 +399,7 @@ export class AIProvidersService implements IAIProvidersService {
         params: IAIProvidersRetrievalParams
     ): Promise<IAIProvidersRetrievalResult[]> {
         const abortController = params.abortController;
-        if (abortController?.signal.aborted) {
-            throw new Error('Aborted');
-        }
+        this.ensureNotAborted(abortController);
         // Validate input parameters
         if (!params.query) {
             return [];
@@ -452,10 +450,9 @@ export class AIProvidersService implements IAIProvidersService {
                     if (abortController?.signal.aborted) {
                         return;
                     }
-                    const processedChunkCount = processedChunkTexts.length;
-                    const processedChunks = chunks.slice(
-                        0,
-                        processedChunkCount
+                    const processedTexts = new Set(processedChunkTexts);
+                    const processedChunks = chunks.filter(chunk =>
+                        processedTexts.has(chunk.content)
                     );
                     const processedDocs = this.getProcessedDocs(
                         processedChunks,
@@ -472,11 +469,11 @@ export class AIProvidersService implements IAIProvidersService {
                 },
             }),
         ]).catch(error => {
-            if (params.abortController?.signal?.aborted) {
-                throw new Error('Aborted');
-            }
+            this.ensureNotAborted(abortController);
             throw error;
         });
+
+        this.ensureNotAborted(abortController);
 
         // L2-normalize embeddings: with unit vectors, dot product equals cosine similarity.
         // This keeps ranking stable regardless of provider-specific vector magnitudes.
@@ -496,8 +493,16 @@ export class AIProvidersService implements IAIProvidersService {
             processingType: 'embedding',
         });
 
+        this.ensureNotAborted(abortController);
+
         // Perform vector-only search
         return this.rankChunks(normQuery, chunks, normChunks);
+    }
+
+    private ensureNotAborted(abortController?: AbortController): void {
+        if (abortController?.signal.aborted) {
+            throw new Error('Aborted');
+        }
     }
 
     private processDocuments(documents: IAIDocument[]) {
@@ -507,13 +512,11 @@ export class AIProvidersService implements IAIProvidersService {
         }
 
         const chunks: ProcessedChunk[] = [];
-        const documentChunkCounts: { [docId: string]: number } = {};
+        const documentChunkCounts = new Map<IAIDocument, number>();
 
         for (const document of documents) {
             const preprocessed = preprocessContent(document.content);
             const documentChunks = splitContent(preprocessed);
-            const docId = document.meta?.id || document.content;
-            documentChunkCounts[docId] = 0;
 
             for (const chunk of documentChunks) {
                 if (chunk.trim().length > 0) {
@@ -521,7 +524,10 @@ export class AIProvidersService implements IAIProvidersService {
                         content: chunk.trim(),
                         document: document,
                     });
-                    documentChunkCounts[docId]++;
+                    documentChunkCounts.set(
+                        document,
+                        (documentChunkCounts.get(document) || 0) + 1
+                    );
                 }
             }
         }
@@ -531,22 +537,23 @@ export class AIProvidersService implements IAIProvidersService {
 
     private getProcessedDocs(
         processedChunks: IAIProvidersRetrievalChunk[],
-        documentChunkCounts: { [docId: string]: number },
+        documentChunkCounts: Map<IAIDocument, number>,
         documents: IAIDocument[]
     ) {
-        const processedChunksPerDoc: { [docId: string]: number } = {};
+        const processedChunksPerDoc = new Map<IAIDocument, number>();
         for (const chunk of processedChunks) {
-            const docId = chunk.document.meta?.id || chunk.document.content;
-            processedChunksPerDoc[docId] =
-                (processedChunksPerDoc[docId] || 0) + 1;
+            processedChunksPerDoc.set(
+                chunk.document,
+                (processedChunksPerDoc.get(chunk.document) || 0) + 1
+            );
         }
 
         const processedDocs: IAIDocument[] = [];
         for (const document of documents) {
-            const docId = document.meta?.id || document.content;
+            const totalChunks = documentChunkCounts.get(document) || 0;
             if (
-                documentChunkCounts[docId] > 0 &&
-                processedChunksPerDoc[docId] === documentChunkCounts[docId]
+                totalChunks > 0 &&
+                processedChunksPerDoc.get(document) === totalChunks
             ) {
                 processedDocs.push(document);
             }
