@@ -78,6 +78,46 @@ describe('AIProvidersExamplePlugin', () => {
         vi.clearAllMocks();
     });
 
+    it('reads declared modes through capabilities and forwards the selected native value', async () => {
+        const provider = createMockProvider(
+            'reasoning',
+            'Synthetic',
+            'glm-5.3-flash'
+        );
+        const execute = vi.fn().mockResolvedValue('Synthetic answer');
+        const resolver = createMockAIResolver([provider], execute);
+        const service = await resolver.promise;
+        service.getModelCapabilities.mockReturnValue({
+            reasoningModes: ['low', 'high', 'max'],
+        } as any);
+        vi.mocked(waitForAI).mockResolvedValue(resolver as any);
+        await plugin.onload();
+        const tab = (plugin as any).settingTabs[0];
+        tab.selectedProvider = provider.id;
+        await tab.display();
+        const selects = tab.containerEl.querySelectorAll('select');
+        const mode = selects[1] as HTMLSelectElement;
+        expect(Array.from(mode.options).map(option => option.value)).toEqual([
+            '',
+            'low',
+            'high',
+            'max',
+        ]);
+        mode.value = 'low';
+        mode.dispatchEvent(new Event('change'));
+        tab.containerEl.querySelector('button').click();
+        await Promise.resolve();
+        expect(execute).toHaveBeenLastCalledWith(
+            expect.objectContaining({ reasoningMode: 'low' })
+        );
+        mode.value = '';
+        mode.dispatchEvent(new Event('change'));
+        tab.containerEl.querySelector('button').click();
+        await Promise.resolve();
+        expect(execute).toHaveBeenLastCalledWith(
+            expect.objectContaining({ reasoningMode: undefined })
+        );
+    });
     it('should initialize plugin correctly', () => {
         expect(plugin).toBeInstanceOf(Plugin);
         expect(plugin.app).toBe(app);

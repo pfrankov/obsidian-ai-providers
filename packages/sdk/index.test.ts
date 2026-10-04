@@ -1,3 +1,4 @@
+import { AI_PROVIDERS_SERVICE_VERSION } from '../../src/constants/serviceApiVersion';
 import type { Mock } from 'vitest';
 import { sanitizeHTMLToDom } from 'obsidian';
 
@@ -293,7 +294,9 @@ describe('initAI', () => {
         });
 
         expect(mockOnDone).toHaveBeenCalled();
-        expect(mockApp.aiProviders.checkCompatibility).toHaveBeenCalledWith(4);
+        expect(mockApp.aiProviders.checkCompatibility).toHaveBeenCalledWith(
+            AI_PROVIDERS_SERVICE_VERSION
+        );
     });
 
     it('should wait for AI providers and show fallback when disableFallback is not specified', async () => {
@@ -308,7 +311,9 @@ describe('initAI', () => {
         await initAI(mockApp, mockPlugin, mockOnDone);
 
         expect(mockOnDone).toHaveBeenCalled();
-        expect(mockApp.aiProviders.checkCompatibility).toHaveBeenCalledWith(4);
+        expect(mockApp.aiProviders.checkCompatibility).toHaveBeenCalledWith(
+            AI_PROVIDERS_SERVICE_VERSION
+        );
     });
 
     it('should handle AI providers not available when disableFallback is false', async () => {
@@ -356,7 +361,7 @@ describe('initAI', () => {
         };
 
         await expect(initAI(mockApp, mockPlugin, mockOnDone)).rejects.toThrow(
-            'AI Providers version 4 is required'
+            `AI Providers version ${AI_PROVIDERS_SERVICE_VERSION} is required`
         );
 
         expect(mockPlugin.addSettingTab).toHaveBeenCalled();

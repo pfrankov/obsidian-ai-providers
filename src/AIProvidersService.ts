@@ -1,3 +1,4 @@
+import { reasoningRequestFields } from './utils/reasoningModes';
 import { App, Notice } from 'obsidian';
 import {
     AIProviderType,
@@ -208,6 +209,8 @@ export class AIProvidersService implements IAIProvidersService {
               }
             : params;
 
+        reasoningRequestFields(resolvedParams);
+
         const extendedParams = resolvedParams as IAIProvidersExecuteParams & {
             onProgress?: (chunk: string, accumulatedText: string) => void;
             abortController?: AbortController;
@@ -281,6 +284,7 @@ export class AIProvidersService implements IAIProvidersService {
               }
             : params;
 
+        reasoningRequestFields(resolvedParams);
         return handler.toolsExecute(resolvedParams);
     }
 
@@ -322,10 +326,17 @@ export class AIProvidersService implements IAIProvidersService {
         const targetModel = model || provider.model;
         const probeProvider = model ? { ...provider, model } : provider;
 
-        const capabilities = await probeModelCapabilities({
+        const probed = await probeModelCapabilities({
             aiProviders: this,
             provider: probeProvider,
         });
+        const currentProvider =
+            this.plugin.settings.providers?.find(p => p.id === provider.id) ||
+            provider;
+        const capabilities = {
+            ...currentProvider.modelCapabilities?.[targetModel || ''],
+            ...probed,
+        };
 
         // Persist capabilities in settings
         if (targetModel) {

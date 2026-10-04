@@ -1,3 +1,4 @@
+import { reasoningRequestFields } from '../utils/reasoningModes';
 import {
     IAIAssistantToolMessage,
     IAIHandler,
@@ -729,6 +730,7 @@ export class OllamaHandler implements IAIHandler {
         logger.debug('Sending chat request to Ollama');
 
         const response = await ollama.chat({
+            ...reasoningRequestFields(params),
             model: modelName,
             messages: chatMessages,
             stream: true,
@@ -917,6 +919,7 @@ export class OllamaHandler implements IAIHandler {
                     );
 
                     const response = await ollama.chat({
+                        ...reasoningRequestFields(params),
                         model: modelName,
                         messages: chatMessages,
                         tools: requestConfig.tools,

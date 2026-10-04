@@ -59,3 +59,48 @@
 Действие: одновременно рассчитать эмбеддинги запроса и документов, затем повторить те же обращения.
 
 Результат: кеш сохраняет новые тексты обоих вызовов независимо от порядка завершения, и повторные обращения не требуют расчёта. Ошибка или откат транзакции кеша не мешает вернуть уже рассчитанные векторы. Одновременные запросы одного отсутствующего текста всё ещё могут рассчитать его отдельно.
+
+## Reasoning modes: real Obsidian smoke test
+
+Use only the authorized isolated vault in real Obsidian with its normal sandbox.
+Do not use personal notes, real API keys or existing provider configurations.
+Install the exact cloud-built AI Providers and example-plugin candidates; do not
+rebuild or install dependencies on the native executor. Verify installed hashes.
+
+1. Run `node test-utils/reasoning-fixture.cjs` using the existing Node runtime.
+   It prints a loopback endpoint and safe request-shape records. Streaming is
+   synthetic and cannot establish real-provider latency or model acceptance.
+2. Add a Z.AI provider with that endpoint, synthetic key `fixture`, and model
+   `fixture-alpha`. Its available vocabulary is low/high/max. Select only low
+   and high. Add an OpenAI provider for the same endpoint/model; its vocabulary
+   is none/minimal/low/medium/high/xhigh/max. Select none/xhigh/max manually.
+   These are transport choices, not discovered model capabilities.
+3. Save, reopen, run Check and verify the manual selections remain. Edit a mode
+   while Check is pending: the edit must survive. Verify keyboard focus, duplicate
+   isolation and persistence after restarting the test vault.
+4. Switch each provider to `fixture-beta`: the checkbox vocabulary must be
+   identical, with no modes selected for this new model. Configure a different
+   subset. Returning to alpha must restore alpha's own saved declarations.
+   Changing provider type deliberately clears the capability map. Model names
+   never choose modes or alter sampling/tools.
+5. In Example choose API default and each declared mode. Only declared modes
+   should be offered. Verify wire omission for default, and literal none/xhigh/max
+   for OpenAI and low/high for Z.AI. No reasoningMode key may leak to the wire.
+   Temperature must remain as supplied; Example does not supply it, so the wire
+   record must omit it, including with non-none modes.
+   Streaming must complete and Execute must recover. Endpoint incompatibilities
+   must surface; do not substitute modes or silently remove sampling.
+6. Capture normal and narrower settings views and the Example selector. Verify no
+   blank control region, clipping, horizontal overflow or inaccessible Save/Cancel.
+   Move the cursor outside the capture before taking final screenshots: release
+   crops must contain NO cursor. Use only synthetic content and these exact builds.
+7. Report source SHA, installed hashes, app/platform versions, per-route wire
+   records, persistence results, screenshot artifacts and any failures. Stop the
+   fixture. Prior-head screenshots and tests are not current-head acceptance.
+8. After SDK publication and cloud integration, LocalGPT requires its own exact-head
+   native run: provider defaults, action inheritance/API default, per-request
+   override/reset, final provider/model/vision selection, streaming/cancel/retry.
+   Verify unset Creativity and API default omit temperature; explicit zero and
+   other numeric values remain unchanged. Action inheritance must use an explicit
+   global choice, while action API default overrides it with omission. No model-name
+   condition may affect this behavior.

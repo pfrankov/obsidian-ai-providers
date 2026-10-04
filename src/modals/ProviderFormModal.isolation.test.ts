@@ -777,4 +777,87 @@ describe('ProviderFormModal request and control isolation', () => {
         expect(plugin.settings.providers).toEqual([]);
         expect(plugin.saveSettings).not.toHaveBeenCalled();
     });
+    it.each([
+        ['zai', 'glm-5.3-flash', 'low'],
+        ['openai', 'gpt-5', 'minimal'],
+        ['openai', 'gpt-5.2', 'none'],
+        ['openai', 'gpt-5.2', 'xhigh'],
+        ['openai', 'gpt-5.6-sol', 'max'],
+    ] as const)(
+        'persists %s / %s / %s through Check and isolates duplicates',
+        async (type, model, mode) => {
+            provider.type = type;
+            provider.model = model;
+            provider.modelCapabilities = { [model]: { ...unchecked } };
+            const duplicate = { ...provider, id: 'duplicate' };
+            plugin.settings.providers = [{ ...provider }, duplicate];
+            modal.onOpen();
+            modal.contentEl.ownerDocument.body.appendChild(
+                modal.contentEl as unknown as Node
+            );
+            const low = element<HTMLInputElement>(
+                `[data-reasoning-mode="${mode}"]`
+            );
+            low.focus();
+            low.checked = true;
+            low.dispatchEvent(new Event('change'));
+            expect(document.activeElement).toBe(
+                element(`[data-reasoning-mode="${mode}"]`)
+            );
+            expect(
+                plugin.settings.providers[0].modelCapabilities?.[model]
+                    .reasoningModes
+            ).toEqual([mode]);
+            expect(
+                duplicate.modelCapabilities?.[model].reasoningModes
+            ).toBeUndefined();
+            expect(plugin.saveSettings).toHaveBeenCalled();
+            vi.mocked(probeModelCapabilities).mockResolvedValueOnce(
+                capabilities
+            );
+            click('check-model-capabilities');
+            await flush();
+            expect(provider.modelCapabilities?.[model]).toEqual({
+                ...capabilities,
+                reasoningModes: [mode],
+            });
+            const selected = element<HTMLInputElement>(
+                `[data-reasoning-mode="${mode}"]`
+            );
+            selected.checked = false;
+            selected.dispatchEvent(new Event('change'));
+            expect(provider.modelCapabilities?.[model].reasoningModes).toEqual(
+                []
+            );
+        }
+    );
+
+    it('mode edits cancel stale checks and preserve other selections on unsaved providers', async () => {
+        provider.type = 'zai';
+        provider.model = 'glm-5.3-flash';
+        provider.modelCapabilities = {
+            'glm-5.3-flash': { ...unchecked, reasoningModes: ['high'] },
+        };
+        plugin.settings.providers = [];
+        const request = deferred<IAIModelCapabilities>();
+        vi.mocked(probeModelCapabilities).mockReturnValueOnce(request.promise);
+        modal.onOpen();
+        click('check-model-capabilities');
+        const low = element<HTMLInputElement>('[data-reasoning-mode="low"]');
+        low.checked = true;
+        low.dispatchEvent(new Event('change'));
+        expectProbeIdle();
+        request.resolve(capabilities);
+        await flush();
+        expect(provider.modelCapabilities?.['glm-5.3-flash']).toEqual({
+            ...unchecked,
+            reasoningModes: ['high', 'low'],
+        });
+        expect(plugin.saveSettings).not.toHaveBeenCalled();
+        changeType('anthropic');
+        expect(
+            modal.contentEl.querySelector('[data-reasoning-mode]')
+        ).toBeNull();
+        expect(provider.modelCapabilities).toBeUndefined();
+    });
 });

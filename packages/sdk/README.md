@@ -523,3 +523,43 @@ history.push(assistantMessage);
 ```
 
 If you have any questions, please contact me via Telegram [@pavel_frankov](https://t.me/pavel_frankov).
+
+## Optional reasoning modes (SDK 1.8 / service API 5)
+
+Read the selected model's `reasoningModes?: string[]` through the existing
+`getModelCapabilities({ provider, model })` or `getModels({ provider })` methods.
+These are manual declarations made in AI Providers settings, not probe results.
+There is no shared default. Capability checks preserve this array.
+
+```ts
+const modes = ai.getModelCapabilities({ provider, model })?.reasoningModes ?? [];
+// Populate a selector from modes. Leave reasoningMode undefined for API default.
+await ai.execute({ provider, model, prompt: 'Explain this note', reasoningMode: selectedMode,
+    abortController: new AbortController(), onProgress });
+```
+
+`toolsExecute` accepts the same optional `reasoningMode`. Resolve any model or
+provider override before presenting the available modes. The service rejects
+undeclared, stale, unsupported modes and conflicts with native reasoning options or `options.model`;
+it never sends the SDK's `reasoningMode` key to an endpoint. Existing consumers
+that omit the setting retain their request shape, sampling, and streaming behavior.
+SDK 1.8 initialization requires service API 5; already installed older SDKs keep
+working with the new service.
+
+The adapters are OpenAI Chat Completions and Z.AI (`reasoning_effort`),
+OpenRouter (`reasoning.effort`), and Ollama / Open WebUI (top-level `think`).
+Mode identifiers are native values, not a universal intensity scale. `none` is
+not omission; `max` is never translated to `xhigh`.
+
+Saved per-model declarations are authoritative for selection. The service checks
+only those declarations and the adapter's wire vocabulary, never the model name.
+The available checkboxes do not guarantee remote support, and Check does not
+probe reasoning. Undeclared modes are not sent automatically.
+
+Sampling and tools are preserved as supplied, including when a reasoning mode is
+explicit. Endpoint incompatibility errors are surfaced without guessing model
+restrictions, removing options or adding reasoning-specific retries. Consumers
+must explicitly omit incompatible sampling options themselves. The handler uses
+Chat Completions; it does not infer a switch to Responses from a model name.
+See the [provider documentation](../../README.md#optional-reasoning-modes) for
+transport vocabularies. Native Anthropic reasoning is not implemented.

@@ -2,7 +2,7 @@ import { Plugin, PluginSettingTab, App, sanitizeHTMLToDom } from 'obsidian';
 import { ExtendedApp, IAIProvidersService } from './types';
 
 const FALLBACK_TIMEOUT = 100;
-const REQUIRED_AI_PROVIDERS_VERSION = 4;
+const REQUIRED_AI_PROVIDERS_VERSION = 5;
 const AI_PROVIDERS_READY_EVENT = 'ai-providers-ready';
 
 let aiProvidersReadyAiResolver: {

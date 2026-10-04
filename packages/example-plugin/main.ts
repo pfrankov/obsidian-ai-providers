@@ -86,6 +86,30 @@ class SampleSettingTab extends PluginSettingTab {
                 return;
             }
 
+            let reasoningMode: string | undefined;
+            const reasoningModes =
+                aiProviders.getModelCapabilities({ provider })
+                    ?.reasoningModes || [];
+            if (reasoningModes.length) {
+                new Setting(containerEl)
+                    .setName('Reasoning mode for this test')
+                    .setDesc(
+                        'Manually declared model modes. API default omits the setting.'
+                    )
+                    .addDropdown(dropdown =>
+                        dropdown
+                            .addOption('', 'API default')
+                            .addOptions(
+                                Object.fromEntries(
+                                    reasoningModes.map(mode => [mode, mode])
+                                )
+                            )
+                            .onChange(value => {
+                                reasoningMode = value || undefined;
+                            })
+                    );
+            }
+
             // Text generation section
             new Setting(containerEl)
                 .setName('Execute test prompt')
@@ -101,6 +125,7 @@ class SampleSettingTab extends PluginSettingTab {
                             const fullText = await aiProviders.execute({
                                 provider,
                                 prompt: 'What is the capital of Great Britain?',
+                                reasoningMode,
                                 abortController,
                                 onProgress: (_chunk, accumulatedText) => {
                                     paragraph.setText(accumulatedText);

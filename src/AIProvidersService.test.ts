@@ -1501,4 +1501,117 @@ describe('AIProvidersService', () => {
             await expect(promise).rejects.toThrow(/Aborted/);
         });
     });
+    it('preserves manually declared modes when probing an overridden model', async () => {
+        const stored: IAIProvider = {
+            ...mockProvider,
+            modelCapabilities: {
+                target: {
+                    text: false,
+                    tools: false,
+                    vision: false,
+                    embedding: false,
+                    reasoningModes: ['low'],
+                },
+            },
+        };
+        mockPlugin.settings.providers = [stored];
+        const result = await service.checkModelCapabilities({
+            provider: mockProvider,
+            model: 'target',
+        });
+        expect(result.reasoningModes).toEqual(['low']);
+        expect(stored.modelCapabilities?.target.reasoningModes).toEqual([
+            'low',
+        ]);
+        expect(
+            service.getModelCapabilities({ provider: stored, model: 'target' })
+                ?.reasoningModes
+        ).toEqual(['low']);
+        expect(
+            service.getModels({
+                provider: { ...stored, availableModels: ['target'] },
+            }).target?.reasoningModes
+        ).toEqual(['low']);
+    });
+    it('handles a missing model and provider settings during a capability check', async () => {
+        mockPlugin.settings.providers = undefined;
+        const result = await service.checkModelCapabilities({
+            provider: {
+                ...mockProvider,
+                model: undefined,
+                modelCapabilities: {},
+            },
+        });
+        expect(result.reasoningModes).toBeUndefined();
+    });
+    it.each([
+        'openai',
+        'zai',
+        'openrouter',
+        'ollama',
+        'ollama-openwebui',
+    ] as const)(
+        'resolves %s reasoning declarations after the effective provider/model selection',
+        async type => {
+            const caps = {
+                text: true,
+                tools: true,
+                vision: false,
+                embedding: false,
+            };
+            const provider: IAIProvider = {
+                ...mockProvider,
+                type,
+                model: 'arbitrary-source',
+                modelCapabilities: {
+                    'arbitrary-source': { ...caps, reasoningModes: ['low'] },
+                    'arbitrary-target': { ...caps, reasoningModes: ['high'] },
+                },
+            };
+            const params = {
+                provider,
+                model: 'arbitrary-target',
+                reasoningMode: 'high',
+                messages: [],
+                tools: [],
+                abortController: new AbortController(),
+            };
+            await service.execute(params);
+            await service.toolsExecute(params);
+            const effective = expect.objectContaining({
+                reasoningMode: 'high',
+                provider: expect.objectContaining({
+                    id: provider.id,
+                    type,
+                    model: 'arbitrary-target',
+                }),
+            });
+            expect(
+                (service as any).handlers[type].execute
+            ).toHaveBeenCalledWith(effective);
+            expect(
+                (service as any).handlers[type].toolsExecute
+            ).toHaveBeenCalledWith(effective);
+            expect(provider.model).toBe('arbitrary-source');
+            for (const changed of [
+                { ...params, model: undefined },
+                { ...params, reasoningMode: 'low' },
+                {
+                    ...params,
+                    provider: {
+                        ...provider,
+                        id: 'other-provider',
+                        modelCapabilities: {},
+                    },
+                },
+            ]) {
+                await expect(service.execute(changed)).rejects.toThrow(
+                    'not declared or supported'
+                );
+                await expect(service.toolsExecute(changed)).rejects.toThrow(
+                    'not declared or supported'
+                );
+            }
+        }
+    );
 });

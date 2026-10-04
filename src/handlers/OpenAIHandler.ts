@@ -1,3 +1,4 @@
+import { reasoningRequestFields } from '../utils/reasoningModes';
 import {
     IAIAssistantToolMessage,
     IAIHandler,
@@ -398,7 +399,7 @@ export class OpenAIHandler implements IAIHandler {
     private buildRequestOptions(
         params: IAIProvidersExecuteParams
     ): Record<string, unknown> {
-        return params.options ? { ...params.options } : {};
+        return { ...params.options, ...reasoningRequestFields(params) };
     }
 
     private assertNoToolConfigInOptions(
@@ -418,8 +419,7 @@ export class OpenAIHandler implements IAIHandler {
         params: IAIProvidersToolsExecuteParams
     ): Record<string, unknown> {
         this.assertNoToolConfigInOptions(params.options);
-        const requestOptions = params.options ? { ...params.options } : {};
-
+        const requestOptions = this.buildRequestOptions(params);
         requestOptions.tools = this.mapTools(params.tools);
         if (params.tool_choice !== undefined) {
             requestOptions.tool_choice = this.mapToolChoice(params.tool_choice);

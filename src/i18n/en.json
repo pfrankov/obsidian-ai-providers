@@ -52,7 +52,8 @@
         "modelCapabilityVision": "Vision",
         "selectModelFirst": "Select a model first",
         "ollamaContextScale": "Ollama context size scale",
-        "ollamaContextScaleDesc": "Multiplies the estimated prompt size when sizing Ollama’s context window, on top of a fixed reserve for the response. Higher values leave more room for long answers but use more memory. Only affects Ollama providers."
+        "ollamaContextScaleDesc": "Multiplies the estimated prompt size when sizing Ollama’s context window, on top of a fixed reserve for the response. Higher values leave more room for long answers but use more memory. Only affects Ollama providers.",
+        "reasoningModesDescription": "Reasoning modes (manual): select values documented for this model; Check does not verify support."
     },
     "modals": {
         "confirm": "Confirm",

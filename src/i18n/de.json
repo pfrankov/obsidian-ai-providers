@@ -52,7 +52,8 @@
         "modelCapabilityVision": "Visuell",
         "selectModelFirst": "Wählen Sie zuerst ein Modell aus",
         "ollamaContextScale": "Ollama-Kontextgrößenfaktor",
-        "ollamaContextScaleDesc": "Multipliziert die geschätzte Prompt-Größe bei der Bemessung des Ollama-Kontextfensters, zusätzlich zu einer festen Reserve für die Antwort. Höhere Werte lassen mehr Raum für lange Antworten, benötigen aber mehr Speicher. Betrifft nur Ollama-Anbieter."
+        "ollamaContextScaleDesc": "Multipliziert die geschätzte Prompt-Größe bei der Bemessung des Ollama-Kontextfensters, zusätzlich zu einer festen Reserve für die Antwort. Höhere Werte lassen mehr Raum für lange Antworten, benötigen aber mehr Speicher. Betrifft nur Ollama-Anbieter.",
+        "reasoningModesDescription": "Denkmodi (manuell): für das Modell dokumentierte Werte wählen; Prüfen testet deren Unterstützung nicht."
     },
     "modals": {
         "confirm": "Bestätigen",

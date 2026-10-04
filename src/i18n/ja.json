@@ -52,7 +52,8 @@
         "modelCapabilityVision": "画像",
         "selectModelFirst": "先にモデルを選択してください",
         "ollamaContextScale": "Ollama コンテキストサイズ係数",
-        "ollamaContextScaleDesc": "Ollama のコンテキストウィンドウを決める際に、推定プロンプトサイズに掛ける係数です。応答用の固定予約領域に加えて適用されます。値を大きくすると長い回答の余地が増えますが、メモリ使用量も増えます。Ollama プロバイダーのみに適用されます。"
+        "ollamaContextScaleDesc": "Ollama のコンテキストウィンドウを決める際に、推定プロンプトサイズに掛ける係数です。応答用の固定予約領域に加えて適用されます。値を大きくすると長い回答の余地が増えますが、メモリ使用量も増えます。Ollama プロバイダーのみに適用されます。",
+        "reasoningModesDescription": "推論モード（手動）：モデルの文書に記載された値を選択してください。「チェック」では対応を検証しません。"
     },
     "modals": {
         "confirm": "確認",

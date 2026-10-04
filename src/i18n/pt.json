@@ -52,7 +52,8 @@
         "modelCapabilityVision": "Visão",
         "selectModelFirst": "Selecione um modelo primeiro",
         "ollamaContextScale": "Fator de tamanho de contexto do Ollama",
-        "ollamaContextScaleDesc": "Multiplica o tamanho estimado do prompt ao dimensionar a janela de contexto do Ollama, além de uma reserva fixa para a resposta. Valores maiores deixam mais espaço para respostas longas, mas usam mais memória. Afeta apenas provedores Ollama."
+        "ollamaContextScaleDesc": "Multiplica o tamanho estimado do prompt ao dimensionar a janela de contexto do Ollama, além de uma reserva fixa para a resposta. Valores maiores deixam mais espaço para respostas longas, mas usam mais memória. Afeta apenas provedores Ollama.",
+        "reasoningModesDescription": "Modos de raciocínio (manual): escolha valores documentados para este modelo; Verificar não testa o suporte."
     },
     "modals": {
         "confirm": "Confirmar",

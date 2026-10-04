@@ -19,6 +19,10 @@ import {
 } from '@obsidian-ai-providers/sdk';
 import { logger } from '../utils/logger';
 import AIProvidersPlugin from '../main';
+import { getReasoningModes } from '../utils/reasoningModes';
+
+type BooleanCapability = 'embedding' | 'text' | 'tools' | 'vision';
+
 import { probeModelCapabilities } from '../utils/modelCapabilityChecker';
 
 interface ProviderConfig {
@@ -352,10 +356,7 @@ export class ProviderFormModal extends Modal {
         }
     }
 
-    private setSelectedModelCapability(
-        key: keyof IAIModelCapabilities,
-        value: boolean
-    ) {
+    private setSelectedModelCapability(key: BooleanCapability, value: boolean) {
         this.invalidateCapabilityCheck();
         const current = this.getSelectedModelCapabilities();
         this.setSelectedModelCapabilities({
@@ -440,7 +441,7 @@ export class ProviderFormModal extends Modal {
         });
 
         const capabilities = this.getSelectedModelCapabilities();
-        const capabilityLabels: Array<[keyof IAIModelCapabilities, string]> = [
+        const capabilityLabels: Array<[BooleanCapability, string]> = [
             ['embedding', I18n.t('settings.modelCapabilityEmbedding')],
             ['text', I18n.t('settings.modelCapabilityText')],
             ['tools', I18n.t('settings.modelCapabilityTools')],
@@ -449,6 +450,8 @@ export class ProviderFormModal extends Modal {
         const checkboxGrid = layoutEl.createDiv(
             'ai-providers-model-capabilities-grid'
         );
+
+        this.renderReasoningModes(layoutEl);
 
         capabilityLabels.forEach(([key, label]) => {
             const labelEl = checkboxGrid.createEl('label');
@@ -468,6 +471,48 @@ export class ProviderFormModal extends Modal {
                 }
             });
             labelEl.createEl('span', { text: label });
+        });
+    }
+
+    private renderReasoningModes(container: HTMLElement) {
+        const modes = getReasoningModes(this.provider);
+        if (!modes.length) return;
+        const description = container.createDiv(
+            'ai-providers-reasoning-description'
+        );
+        description.textContent = I18n.t('settings.reasoningModesDescription');
+        const choices = container.createDiv('ai-providers-reasoning-modes');
+        const selected =
+            this.getSelectedModelCapabilities().reasoningModes || [];
+        modes.forEach(mode => {
+            const label = choices.createEl('label');
+            label.addClass('ai-providers-model-capability');
+            const checkbox = label.createEl('input') as HTMLInputElement;
+            checkbox.type = 'checkbox';
+            checkbox.checked = selected.includes(mode);
+            checkbox.dataset.reasoningMode = mode;
+            checkbox.addEventListener('change', () => {
+                const hadFocus = checkbox.matches(':focus');
+                this.invalidateCapabilityCheck();
+                const current = this.getSelectedModelCapabilities();
+                const remaining = (current.reasoningModes || []).filter(
+                    value => value !== mode
+                );
+                this.setSelectedModelCapabilities({
+                    ...current,
+                    reasoningModes: checkbox.checked
+                        ? [...remaining, mode]
+                        : remaining,
+                });
+                this.renderModelCapabilitiesSection();
+                if (hadFocus) {
+                    const updated = this.contentEl.querySelector(
+                        `[data-reasoning-mode="${mode}"]`
+                    ) as HTMLInputElement | null;
+                    updated?.focus();
+                }
+            });
+            label.createEl('span', { text: mode });
         });
     }
 
@@ -494,7 +539,10 @@ export class ProviderFormModal extends Modal {
                 return;
             }
 
-            this.setSelectedModelCapabilities(capabilities);
+            this.setSelectedModelCapabilities({
+                ...this.getSelectedModelCapabilities(),
+                ...capabilities,
+            });
             this.modelCapabilitiesStatus = I18n.t(
                 'settings.modelCapabilitiesUpdated'
             );
