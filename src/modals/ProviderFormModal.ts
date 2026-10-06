@@ -371,11 +371,22 @@ export class ProviderFormModal extends Modal {
         this.modelCapabilitiesStatus = '';
     }
 
-    private invalidateModelRequests() {
+    // URL/API-key edits must only discard in-flight tokens. Rebuilding the
+    // model/capabilities controls on every keystroke remounts nearby DOM and
+    // can scramble focus/caret in the credential fields being typed into.
+    // Rebuild those controls when a refresh/check was showing loading UI, or
+    // when forced after type/model-list changes (see AGENTS.md).
+    private invalidateModelRequests(options?: { rebuildModelUi?: boolean }) {
+        const wasRefreshing = Boolean(this.modelRefreshRequest);
+        const wasChecking = Boolean(this.capabilityCheckRequest);
         this.modelRefreshRequest = undefined;
         this.invalidateCapabilityCheck();
-        this.renderModelSetting();
-        this.renderModelCapabilitiesSection();
+        if (options?.rebuildModelUi || wasRefreshing) {
+            this.renderModelSetting();
+        }
+        if (options?.rebuildModelUi || wasChecking) {
+            this.renderModelCapabilitiesSection();
+        }
     }
 
     private selectModel(value: string) {
@@ -396,16 +407,25 @@ export class ProviderFormModal extends Modal {
         setting.descEl.empty();
         setting.controlEl.empty();
 
-        const selectedModel = this.getSelectedModel();
-        if (!selectedModel) {
-            setting.settingEl.style.display = 'none';
-            return;
-        }
-
+        // Keep the block mounted even without a model so clearing the field
+        // does not collapse modal height (display:none caused an abrupt jump).
         setting.settingEl.style.display = '';
         setting
             .setName(I18n.t('settings.modelCapabilities'))
             .setClass('ai-providers-model-capabilities-setting');
+
+        const selectedModel = this.getSelectedModel();
+        if (!selectedModel) {
+            const emptyEl = setting.descEl.createDiv(
+                'ai-providers-model-capabilities-empty'
+            );
+            emptyEl.setAttribute('data-testid', 'model-capabilities-empty');
+            emptyEl.textContent = I18n.t(
+                'settings.modelCapabilitiesSelectModel'
+            );
+            return;
+        }
+
         const descriptionEl = setting.descEl;
         const modelEl = descriptionEl.createDiv(
             'ai-providers-model-capabilities-model'
@@ -907,7 +927,7 @@ export class ProviderFormModal extends Modal {
         }
 
         this.updateFields();
-        this.invalidateModelRequests();
+        this.invalidateModelRequests({ rebuildModelUi: true });
     }
 
     private updateFields() {

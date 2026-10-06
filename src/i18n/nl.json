@@ -51,6 +51,7 @@
         "modelCapabilityTools": "Tools",
         "modelCapabilityVision": "Visueel",
         "selectModelFirst": "Selecteer eerst een model",
+        "modelCapabilitiesSelectModel": "Selecteer een model om mogelijkheden te configureren",
         "ollamaContextScale": "Ollama-contextgrootteschaal",
         "ollamaContextScaleDesc": "Vermenigvuldigt de geschatte promptgrootte bij het bepalen van Ollama’s contextvenster, boven op een vaste reserve voor het antwoord. Hogere waarden laten meer ruimte voor lange antwoorden maar gebruiken meer geheugen. Geldt alleen voor Ollama-providers.",
         "reasoningModesDescription": "Redeneermodi (handmatig): kies voor dit model gedocumenteerde waarden; Controleren test de ondersteuning niet."

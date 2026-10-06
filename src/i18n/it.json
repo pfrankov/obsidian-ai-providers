@@ -51,6 +51,7 @@
         "modelCapabilityTools": "Strumenti",
         "modelCapabilityVision": "Visione",
         "selectModelFirst": "Seleziona prima un modello",
+        "modelCapabilitiesSelectModel": "Seleziona un modello per configurare le capacità",
         "ollamaContextScale": "Fattore di dimensione del contesto Ollama",
         "ollamaContextScaleDesc": "Moltiplica la dimensione stimata del prompt nel dimensionare la finestra di contesto di Ollama, oltre a una riserva fissa per la risposta. Valori più alti lasciano più spazio per risposte lunghe ma usano più memoria. Riguarda solo i provider Ollama.",
         "reasoningModesDescription": "Modalità di ragionamento (manuali): scegli valori documentati per questo modello; Verifica non ne testa il supporto."
