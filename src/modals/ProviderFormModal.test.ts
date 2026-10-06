@@ -98,14 +98,43 @@ describe('ProviderFormModal', () => {
         provider.model = '';
         modal.onOpen();
 
-        expect(modal.contentEl.textContent).not.toContain(
+        expect(modal.contentEl.textContent).toContain(
             'settings.modelCapabilities'
         );
         expect(
             modal.contentEl.querySelector(
-                '[data-testid="check-model-capabilities"]'
+                '[data-testid="model-capabilities-empty"]'
+            )?.textContent
+        ).toBe('settings.modelCapabilitiesSelectModel');
+        const checkButton = getElement<HTMLButtonElement>(
+            modal.contentEl,
+            '[data-testid="check-model-capabilities"]'
+        );
+        expect(checkButton.disabled).toBe(true);
+        for (const key of ['embedding', 'text', 'tools', 'vision']) {
+            const checkbox = getElement<HTMLInputElement>(
+                modal.contentEl,
+                `[data-testid="model-capability-${key}"]`
+            );
+            expect(checkbox.disabled).toBe(true);
+            expect(checkbox.checked).toBe(false);
+        }
+        // OpenAI vocabulary stays mounted (disabled) so modal height is stable.
+        expect(
+            modal.contentEl.querySelectorAll('[data-reasoning-mode]').length
+        ).toBe(7);
+        expect(
+            modal.contentEl.querySelector(
+                '.ai-providers-model-capabilities-disabled'
             )
-        ).toBeFalsy();
+        ).toBeTruthy();
+        expect(
+            (
+                modal.contentEl.querySelector(
+                    '.ai-providers-model-capabilities-setting'
+                ) as HTMLElement | null
+            )?.style.display
+        ).not.toBe('none');
     });
 
     it('shows capabilities section after selecting a model from suggestions', async () => {
@@ -120,7 +149,7 @@ describe('ProviderFormModal', () => {
             )
         ).toBeTruthy();
 
-        // Clear the model text — capabilities should hide
+        // Clear the model text — capabilities stay mounted with a placeholder
         const input = getElement<HTMLInputElement>(
             modal.contentEl,
             '[data-testid="model-combobox-input"]'
@@ -129,24 +158,73 @@ describe('ProviderFormModal', () => {
         input.dispatchEvent(new Event('input'));
         await flushPromises();
 
+        const disabledCheck = getElement<HTMLButtonElement>(
+            modal.contentEl,
+            '[data-testid="check-model-capabilities"]'
+        );
+        expect(disabledCheck.disabled).toBe(true);
         expect(
             modal.contentEl.querySelector(
-                '[data-testid="check-model-capabilities"]'
+                '[data-testid="model-capabilities-empty"]'
+            )?.textContent
+        ).toBe('settings.modelCapabilitiesSelectModel');
+        expect(
+            modal.contentEl.querySelector(
+                '.ai-providers-model-capabilities-disabled'
             )
-        ).toBeFalsy();
+        ).toBeTruthy();
+        expect(
+            (
+                modal.contentEl.querySelector(
+                    '.ai-providers-model-capabilities-setting'
+                ) as HTMLElement | null
+            )?.style.display
+        ).not.toBe('none');
 
         // Select a model via suggestions (bypasses onChange)
         const suggest = (modal as any).modelSuggest;
         suggest.selectSuggestion('gpt-3.5-turbo', new MouseEvent('click'));
         await flushPromises();
 
-        // Capabilities section should reappear
+        // Capabilities controls re-enable for the selected model
         expect(provider.model).toBe('gpt-3.5-turbo');
+        const enabledCheck = getElement<HTMLButtonElement>(
+            modal.contentEl,
+            '[data-testid="check-model-capabilities"]'
+        );
+        expect(enabledCheck.disabled).toBe(false);
         expect(
             modal.contentEl.querySelector(
-                '[data-testid="check-model-capabilities"]'
+                '[data-testid="model-capabilities-empty"]'
             )
-        ).toBeTruthy();
+        ).toBeFalsy();
+        expect(
+            modal.contentEl.querySelector(
+                '.ai-providers-model-capabilities-disabled'
+            )
+        ).toBeFalsy();
+    });
+
+    it('keeps disabled capability controls inert when no model is selected', () => {
+        provider.model = '';
+        provider.type = 'openai';
+        modal.onOpen();
+
+        const tools = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-capability-tools"]'
+        );
+        tools.checked = true;
+        tools.dispatchEvent(new Event('change'));
+        expect(provider.modelCapabilities).toBeUndefined();
+
+        const reasoning = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-reasoning-mode="high"]'
+        );
+        reasoning.checked = true;
+        reasoning.dispatchEvent(new Event('change'));
+        expect(provider.modelCapabilities).toBeUndefined();
     });
 
     it('returns default capabilities when no model is selected', () => {
@@ -1141,6 +1219,116 @@ describe('ProviderFormModal', () => {
         urlInput.dispatchEvent(new Event('input'));
         expect(provider.url).toBe('https://new-url.com');
         expect((modal as any).urlModified).toBe(true);
+    });
+
+    it('keeps URL and API key input nodes stable across credential keystrokes', () => {
+        modal.onOpen();
+        const urlInput = getElement<HTMLInputElement>(
+            modal.contentEl,
+            'input[data-field="provider-url"]'
+        );
+        const apiKeyInput = getElement<HTMLInputElement>(
+            modal.contentEl,
+            'input[placeholder="settings.apiKeyPlaceholder"]'
+        );
+        const modelInput = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-combobox-input"]'
+        );
+
+        urlInput.focus();
+        for (const value of [
+            'https://a',
+            'https://ab',
+            'https://abc.example/v1',
+        ]) {
+            urlInput.value = value;
+            urlInput.dispatchEvent(new Event('input'));
+        }
+        expect(provider.url).toBe('https://abc.example/v1');
+        expect(
+            modal.contentEl.querySelector('input[data-field="provider-url"]')
+        ).toBe(urlInput);
+        expect(
+            modal.contentEl.querySelector(
+                '[data-testid="model-combobox-input"]'
+            )
+        ).toBe(modelInput);
+
+        apiKeyInput.focus();
+        for (const value of ['s', 'sy', 'synthetic-key']) {
+            apiKeyInput.value = value;
+            apiKeyInput.dispatchEvent(new Event('input'));
+        }
+        expect(provider.apiKey).toBe('synthetic-key');
+        expect(
+            modal.contentEl.querySelector(
+                'input[placeholder="settings.apiKeyPlaceholder"]'
+            )
+        ).toBe(apiKeyInput);
+        expect(
+            modal.contentEl.querySelector(
+                '[data-testid="model-combobox-input"]'
+            )
+        ).toBe(modelInput);
+    });
+
+    it('clears refresh loading UI on URL edit without remounting credential fields', async () => {
+        const refresh = (() => {
+            let resolve!: (value: string[]) => void;
+            const promise = new Promise<string[]>(r => {
+                resolve = r;
+            });
+            return { promise, resolve };
+        })();
+        vi.spyOn(plugin.aiProviders, 'fetchModels').mockReturnValueOnce(
+            refresh.promise
+        );
+        modal.onOpen();
+        const urlInput = getElement<HTMLInputElement>(
+            modal.contentEl,
+            'input[data-field="provider-url"]'
+        );
+        const apiKeyInput = getElement<HTMLInputElement>(
+            modal.contentEl,
+            'input[placeholder="settings.apiKeyPlaceholder"]'
+        );
+
+        getElement<HTMLButtonElement>(
+            modal.contentEl,
+            '[data-testid="refresh-models-button"]'
+        ).click();
+        expect(
+            getElement<HTMLButtonElement>(
+                modal.contentEl,
+                '[data-testid="refresh-models-button"]'
+            ).disabled
+        ).toBe(true);
+
+        urlInput.value = 'https://changed.example/v1';
+        urlInput.dispatchEvent(new Event('input'));
+        expect(provider.url).toBe('https://changed.example/v1');
+        expect(
+            modal.contentEl.querySelector('input[data-field="provider-url"]')
+        ).toBe(urlInput);
+        expect(
+            modal.contentEl.querySelector(
+                'input[placeholder="settings.apiKeyPlaceholder"]'
+            )
+        ).toBe(apiKeyInput);
+        expect(
+            getElement<HTMLButtonElement>(
+                modal.contentEl,
+                '[data-testid="refresh-models-button"]'
+            ).disabled
+        ).toBe(false);
+
+        refresh.resolve(['stale-model']);
+        await flushPromises();
+        expect(provider.availableModels).toBeUndefined();
+        expect(
+            modal.contentEl.querySelector('input[data-field="provider-url"]')
+        ).toBe(urlInput);
     });
 
     it('should treat name as unmodified if it matches previous provider default', () => {

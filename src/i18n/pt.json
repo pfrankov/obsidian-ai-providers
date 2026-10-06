@@ -51,8 +51,10 @@
         "modelCapabilityTools": "Ferramentas",
         "modelCapabilityVision": "Visão",
         "selectModelFirst": "Selecione um modelo primeiro",
+        "modelCapabilitiesSelectModel": "Selecione um modelo para configurar as capacidades",
         "ollamaContextScale": "Fator de tamanho de contexto do Ollama",
-        "ollamaContextScaleDesc": "Multiplica o tamanho estimado do prompt ao dimensionar a janela de contexto do Ollama, além de uma reserva fixa para a resposta. Valores maiores deixam mais espaço para respostas longas, mas usam mais memória. Afeta apenas provedores Ollama."
+        "ollamaContextScaleDesc": "Multiplica o tamanho estimado do prompt ao dimensionar a janela de contexto do Ollama, além de uma reserva fixa para a resposta. Valores maiores deixam mais espaço para respostas longas, mas usam mais memória. Afeta apenas provedores Ollama.",
+        "reasoningModesDescription": "Modos de raciocínio (manual): escolha valores documentados para este modelo; Verificar não testa o suporte."
     },
     "modals": {
         "confirm": "Confirmar",
@@ -65,10 +67,12 @@
         "missingApiKey": "Chave de API é obrigatória",
         "missingUrl": "URL do provedor é obrigatória",
         "missingModel": "Um modelo deve ser selecionado",
-        "pluginMustBeUpdated": "Plugin precisa ser atualizado",
-        "pluginMustBeUpdatedFormatted": "O plugin precisa ser atualizado para funcionar com esta versão do AI Providers",
+        "pluginMustBeUpdated": "O AI Providers precisa ser atualizado",
+        "pluginMustBeUpdatedFormatted": "Atualize o AI Providers para usar com este plugin",
         "providerNameRequired": "Nome do provedor é obrigatório",
         "providerNameExists": "Já existe um provedor com o nome \"{{name}}\"",
-        "ollamaGenerationLimitReached": "O Ollama parou de gerar para \"{{model}}\" ao atingir um limite de geração. A resposta parcial foi mantida."
+        "ollamaGenerationLimitReached": "O Ollama parou de gerar para \"{{model}}\" ao atingir um limite de geração. A resposta parcial foi mantida.",
+        "aiProvidersOutdated": "O AI Providers precisa ser atualizado (API {{required}} necessária, atual {{current}})",
+        "aiProvidersOutdatedFormatted": "Atualize o AI Providers para {{pluginVersion}} (API de serviço {{required}} necessária; atual {{current}})"
     }
 }

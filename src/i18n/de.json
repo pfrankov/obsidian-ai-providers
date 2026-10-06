@@ -51,8 +51,10 @@
         "modelCapabilityTools": "Werkzeuge",
         "modelCapabilityVision": "Visuell",
         "selectModelFirst": "Wählen Sie zuerst ein Modell aus",
+        "modelCapabilitiesSelectModel": "Wählen Sie ein Modell, um die Fähigkeiten zu konfigurieren",
         "ollamaContextScale": "Ollama-Kontextgrößenfaktor",
-        "ollamaContextScaleDesc": "Multipliziert die geschätzte Prompt-Größe bei der Bemessung des Ollama-Kontextfensters, zusätzlich zu einer festen Reserve für die Antwort. Höhere Werte lassen mehr Raum für lange Antworten, benötigen aber mehr Speicher. Betrifft nur Ollama-Anbieter."
+        "ollamaContextScaleDesc": "Multipliziert die geschätzte Prompt-Größe bei der Bemessung des Ollama-Kontextfensters, zusätzlich zu einer festen Reserve für die Antwort. Höhere Werte lassen mehr Raum für lange Antworten, benötigen aber mehr Speicher. Betrifft nur Ollama-Anbieter.",
+        "reasoningModesDescription": "Denkmodi (manuell): für das Modell dokumentierte Werte wählen; Prüfen testet deren Unterstützung nicht."
     },
     "modals": {
         "confirm": "Bestätigen",
@@ -65,10 +67,12 @@
         "missingApiKey": "API-Schlüssel ist erforderlich",
         "missingUrl": "Anbieter-URL ist erforderlich",
         "missingModel": "Modell muss ausgewählt werden",
-        "pluginMustBeUpdated": "Plugin muss aktualisiert werden",
-        "pluginMustBeUpdatedFormatted": "Das Plugin muss aktualisiert werden, um mit dieser Version von AI Providers zu funktionieren",
+        "pluginMustBeUpdated": "AI Providers muss aktualisiert werden",
+        "pluginMustBeUpdatedFormatted": "Aktualisieren Sie AI Providers, um mit diesem Plugin zu arbeiten",
         "providerNameRequired": "Anbietername ist erforderlich",
         "providerNameExists": "Ein Anbieter mit dem Namen \"{{name}}\" existiert bereits",
-        "ollamaGenerationLimitReached": "Ollama hat die Generierung für „{{model}}“ nach Erreichen eines Generierungslimits beendet. Die unvollständige Antwort wurde beibehalten."
+        "ollamaGenerationLimitReached": "Ollama hat die Generierung für „{{model}}“ nach Erreichen eines Generierungslimits beendet. Die unvollständige Antwort wurde beibehalten.",
+        "aiProvidersOutdated": "AI Providers muss aktualisiert werden (benötigt API {{required}}, aktuell {{current}})",
+        "aiProvidersOutdatedFormatted": "Aktualisieren Sie AI Providers auf {{pluginVersion}} (benötigt Service-API {{required}}; aktuell {{current}})"
     }
 }

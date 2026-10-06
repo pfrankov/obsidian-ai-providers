@@ -41,6 +41,8 @@ export interface IAIModelCapabilities {
     text: boolean;
     tools: boolean;
     vision: boolean;
+    /** Manually declared native reasoning modes. Omission sends no reasoning setting. */
+    reasoningModes?: string[];
 }
 
 export type IAIProvidersTextProgressCallback = (
@@ -61,6 +63,11 @@ export interface IChunkHandler {
 
 export interface IAIProvidersService {
     version: number;
+    /**
+     * Human AI Providers plugin version from the installed manifest
+     * (e.g. "1.12.0"). Optional so older service builds remain type-compatible.
+     */
+    pluginVersion?: string;
     providers: IAIProvider[];
     /** @deprecated Pass an object: { provider, abortController? } */
     fetchModels(provider: IAIProvider): Promise<string[]>;
@@ -178,6 +185,8 @@ export interface IAIProvidersExecuteParamsBase {
     provider: IAIProvider;
     /** Optional model override. When set, this model is used instead of the provider's default. */
     model?: string;
+    /** Opt-in native mode declared in this model's capabilities. Requires service API 5. */
+    reasoningMode?: string;
     images?: string[];
     options?: {
         temperature?: number;
@@ -212,6 +221,8 @@ export type IAIProvidersToolsExecuteParams = {
     provider: IAIProvider;
     /** Optional model override. When set, this model is used instead of the provider's default. */
     model?: string;
+    /** Opt-in native mode declared in this model's capabilities. Requires service API 5. */
+    reasoningMode?: string;
     messages: IChatMessage[];
     tools: IAIToolDefinition[];
     tool_choice?: IAIToolChoice;

@@ -8,6 +8,7 @@ import {
     IAIDocument,
 } from '@obsidian-ai-providers/sdk';
 import { logger } from './utils/logger';
+import { I18n } from './i18n';
 import { AI_PROVIDERS_SERVICE_VERSION } from './constants/serviceApiVersion';
 
 // Mock the handlers
@@ -26,7 +27,9 @@ vi.mock('./utils/logger', () => ({
 
 vi.mock('./i18n', () => ({
     I18n: {
-        t: (key: string) => key,
+        t: vi.fn((key: string, params?: Record<string, string>) =>
+            params ? `${key}:${JSON.stringify(params)}` : key
+        ),
     },
 }));
 
@@ -74,6 +77,7 @@ describe('AIProvidersService', () => {
                 providers: [],
                 _version: 1,
             },
+            manifest: { id: 'ai-providers', version: '1.12.0' },
             saveSettings: vi.fn(),
         } as any;
 
@@ -88,6 +92,7 @@ describe('AIProvidersService', () => {
 
         // Create service instance
         service = new AIProvidersService(mockApp, mockPlugin);
+        expect(service.pluginVersion).toBe('1.12.0');
 
         // Clear all mocks
         vi.clearAllMocks();
@@ -822,14 +827,70 @@ describe('AIProvidersService', () => {
                 code?: string;
                 requiredVersion?: number;
                 currentVersion?: number;
+                pluginVersion?: string;
             };
-            expect(compatibilityError.message).toBe(
-                'errors.pluginMustBeUpdated'
+            expect(compatibilityError.message).toContain(
+                'errors.aiProvidersOutdated'
             );
             expect(compatibilityError.code).toBe('version_mismatch');
             expect(compatibilityError.requiredVersion).toBe(999);
             expect(compatibilityError.currentVersion).toBe(
                 AI_PROVIDERS_SERVICE_VERSION
+            );
+            // Error still reports the installed plugin version (metadata).
+            expect(compatibilityError.pluginVersion).toBe('1.12.0');
+        }
+    });
+
+    it('checkCompatibility Notice uses known plugin mapping for API 5', () => {
+        (service as any).version = 4;
+        try {
+            service.checkCompatibility(5);
+            throw new Error('Expected compatibility error');
+        } catch {
+            expect(I18n.t).toHaveBeenCalledWith(
+                'errors.aiProvidersOutdatedFormatted',
+                {
+                    required: '5',
+                    current: '4',
+                    pluginVersion: '1.12.0+',
+                }
+            );
+        }
+    });
+
+    it('checkCompatibility Notice states required API for unmapped levels', () => {
+        // Installed plugin is 1.12.0 (API 5); requiring API 6 must not say "1.12.0+".
+        try {
+            service.checkCompatibility(6);
+            throw new Error('Expected compatibility error');
+        } catch {
+            expect(I18n.t).toHaveBeenCalledWith(
+                'errors.aiProvidersOutdatedFormatted',
+                {
+                    required: '6',
+                    current: String(AI_PROVIDERS_SERVICE_VERSION),
+                    pluginVersion: 'API v6',
+                }
+            );
+        }
+    });
+
+    it('checkCompatibility does not invent a plugin release when pluginVersion is empty', () => {
+        (service as any).pluginVersion = '';
+        try {
+            service.checkCompatibility(6);
+            throw new Error('Expected compatibility error');
+        } catch (error) {
+            const compatibilityError = error as Error & {
+                code?: string;
+                pluginVersion?: string;
+            };
+            expect(compatibilityError.code).toBe('version_mismatch');
+            expect(compatibilityError.pluginVersion).toBe('');
+            expect(I18n.t).toHaveBeenCalledWith(
+                'errors.aiProvidersOutdatedFormatted',
+                expect.objectContaining({ pluginVersion: 'API v6' })
             );
         }
     });
@@ -1501,4 +1562,117 @@ describe('AIProvidersService', () => {
             await expect(promise).rejects.toThrow(/Aborted/);
         });
     });
+    it('preserves manually declared modes when probing an overridden model', async () => {
+        const stored: IAIProvider = {
+            ...mockProvider,
+            modelCapabilities: {
+                target: {
+                    text: false,
+                    tools: false,
+                    vision: false,
+                    embedding: false,
+                    reasoningModes: ['low'],
+                },
+            },
+        };
+        mockPlugin.settings.providers = [stored];
+        const result = await service.checkModelCapabilities({
+            provider: mockProvider,
+            model: 'target',
+        });
+        expect(result.reasoningModes).toEqual(['low']);
+        expect(stored.modelCapabilities?.target.reasoningModes).toEqual([
+            'low',
+        ]);
+        expect(
+            service.getModelCapabilities({ provider: stored, model: 'target' })
+                ?.reasoningModes
+        ).toEqual(['low']);
+        expect(
+            service.getModels({
+                provider: { ...stored, availableModels: ['target'] },
+            }).target?.reasoningModes
+        ).toEqual(['low']);
+    });
+    it('handles a missing model and provider settings during a capability check', async () => {
+        mockPlugin.settings.providers = undefined;
+        const result = await service.checkModelCapabilities({
+            provider: {
+                ...mockProvider,
+                model: undefined,
+                modelCapabilities: {},
+            },
+        });
+        expect(result.reasoningModes).toBeUndefined();
+    });
+    it.each([
+        'openai',
+        'zai',
+        'openrouter',
+        'ollama',
+        'ollama-openwebui',
+    ] as const)(
+        'resolves %s reasoning declarations after the effective provider/model selection',
+        async type => {
+            const caps = {
+                text: true,
+                tools: true,
+                vision: false,
+                embedding: false,
+            };
+            const provider: IAIProvider = {
+                ...mockProvider,
+                type,
+                model: 'arbitrary-source',
+                modelCapabilities: {
+                    'arbitrary-source': { ...caps, reasoningModes: ['low'] },
+                    'arbitrary-target': { ...caps, reasoningModes: ['high'] },
+                },
+            };
+            const params = {
+                provider,
+                model: 'arbitrary-target',
+                reasoningMode: 'high',
+                messages: [],
+                tools: [],
+                abortController: new AbortController(),
+            };
+            await service.execute(params);
+            await service.toolsExecute(params);
+            const effective = expect.objectContaining({
+                reasoningMode: 'high',
+                provider: expect.objectContaining({
+                    id: provider.id,
+                    type,
+                    model: 'arbitrary-target',
+                }),
+            });
+            expect(
+                (service as any).handlers[type].execute
+            ).toHaveBeenCalledWith(effective);
+            expect(
+                (service as any).handlers[type].toolsExecute
+            ).toHaveBeenCalledWith(effective);
+            expect(provider.model).toBe('arbitrary-source');
+            for (const changed of [
+                { ...params, model: undefined },
+                { ...params, reasoningMode: 'low' },
+                {
+                    ...params,
+                    provider: {
+                        ...provider,
+                        id: 'other-provider',
+                        modelCapabilities: {},
+                    },
+                },
+            ]) {
+                await expect(service.execute(changed)).rejects.toThrow(
+                    'not declared or supported'
+                );
+                await expect(service.toolsExecute(changed)).rejects.toThrow(
+                    'not declared or supported'
+                );
+            }
+        }
+    );
 });

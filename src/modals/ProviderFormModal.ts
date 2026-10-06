@@ -19,6 +19,13 @@ import {
 } from '@obsidian-ai-providers/sdk';
 import { logger } from '../utils/logger';
 import AIProvidersPlugin from '../main';
+import {
+    getAdapterReasoningVocabulary,
+    getReasoningModes,
+} from '../utils/reasoningModes';
+
+type BooleanCapability = 'embedding' | 'text' | 'tools' | 'vision';
+
 import { probeModelCapabilities } from '../utils/modelCapabilityChecker';
 
 interface ProviderConfig {
@@ -352,10 +359,7 @@ export class ProviderFormModal extends Modal {
         }
     }
 
-    private setSelectedModelCapability(
-        key: keyof IAIModelCapabilities,
-        value: boolean
-    ) {
+    private setSelectedModelCapability(key: BooleanCapability, value: boolean) {
         this.invalidateCapabilityCheck();
         const current = this.getSelectedModelCapabilities();
         this.setSelectedModelCapabilities({
@@ -370,11 +374,22 @@ export class ProviderFormModal extends Modal {
         this.modelCapabilitiesStatus = '';
     }
 
-    private invalidateModelRequests() {
+    // URL/API-key edits must only discard in-flight tokens. Rebuilding the
+    // model/capabilities controls on every keystroke remounts nearby DOM and
+    // can scramble focus/caret in the credential fields being typed into.
+    // Rebuild those controls when a refresh/check was showing loading UI, or
+    // when forced after type/model-list changes (see AGENTS.md).
+    private invalidateModelRequests(options?: { rebuildModelUi?: boolean }) {
+        const wasRefreshing = Boolean(this.modelRefreshRequest);
+        const wasChecking = Boolean(this.capabilityCheckRequest);
         this.modelRefreshRequest = undefined;
         this.invalidateCapabilityCheck();
-        this.renderModelSetting();
-        this.renderModelCapabilitiesSection();
+        if (options?.rebuildModelUi || wasRefreshing) {
+            this.renderModelSetting();
+        }
+        if (options?.rebuildModelUi || wasChecking) {
+            this.renderModelCapabilitiesSection();
+        }
     }
 
     private selectModel(value: string) {
@@ -395,29 +410,48 @@ export class ProviderFormModal extends Modal {
         setting.descEl.empty();
         setting.controlEl.empty();
 
-        const selectedModel = this.getSelectedModel();
-        if (!selectedModel) {
-            setting.settingEl.style.display = 'none';
-            return;
-        }
-
+        // Always keep Check / capability / reasoning controls mounted so
+        // clearing the model does not shrink the modal. Without a model the
+        // controls stay visible but disabled, with a placeholder description.
         setting.settingEl.style.display = '';
         setting
             .setName(I18n.t('settings.modelCapabilities'))
             .setClass('ai-providers-model-capabilities-setting');
+
+        const selectedModel = this.getSelectedModel();
+        const controlsDisabled = !selectedModel;
         const descriptionEl = setting.descEl;
-        const modelEl = descriptionEl.createDiv(
-            'ai-providers-model-capabilities-model'
-        );
-        modelEl.textContent = selectedModel;
-        if (this.modelCapabilitiesStatus) {
-            const statusEl = descriptionEl.createDiv(
-                'ai-providers-model-capabilities-status'
+        if (controlsDisabled) {
+            const emptyEl = descriptionEl.createDiv(
+                'ai-providers-model-capabilities-empty'
             );
-            statusEl.textContent = this.modelCapabilitiesStatus;
+            emptyEl.setAttribute('data-testid', 'model-capabilities-empty');
+            emptyEl.textContent = I18n.t(
+                'settings.modelCapabilitiesSelectModel'
+            );
+        } else {
+            const modelEl = descriptionEl.createDiv(
+                'ai-providers-model-capabilities-model'
+            );
+            modelEl.textContent = selectedModel;
+            if (this.modelCapabilitiesStatus) {
+                const statusEl = descriptionEl.createDiv(
+                    'ai-providers-model-capabilities-status'
+                );
+                statusEl.textContent = this.modelCapabilitiesStatus;
+            }
         }
 
         setting.controlEl.addClass('ai-providers-model-capabilities-control');
+        if (controlsDisabled) {
+            setting.controlEl.addClass(
+                'ai-providers-model-capabilities-disabled'
+            );
+        } else {
+            setting.controlEl.removeClass(
+                'ai-providers-model-capabilities-disabled'
+            );
+        }
         const layoutEl = setting.controlEl.createDiv(
             'ai-providers-model-capabilities-layout'
         );
@@ -433,14 +467,15 @@ export class ProviderFormModal extends Modal {
                 ? I18n.t('settings.modelCapabilitiesChecking')
                 : I18n.t('settings.modelCapabilitiesCheck'),
         });
-        checkButton.disabled = Boolean(this.capabilityCheckRequest);
+        checkButton.disabled =
+            controlsDisabled || Boolean(this.capabilityCheckRequest);
         checkButton.setAttribute('data-testid', 'check-model-capabilities');
         checkButton.addEventListener('click', async () => {
             await this.checkModelCapabilities();
         });
 
         const capabilities = this.getSelectedModelCapabilities();
-        const capabilityLabels: Array<[keyof IAIModelCapabilities, string]> = [
+        const capabilityLabels: Array<[BooleanCapability, string]> = [
             ['embedding', I18n.t('settings.modelCapabilityEmbedding')],
             ['text', I18n.t('settings.modelCapabilityText')],
             ['tools', I18n.t('settings.modelCapabilityTools')],
@@ -450,14 +485,18 @@ export class ProviderFormModal extends Modal {
             'ai-providers-model-capabilities-grid'
         );
 
+        this.renderReasoningModes(layoutEl, controlsDisabled);
+
         capabilityLabels.forEach(([key, label]) => {
             const labelEl = checkboxGrid.createEl('label');
             labelEl.addClass('ai-providers-model-capability');
             const checkbox = labelEl.createEl('input') as HTMLInputElement;
             checkbox.type = 'checkbox';
-            checkbox.checked = capabilities[key];
+            checkbox.checked = !controlsDisabled && capabilities[key];
+            checkbox.disabled = controlsDisabled;
             checkbox.setAttribute('data-testid', `model-capability-${key}`);
             checkbox.addEventListener('change', () => {
+                if (controlsDisabled) return;
                 const hadFocus = checkbox.matches(':focus');
                 this.setSelectedModelCapability(key, checkbox.checked);
                 if (hadFocus) {
@@ -468,6 +507,58 @@ export class ProviderFormModal extends Modal {
                 }
             });
             labelEl.createEl('span', { text: label });
+        });
+    }
+
+    private renderReasoningModes(
+        container: HTMLElement,
+        controlsDisabled = false
+    ) {
+        // Use adapter vocabulary even without a selected model so the disabled
+        // placeholder keeps the same rows as an active provider form.
+        const modes = controlsDisabled
+            ? getAdapterReasoningVocabulary(this.provider.type)
+            : getReasoningModes(this.provider);
+        if (!modes.length) return;
+        const description = container.createDiv(
+            'ai-providers-reasoning-description'
+        );
+        description.textContent = I18n.t('settings.reasoningModesDescription');
+        const choices = container.createDiv('ai-providers-reasoning-modes');
+        const selected = controlsDisabled
+            ? []
+            : this.getSelectedModelCapabilities().reasoningModes || [];
+        modes.forEach(mode => {
+            const label = choices.createEl('label');
+            label.addClass('ai-providers-model-capability');
+            const checkbox = label.createEl('input') as HTMLInputElement;
+            checkbox.type = 'checkbox';
+            checkbox.checked = selected.includes(mode);
+            checkbox.disabled = controlsDisabled;
+            checkbox.dataset.reasoningMode = mode;
+            checkbox.addEventListener('change', () => {
+                if (controlsDisabled) return;
+                const hadFocus = checkbox.matches(':focus');
+                this.invalidateCapabilityCheck();
+                const current = this.getSelectedModelCapabilities();
+                const remaining = (current.reasoningModes || []).filter(
+                    value => value !== mode
+                );
+                this.setSelectedModelCapabilities({
+                    ...current,
+                    reasoningModes: checkbox.checked
+                        ? [...remaining, mode]
+                        : remaining,
+                });
+                this.renderModelCapabilitiesSection();
+                if (hadFocus) {
+                    const updated = this.contentEl.querySelector(
+                        `[data-reasoning-mode="${mode}"]`
+                    ) as HTMLInputElement | null;
+                    updated?.focus();
+                }
+            });
+            label.createEl('span', { text: mode });
         });
     }
 
@@ -494,7 +585,10 @@ export class ProviderFormModal extends Modal {
                 return;
             }
 
-            this.setSelectedModelCapabilities(capabilities);
+            this.setSelectedModelCapabilities({
+                ...this.getSelectedModelCapabilities(),
+                ...capabilities,
+            });
             this.modelCapabilitiesStatus = I18n.t(
                 'settings.modelCapabilitiesUpdated'
             );
@@ -859,7 +953,7 @@ export class ProviderFormModal extends Modal {
         }
 
         this.updateFields();
-        this.invalidateModelRequests();
+        this.invalidateModelRequests({ rebuildModelUi: true });
     }
 
     private updateFields() {

@@ -1,5 +1,5 @@
 import { App, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
-import { initAI, waitForAI } from '@obsidian-ai-providers/sdk';
+import { initAI, waitForAI, supportsVersion } from '@obsidian-ai-providers/sdk';
 import { RAGSearchComponent } from './RAGSearchComponent';
 import { ToolCallingComponent } from './ToolCallingComponent';
 
@@ -11,9 +11,15 @@ export default class AIProvidersExamplePlugin extends Plugin {
     settings: AIProvidersExampleSettings = { mySetting: '' };
 
     async onload() {
-        initAI(this.app, this, async () => {
-            this.addSettingTab(new SampleSettingTab(this.app, this));
-        });
+        // Soft floor: load against AI Providers API v4+; reasoning UI is gated below.
+        initAI(
+            this.app,
+            this,
+            async () => {
+                this.addSettingTab(new SampleSettingTab(this.app, this));
+            },
+            { minVersion: 4 }
+        );
     }
 }
 
@@ -86,6 +92,33 @@ class SampleSettingTab extends PluginSettingTab {
                 return;
             }
 
+            let reasoningMode: string | undefined;
+            // Reasoning controls + execute field require service API 5+.
+            const reasoningApi = supportsVersion(aiProviders, 5);
+            const reasoningModes = reasoningApi
+                ? aiProviders.getModelCapabilities?.({ provider })
+                      ?.reasoningModes || []
+                : [];
+            if (reasoningModes.length) {
+                new Setting(containerEl)
+                    .setName('Reasoning mode for this test')
+                    .setDesc(
+                        'Manually declared model modes. API default omits the setting.'
+                    )
+                    .addDropdown(dropdown =>
+                        dropdown
+                            .addOption('', 'API default')
+                            .addOptions(
+                                Object.fromEntries(
+                                    reasoningModes.map(mode => [mode, mode])
+                                )
+                            )
+                            .onChange(value => {
+                                reasoningMode = value || undefined;
+                            })
+                    );
+            }
+
             // Text generation section
             new Setting(containerEl)
                 .setName('Execute test prompt')
@@ -101,6 +134,9 @@ class SampleSettingTab extends PluginSettingTab {
                             const fullText = await aiProviders.execute({
                                 provider,
                                 prompt: 'What is the capital of Great Britain?',
+                                ...(reasoningApi && reasoningMode
+                                    ? { reasoningMode }
+                                    : {}),
                                 abortController,
                                 onProgress: (_chunk, accumulatedText) => {
                                     paragraph.setText(accumulatedText);

@@ -51,8 +51,10 @@
         "modelCapabilityTools": "Strumenti",
         "modelCapabilityVision": "Visione",
         "selectModelFirst": "Seleziona prima un modello",
+        "modelCapabilitiesSelectModel": "Seleziona un modello per configurare le capacità",
         "ollamaContextScale": "Fattore di dimensione del contesto Ollama",
-        "ollamaContextScaleDesc": "Moltiplica la dimensione stimata del prompt nel dimensionare la finestra di contesto di Ollama, oltre a una riserva fissa per la risposta. Valori più alti lasciano più spazio per risposte lunghe ma usano più memoria. Riguarda solo i provider Ollama."
+        "ollamaContextScaleDesc": "Moltiplica la dimensione stimata del prompt nel dimensionare la finestra di contesto di Ollama, oltre a una riserva fissa per la risposta. Valori più alti lasciano più spazio per risposte lunghe ma usano più memoria. Riguarda solo i provider Ollama.",
+        "reasoningModesDescription": "Modalità di ragionamento (manuali): scegli valori documentati per questo modello; Verifica non ne testa il supporto."
     },
     "modals": {
         "confirm": "Conferma",
@@ -65,10 +67,12 @@
         "missingApiKey": "La chiave API è richiesta",
         "missingUrl": "L'URL del provider è richiesto",
         "missingModel": "È necessario selezionare un modello",
-        "pluginMustBeUpdated": "Il plugin deve essere aggiornato",
-        "pluginMustBeUpdatedFormatted": "Il plugin deve essere aggiornato per funzionare con questa versione di AI Providers",
+        "pluginMustBeUpdated": "AI Providers deve essere aggiornato",
+        "pluginMustBeUpdatedFormatted": "Aggiorna AI Providers per usarlo con questo plugin",
         "providerNameRequired": "Il nome del provider è richiesto",
         "providerNameExists": "Esiste già un provider con il nome \"{{name}}\"",
-        "ollamaGenerationLimitReached": "Ollama ha interrotto la generazione per «{{model}}» dopo aver raggiunto un limite di generazione. La risposta parziale è stata conservata."
+        "ollamaGenerationLimitReached": "Ollama ha interrotto la generazione per «{{model}}» dopo aver raggiunto un limite di generazione. La risposta parziale è stata conservata.",
+        "aiProvidersOutdated": "AI Providers deve essere aggiornato (serve API {{required}}, disponibile {{current}})",
+        "aiProvidersOutdatedFormatted": "Aggiorna AI Providers a {{pluginVersion}} (serve API di servizio {{required}}; attuale {{current}})"
     }
 }

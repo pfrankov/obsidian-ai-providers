@@ -1,3 +1,4 @@
+import { reasoningRequestFields } from './utils/reasoningModes';
 import { App, Notice } from 'obsidian';
 import {
     AIProviderType,
@@ -13,6 +14,7 @@ import {
     IAIProvidersRetrievalResult,
     IAIProvidersService,
     IChunkHandler,
+    recommendedPluginVersionForApi,
 } from '@obsidian-ai-providers/sdk';
 import { OpenAIHandler } from './handlers/OpenAIHandler';
 import { OllamaHandler } from './handlers/OllamaHandler';
@@ -31,6 +33,8 @@ import { AI_PROVIDERS_SERVICE_VERSION } from './constants/serviceApiVersion';
 export class AIProvidersService implements IAIProvidersService {
     providers: IAIProvider[] = [];
     version = AI_PROVIDERS_SERVICE_VERSION;
+    /** Manifest version of the installed AI Providers plugin (e.g. "1.12.0"). */
+    pluginVersion: string;
     private app: App;
     private plugin: AIProvidersPlugin;
     private handlers: Record<string, IAIHandler>;
@@ -40,6 +44,7 @@ export class AIProvidersService implements IAIProvidersService {
         this.plugin = plugin;
         this.providers = plugin.settings.providers || [];
         this.app = app;
+        this.pluginVersion = plugin.manifest?.version ?? '';
 
         // Initialize handlers for each provider type
         this.handlers = {
@@ -208,6 +213,8 @@ export class AIProvidersService implements IAIProvidersService {
               }
             : params;
 
+        reasoningRequestFields(resolvedParams);
+
         const extendedParams = resolvedParams as IAIProvidersExecuteParams & {
             onProgress?: (chunk: string, accumulatedText: string) => void;
             abortController?: AbortController;
@@ -281,6 +288,7 @@ export class AIProvidersService implements IAIProvidersService {
               }
             : params;
 
+        reasoningRequestFields(resolvedParams);
         return handler.toolsExecute(resolvedParams);
     }
 
@@ -322,10 +330,17 @@ export class AIProvidersService implements IAIProvidersService {
         const targetModel = model || provider.model;
         const probeProvider = model ? { ...provider, model } : provider;
 
-        const capabilities = await probeModelCapabilities({
+        const probed = await probeModelCapabilities({
             aiProviders: this,
             provider: probeProvider,
         });
+        const currentProvider =
+            this.plugin.settings.providers?.find(p => p.id === provider.id) ||
+            provider;
+        const capabilities = {
+            ...currentProvider.modelCapabilities?.[targetModel || ''],
+            ...probed,
+        };
 
         // Persist capabilities in settings
         if (targetModel) {
@@ -380,17 +395,31 @@ export class AIProvidersService implements IAIProvidersService {
     // Allows not passing version with every method call
     checkCompatibility(requiredVersion: number) {
         if (requiredVersion > this.version) {
-            new Notice(I18n.t('errors.pluginMustBeUpdatedFormatted'));
+            // Known API levels map to a plugin release; unknown (≥6, etc.) stay as "API vN"
+            // — never recommend the already-installed pluginVersion as the upgrade target.
+            const recommended = recommendedPluginVersionForApi(requiredVersion);
+            new Notice(
+                I18n.t('errors.aiProvidersOutdatedFormatted', {
+                    required: String(requiredVersion),
+                    current: String(this.version),
+                    pluginVersion: recommended,
+                })
+            );
             const error = new Error(
-                I18n.t('errors.pluginMustBeUpdated')
+                I18n.t('errors.aiProvidersOutdated', {
+                    required: String(requiredVersion),
+                    current: String(this.version),
+                })
             ) as Error & {
                 code?: string;
                 requiredVersion?: number;
                 currentVersion?: number;
+                pluginVersion?: string;
             };
             error.code = 'version_mismatch';
             error.requiredVersion = requiredVersion;
             error.currentVersion = this.version;
+            error.pluginVersion = this.pluginVersion;
             throw error;
         }
     }

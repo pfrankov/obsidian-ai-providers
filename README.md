@@ -66,6 +66,45 @@ refresh/check results. Changing the selected model or editing its capability
 checkboxes also discards a pending check. Requests already sent to the provider
 continue running and may still incur charges.
 
+### Optional reasoning modes
+
+The model capabilities section includes manual reasoning-mode checkboxes for
+supported adapters. Select only modes documented for your model and endpoint.
+These are declarations, not automatic detection: **Check** probes text,
+embeddings, tools, and vision, and preserves the manual reasoning set.
+Checking a mode does not change other plugins' requests or set a shared default.
+A consuming plugin must explicitly select a declared mode for each request.
+
+The checkboxes offer each adapter's wire vocabulary; they do not establish model
+support. Nothing is selected automatically. Model names are only keys for saved
+capabilities: changing or adding a model name never needs a code change.
+
+| Provider transport | Request field | Manually selectable vocabulary |
+| --- | --- | --- |
+| OpenAI Chat Completions | `reasoning_effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |
+| Z.AI | `reasoning_effort` | `low`, `high`, `max` |
+| OpenRouter | `reasoning.effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |
+| Ollama / Open WebUI | top-level `think` | `true`, `false`, `low`, `medium`, `high` |
+
+The saved per-model declarations are the source of truth for request selection.
+Select only values supported by your endpoint. The service rejects undeclared
+values and values outside the adapter vocabulary; remote support is not probed.
+It does not infer modes, sampling compatibility, tool support or API routing from
+model names. Native Anthropic reasoning is not implemented.
+
+Omission preserves the API default; it does not mean thinking is disabled.
+`none`, `max` and `xhigh` are passed literally. No intensity mapping, token budget,
+sampling rewrite or reasoning-specific fallback/retry is added. Sampling and tools
+remain as supplied by the consumer. An endpoint may reject their combination with
+reasoning; that error is surfaced. Consumers must explicitly omit incompatible
+sampling options themselves. This feature adds no sampling-default control.
+
+Contracts: [OpenAI reasoning](https://developers.openai.com/api/docs/guides/reasoning),
+[OpenAI model compatibility](https://developers.openai.com/api/docs/guides/latest-model),
+[Z.AI](https://docs.z.ai/api-reference/llm/chat-completion),
+[OpenRouter](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens) and its [per-model metadata](https://openrouter.ai/api/v1/models),
+[Ollama](https://docs.ollama.com/capabilities/thinking).
+
 ### Ollama
 1. Install [Ollama](https://ollama.com/).
 2. Install Gemma 2 `ollama pull gemma2` or any preferred model [from the library](https://ollama.com/library).

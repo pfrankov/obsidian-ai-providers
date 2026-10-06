@@ -1,1 +1,1 @@
-export const AI_PROVIDERS_SERVICE_VERSION = 4;
+export const AI_PROVIDERS_SERVICE_VERSION = 5;

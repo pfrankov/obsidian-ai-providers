@@ -51,8 +51,10 @@
         "modelCapabilityTools": "Tools",
         "modelCapabilityVision": "Vision",
         "selectModelFirst": "Select a model first",
+        "modelCapabilitiesSelectModel": "Select a model to configure capabilities",
         "ollamaContextScale": "Ollama context size scale",
-        "ollamaContextScaleDesc": "Multiplies the estimated prompt size when sizing Ollama’s context window, on top of a fixed reserve for the response. Higher values leave more room for long answers but use more memory. Only affects Ollama providers."
+        "ollamaContextScaleDesc": "Multiplies the estimated prompt size when sizing Ollama’s context window, on top of a fixed reserve for the response. Higher values leave more room for long answers but use more memory. Only affects Ollama providers.",
+        "reasoningModesDescription": "Reasoning modes (manual): select values documented for this model; Check does not verify support."
     },
     "modals": {
         "confirm": "Confirm",
@@ -65,10 +67,12 @@
         "missingApiKey": "API key is required",
         "missingUrl": "Provider URL is required",
         "missingModel": "Model must be selected",
-        "pluginMustBeUpdated": "Plugin must be updated",
-        "pluginMustBeUpdatedFormatted": "Plugin must be updated to work with this version of AI Providers",
+        "pluginMustBeUpdated": "AI Providers must be updated",
+        "pluginMustBeUpdatedFormatted": "Update AI Providers to work with this plugin",
         "providerNameRequired": "Provider name is required",
         "providerNameExists": "A provider with the name \"{{name}}\" already exists",
-        "ollamaGenerationLimitReached": "Ollama stopped generating for \"{{model}}\" after reaching a generation limit. The partial answer was kept."
+        "ollamaGenerationLimitReached": "Ollama stopped generating for \"{{model}}\" after reaching a generation limit. The partial answer was kept.",
+        "aiProvidersOutdated": "AI Providers must be updated (need API {{required}}, have {{current}})",
+        "aiProvidersOutdatedFormatted": "Update AI Providers to {{pluginVersion}} (need service API {{required}}; current API {{current}})"
     }
 }

@@ -51,8 +51,10 @@
         "modelCapabilityTools": "Herramientas",
         "modelCapabilityVision": "Visión",
         "selectModelFirst": "Primero selecciona un modelo",
+        "modelCapabilitiesSelectModel": "Selecciona un modelo para configurar las capacidades",
         "ollamaContextScale": "Factor de tamaño de contexto de Ollama",
-        "ollamaContextScaleDesc": "Multiplica el tamaño estimado del prompt al dimensionar la ventana de contexto de Ollama, además de una reserva fija para la respuesta. Los valores más altos dejan más espacio para respuestas largas pero usan más memoria. Solo afecta a los proveedores Ollama."
+        "ollamaContextScaleDesc": "Multiplica el tamaño estimado del prompt al dimensionar la ventana de contexto de Ollama, además de una reserva fija para la respuesta. Los valores más altos dejan más espacio para respuestas largas pero usan más memoria. Solo afecta a los proveedores Ollama.",
+        "reasoningModesDescription": "Modos de razonamiento (manual): elige valores documentados para este modelo; Comprobar no verifica su compatibilidad."
     },
     "modals": {
         "confirm": "Confirmar",
@@ -65,10 +67,12 @@
         "missingApiKey": "Se requiere clave API",
         "missingUrl": "Se requiere URL del proveedor",
         "missingModel": "Se debe seleccionar un modelo",
-        "pluginMustBeUpdated": "El plugin debe ser actualizado",
-        "pluginMustBeUpdatedFormatted": "El plugin debe ser actualizado para funcionar con esta versión de AI Providers",
+        "pluginMustBeUpdated": "Hay que actualizar AI Providers",
+        "pluginMustBeUpdatedFormatted": "Actualice AI Providers para usarlo con este plugin",
         "providerNameRequired": "Se requiere el nombre del proveedor",
         "providerNameExists": "Ya existe un proveedor con el nombre \"{{name}}\"",
-        "ollamaGenerationLimitReached": "Ollama dejó de generar para «{{model}}» al alcanzar un límite de generación. Se conservó la respuesta parcial."
+        "ollamaGenerationLimitReached": "Ollama dejó de generar para «{{model}}» al alcanzar un límite de generación. Se conservó la respuesta parcial.",
+        "aiProvidersOutdated": "Hay que actualizar AI Providers (se necesita API {{required}}, tiene {{current}})",
+        "aiProvidersOutdatedFormatted": "Actualice AI Providers a {{pluginVersion}} (se necesita API de servicio {{required}}; actual {{current}})"
     }
 }

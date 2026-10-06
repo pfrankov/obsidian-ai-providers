@@ -51,8 +51,10 @@
         "modelCapabilityTools": "ツール",
         "modelCapabilityVision": "画像",
         "selectModelFirst": "先にモデルを選択してください",
+        "modelCapabilitiesSelectModel": "機能を設定するにはモデルを選択してください",
         "ollamaContextScale": "Ollama コンテキストサイズ係数",
-        "ollamaContextScaleDesc": "Ollama のコンテキストウィンドウを決める際に、推定プロンプトサイズに掛ける係数です。応答用の固定予約領域に加えて適用されます。値を大きくすると長い回答の余地が増えますが、メモリ使用量も増えます。Ollama プロバイダーのみに適用されます。"
+        "ollamaContextScaleDesc": "Ollama のコンテキストウィンドウを決める際に、推定プロンプトサイズに掛ける係数です。応答用の固定予約領域に加えて適用されます。値を大きくすると長い回答の余地が増えますが、メモリ使用量も増えます。Ollama プロバイダーのみに適用されます。",
+        "reasoningModesDescription": "推論モード（手動）：モデルの文書に記載された値を選択してください。「チェック」では対応を検証しません。"
     },
     "modals": {
         "confirm": "確認",
@@ -65,10 +67,12 @@
         "missingApiKey": "APIキーが必要です",
         "missingUrl": "プロバイダーURLが必要です",
         "missingModel": "モデルを選択する必要があります",
-        "pluginMustBeUpdated": "プラグインを更新する必要があります",
-        "pluginMustBeUpdatedFormatted": "このバージョンのAI Providersで使用するには、プラグインを更新する必要があります",
+        "pluginMustBeUpdated": "AI Providers の更新が必要です",
+        "pluginMustBeUpdatedFormatted": "このプラグインを使うには AI Providers を更新してください",
         "providerNameRequired": "プロバイダー名は必須です",
         "providerNameExists": "名前が \"{{name}}\" のプロバイダーは既に存在します",
-        "ollamaGenerationLimitReached": "Ollama は生成上限に達したため「{{model}}」の生成を停止しました。途中までの回答は保持されています。"
+        "ollamaGenerationLimitReached": "Ollama は生成上限に達したため「{{model}}」の生成を停止しました。途中までの回答は保持されています。",
+        "aiProvidersOutdated": "AI Providers の更新が必要です（API {{required}} が必要、現在 {{current}}）",
+        "aiProvidersOutdatedFormatted": "AI Providers を {{pluginVersion}} に更新してください（サービス API {{required}} が必要、現在 {{current}}）"
     }
 }
