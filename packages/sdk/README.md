@@ -21,6 +21,27 @@ SDK 1.5.0 (Service API v3) changes `execute()` to return a `Promise<string>` whe
 
 SDK 1.7.0 (Service API v4) adds `toolsExecute()` for OpenAI-style tool-calling loops across providers (OpenAI-compatible, Anthropic, and Ollama). It is message-only: pass `messages`, `tools`, and optional top-level `tool_choice`. It returns an assistant message in OpenAI format (`{ role, content, tool_calls? }`) that can be appended directly to the next `messages` call. Also adds optional `model` override to `execute()` and `toolsExecute()`, `getModels()` to retrieve available models with their capabilities, `getModelCapabilities()` to read cached per-model capabilities, and `checkModelCapabilities()` to probe capabilities via real API calls and persist results.
 
+### Soft compatibility (SDK 1.8.0+)
+
+By default `initAI` still calls `checkCompatibility(5)` (hard gate). Consumers that
+must keep working when the user has not upgraded AI Providers yet can soft-load:
+
+```typescript
+import { initAI, waitForAI, supportsVersion } from '@obsidian-ai-providers/sdk';
+
+initAI(this.app, this, async () => {
+    const ai = await (await waitForAI()).promise;
+    if (supportsVersion(ai, 5)) {
+        // enable reasoning UI / send reasoningMode
+    } else {
+        // hide reasoning; keep normal execute() without reasoningMode
+    }
+}, { minVersion: 4 });
+```
+
+`recommendedPluginVersionForApi(5)` returns `1.12.0+` for user-facing copy.
+The service also exposes optional `pluginVersion` (manifest version string).
+
 ### 1. Wait for AI Providers plugin in your plugin
 Any plugin can not be loaded instantly, so you need to wait for AI Providers plugin to be loaded.
 ```typescript
@@ -543,8 +564,12 @@ provider override before presenting the available modes. The service rejects
 undeclared, stale, unsupported modes and conflicts with native reasoning options or `options.model`;
 it never sends the SDK's `reasoningMode` key to an endpoint. Existing consumers
 that omit the setting retain their request shape, sampling, and streaming behavior.
-SDK 1.8 initialization requires service API 5; already installed older SDKs keep
-working with the new service.
+SDK 1.8 defaults to requiring service API 5 at `initAI` time. Pass
+`{ minVersion: 4 }` to soft-load against older AI Providers and use
+`supportsVersion(ai, 5)` to feature-detect reasoning. Already installed older
+SDKs keep working with the new service. On version mismatch the fallback settings
+tab explains that AI Providers is outdated (with required/current API and
+`1.12.0+`), instead of asking to install it.
 
 The adapters are OpenAI Chat Completions and Z.AI (`reasoning_effort`),
 OpenRouter (`reasoning.effort`), and Ollama / Open WebUI (top-level `think`).

@@ -67,10 +67,12 @@
         "missingApiKey": "API key is required",
         "missingUrl": "Provider URL is required",
         "missingModel": "Model must be selected",
-        "pluginMustBeUpdated": "Plugin must be updated",
-        "pluginMustBeUpdatedFormatted": "Plugin must be updated to work with this version of AI Providers",
+        "pluginMustBeUpdated": "AI Providers must be updated",
+        "pluginMustBeUpdatedFormatted": "Update AI Providers to work with this plugin",
         "providerNameRequired": "Provider name is required",
         "providerNameExists": "A provider with the name \"{{name}}\" already exists",
-        "ollamaGenerationLimitReached": "Ollama stopped generating for \"{{model}}\" after reaching a generation limit. The partial answer was kept."
+        "ollamaGenerationLimitReached": "Ollama stopped generating for \"{{model}}\" after reaching a generation limit. The partial answer was kept.",
+        "aiProvidersOutdated": "AI Providers must be updated (need API {{required}}, have {{current}})",
+        "aiProvidersOutdatedFormatted": "Update AI Providers to {{pluginVersion}}+ (need service API {{required}}; current API {{current}})"
     }
 }

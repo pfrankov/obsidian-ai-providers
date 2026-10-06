@@ -32,6 +32,8 @@ import { AI_PROVIDERS_SERVICE_VERSION } from './constants/serviceApiVersion';
 export class AIProvidersService implements IAIProvidersService {
     providers: IAIProvider[] = [];
     version = AI_PROVIDERS_SERVICE_VERSION;
+    /** Manifest version of the installed AI Providers plugin (e.g. "1.12.0"). */
+    pluginVersion: string;
     private app: App;
     private plugin: AIProvidersPlugin;
     private handlers: Record<string, IAIHandler>;
@@ -41,6 +43,7 @@ export class AIProvidersService implements IAIProvidersService {
         this.plugin = plugin;
         this.providers = plugin.settings.providers || [];
         this.app = app;
+        this.pluginVersion = plugin.manifest?.version ?? '';
 
         // Initialize handlers for each provider type
         this.handlers = {
@@ -391,17 +394,28 @@ export class AIProvidersService implements IAIProvidersService {
     // Allows not passing version with every method call
     checkCompatibility(requiredVersion: number) {
         if (requiredVersion > this.version) {
-            new Notice(I18n.t('errors.pluginMustBeUpdatedFormatted'));
+            new Notice(
+                I18n.t('errors.aiProvidersOutdatedFormatted', {
+                    required: String(requiredVersion),
+                    current: String(this.version),
+                    pluginVersion: this.pluginVersion || '1.12.0',
+                })
+            );
             const error = new Error(
-                I18n.t('errors.pluginMustBeUpdated')
+                I18n.t('errors.aiProvidersOutdated', {
+                    required: String(requiredVersion),
+                    current: String(this.version),
+                })
             ) as Error & {
                 code?: string;
                 requiredVersion?: number;
                 currentVersion?: number;
+                pluginVersion?: string;
             };
             error.code = 'version_mismatch';
             error.requiredVersion = requiredVersion;
             error.currentVersion = this.version;
+            error.pluginVersion = this.pluginVersion;
             throw error;
         }
     }

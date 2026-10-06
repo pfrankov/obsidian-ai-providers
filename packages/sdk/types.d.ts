@@ -63,6 +63,11 @@ export interface IChunkHandler {
 
 export interface IAIProvidersService {
     version: number;
+    /**
+     * Human AI Providers plugin version from the installed manifest
+     * (e.g. "1.12.0"). Optional so older service builds remain type-compatible.
+     */
+    pluginVersion?: string;
     providers: IAIProvider[];
     /** @deprecated Pass an object: { provider, abortController? } */
     fetchModels(provider: IAIProvider): Promise<string[]>;

@@ -74,6 +74,7 @@ describe('AIProvidersService', () => {
                 providers: [],
                 _version: 1,
             },
+            manifest: { id: 'ai-providers', version: '1.12.0' },
             saveSettings: vi.fn(),
         } as any;
 
@@ -88,6 +89,7 @@ describe('AIProvidersService', () => {
 
         // Create service instance
         service = new AIProvidersService(mockApp, mockPlugin);
+        expect(service.pluginVersion).toBe('1.12.0');
 
         // Clear all mocks
         vi.clearAllMocks();
@@ -822,15 +824,32 @@ describe('AIProvidersService', () => {
                 code?: string;
                 requiredVersion?: number;
                 currentVersion?: number;
+                pluginVersion?: string;
             };
             expect(compatibilityError.message).toBe(
-                'errors.pluginMustBeUpdated'
+                'errors.aiProvidersOutdated'
             );
             expect(compatibilityError.code).toBe('version_mismatch');
             expect(compatibilityError.requiredVersion).toBe(999);
             expect(compatibilityError.currentVersion).toBe(
                 AI_PROVIDERS_SERVICE_VERSION
             );
+            expect(compatibilityError.pluginVersion).toBe('1.12.0');
+        }
+    });
+
+    it('checkCompatibility falls back to 1.12.0 when pluginVersion is empty', () => {
+        (service as any).pluginVersion = '';
+        try {
+            service.checkCompatibility(999);
+            throw new Error('Expected compatibility error');
+        } catch (error) {
+            const compatibilityError = error as Error & {
+                code?: string;
+                pluginVersion?: string;
+            };
+            expect(compatibilityError.code).toBe('version_mismatch');
+            expect(compatibilityError.pluginVersion).toBe('');
         }
     });
 

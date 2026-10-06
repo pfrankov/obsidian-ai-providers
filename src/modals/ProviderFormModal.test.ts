@@ -1237,7 +1237,11 @@ describe('ProviderFormModal', () => {
         );
 
         urlInput.focus();
-        for (const value of ['https://a', 'https://ab', 'https://abc.example/v1']) {
+        for (const value of [
+            'https://a',
+            'https://ab',
+            'https://abc.example/v1',
+        ]) {
             urlInput.value = value;
             urlInput.dispatchEvent(new Event('input'));
         }
@@ -1246,7 +1250,9 @@ describe('ProviderFormModal', () => {
             modal.contentEl.querySelector('input[data-field="provider-url"]')
         ).toBe(urlInput);
         expect(
-            modal.contentEl.querySelector('[data-testid="model-combobox-input"]')
+            modal.contentEl.querySelector(
+                '[data-testid="model-combobox-input"]'
+            )
         ).toBe(modelInput);
 
         apiKeyInput.focus();
@@ -1261,7 +1267,9 @@ describe('ProviderFormModal', () => {
             )
         ).toBe(apiKeyInput);
         expect(
-            modal.contentEl.querySelector('[data-testid="model-combobox-input"]')
+            modal.contentEl.querySelector(
+                '[data-testid="model-combobox-input"]'
+            )
         ).toBe(modelInput);
     });
 

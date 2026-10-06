@@ -67,10 +67,12 @@
         "missingApiKey": "APIキーが必要です",
         "missingUrl": "プロバイダーURLが必要です",
         "missingModel": "モデルを選択する必要があります",
-        "pluginMustBeUpdated": "プラグインを更新する必要があります",
-        "pluginMustBeUpdatedFormatted": "このバージョンのAI Providersで使用するには、プラグインを更新する必要があります",
+        "pluginMustBeUpdated": "AI Providers の更新が必要です",
+        "pluginMustBeUpdatedFormatted": "このプラグインを使うには AI Providers を更新してください",
         "providerNameRequired": "プロバイダー名は必須です",
         "providerNameExists": "名前が \"{{name}}\" のプロバイダーは既に存在します",
-        "ollamaGenerationLimitReached": "Ollama は生成上限に達したため「{{model}}」の生成を停止しました。途中までの回答は保持されています。"
+        "ollamaGenerationLimitReached": "Ollama は生成上限に達したため「{{model}}」の生成を停止しました。途中までの回答は保持されています。",
+        "aiProvidersOutdated": "AI Providers の更新が必要です（API {{required}} が必要、現在 {{current}}）",
+        "aiProvidersOutdatedFormatted": "AI Providers を {{pluginVersion}}+ に更新してください（サービス API {{required}} が必要、現在 {{current}}）"
     }
 }

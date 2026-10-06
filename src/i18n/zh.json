@@ -67,10 +67,12 @@
         "missingApiKey": "需要提供 API 密钥",
         "missingUrl": "需要提供服务地址",
         "missingModel": "需要选择模型",
-        "pluginMustBeUpdated": "插件需要更新",
-        "pluginMustBeUpdatedFormatted": "插件需要更新才能与此版本的 AI Providers 一起使用",
+        "pluginMustBeUpdated": "需要更新 AI Providers",
+        "pluginMustBeUpdatedFormatted": "请更新 AI Providers 以配合此插件使用",
         "providerNameRequired": "需要提供商名称",
         "providerNameExists": "名为\"{{name}}\"的提供商已存在",
-        "ollamaGenerationLimitReached": "Ollama 在达到生成上限后停止为“{{model}}”生成。已保留部分回复。"
+        "ollamaGenerationLimitReached": "Ollama 在达到生成上限后停止为“{{model}}”生成。已保留部分回复。",
+        "aiProvidersOutdated": "需要更新 AI Providers（需要 API {{required}}，当前 {{current}}）",
+        "aiProvidersOutdatedFormatted": "请将 AI Providers 更新到 {{pluginVersion}}+（需要服务 API {{required}}；当前 {{current}}）"
     }
 }

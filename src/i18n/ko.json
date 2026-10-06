@@ -67,10 +67,12 @@
         "missingApiKey": "API 키가 필요합니다",
         "missingUrl": "공급자 URL이 필요합니다",
         "missingModel": "모델을 선택해야 합니다",
-        "pluginMustBeUpdated": "플러그인 업데이트 필요",
-        "pluginMustBeUpdatedFormatted": "이 버전의 AI Providers와 함께 사용하려면 플러그인을 업데이트해야 합니다",
+        "pluginMustBeUpdated": "AI Providers를 업데이트해야 합니다",
+        "pluginMustBeUpdatedFormatted": "이 플러그인과 함께 사용하려면 AI Providers를 업데이트하세요",
         "providerNameRequired": "공급자 이름이 필요합니다",
         "providerNameExists": "\"{{name}}\" 이름을 가진 공급자가 이미 존재합니다",
-        "ollamaGenerationLimitReached": "Ollama가 생성 한도에 도달하여 \"{{model}}\"의 생성을 중단했습니다. 부분 답변은 유지되었습니다."
+        "ollamaGenerationLimitReached": "Ollama가 생성 한도에 도달하여 \"{{model}}\"의 생성을 중단했습니다. 부분 답변은 유지되었습니다.",
+        "aiProvidersOutdated": "AI Providers를 업데이트해야 합니다(API {{required}} 필요, 현재 {{current}})",
+        "aiProvidersOutdatedFormatted": "AI Providers를 {{pluginVersion}}+로 업데이트하세요(서비스 API {{required}} 필요, 현재 {{current}})"
     }
 }

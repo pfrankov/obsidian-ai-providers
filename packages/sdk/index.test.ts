@@ -353,9 +353,12 @@ describe('initAI', () => {
         const mockOnDone = vi.fn();
 
         mockApp.aiProviders = {
+            version: 4,
             checkCompatibility: vi.fn(() => {
                 const error: any = new Error('version mismatch');
                 error.code = 'version_mismatch';
+                error.requiredVersion = AI_PROVIDERS_SERVICE_VERSION;
+                error.currentVersion = 4;
                 throw error;
             }),
         };
@@ -365,6 +368,102 @@ describe('initAI', () => {
         );
 
         expect(mockPlugin.addSettingTab).toHaveBeenCalled();
+        const fallbackTab = mockPlugin.addSettingTab.mock.calls[0][0];
+        await fallbackTab.display();
+        expect(sanitizeHTMLToDom).toHaveBeenCalled();
+        const html = (sanitizeHTMLToDom as unknown as Mock).mock.calls.at(
+            -1
+        )[0] as string;
+        expect(html).toContain('outdated');
+        expect(html).toContain('1.12.0+');
+        expect(html).toContain(String(AI_PROVIDERS_SERVICE_VERSION));
+        expect(html).toContain('Current service API: 4');
+        expect(html).not.toContain('to be installed');
+    });
+
+    it('falls back to minVersion when mismatch error omits requiredVersion', async () => {
+        const { initAI } = await import('./index');
+        const mockOnDone = vi.fn();
+
+        mockApp.aiProviders = {
+            version: 3,
+            checkCompatibility: vi.fn(() => {
+                const error: any = new Error('version mismatch');
+                error.code = 'version_mismatch';
+                error.currentVersion = 3;
+                throw error;
+            }),
+        };
+
+        await expect(
+            initAI(mockApp, mockPlugin, mockOnDone, { minVersion: 4 })
+        ).rejects.toThrow('AI Providers version 4 is required');
+
+        const fallbackTab = mockPlugin.addSettingTab.mock.calls[0][0];
+        await fallbackTab.display();
+        const html = (sanitizeHTMLToDom as unknown as Mock).mock.calls.at(
+            -1
+        )[0] as string;
+        expect(html).toContain('service API 4');
+        expect(html).toContain('Current service API: 3');
+    });
+
+    it('allows soft minVersion so consumers can feature-detect', async () => {
+        const { initAI, supportsVersion } = await import('./index');
+        const mockOnDone = vi.fn();
+
+        mockApp.aiProviders = {
+            version: 4,
+            checkCompatibility: vi.fn((required: number) => {
+                if (required > 4) {
+                    const error: any = new Error('version mismatch');
+                    error.code = 'version_mismatch';
+                    error.requiredVersion = required;
+                    error.currentVersion = 4;
+                    throw error;
+                }
+            }),
+        };
+
+        await initAI(mockApp, mockPlugin, mockOnDone, { minVersion: 4 });
+        expect(mockOnDone).toHaveBeenCalled();
+        expect(mockApp.aiProviders.checkCompatibility).toHaveBeenCalledWith(4);
+        expect(supportsVersion(mockApp.aiProviders, 5)).toBe(false);
+        expect(supportsVersion(mockApp.aiProviders, 4)).toBe(true);
+    });
+
+    it('recommendedPluginVersionForApi maps API levels', async () => {
+        const { recommendedPluginVersionForApi } = await import('./index');
+        expect(recommendedPluginVersionForApi(4)).toBe('1.11.0+');
+        expect(recommendedPluginVersionForApi(5)).toBe('1.12.0+');
+        expect(recommendedPluginVersionForApi(6)).toBe('1.12.0+');
+        expect(recommendedPluginVersionForApi(0)).toBe('API v0');
+    });
+
+    it('supportsVersion is false for missing or incomplete services', async () => {
+        const { supportsVersion } = await import('./index');
+        expect(supportsVersion(null, 5)).toBe(false);
+        expect(supportsVersion(undefined, 5)).toBe(false);
+        expect(supportsVersion({} as any, 5)).toBe(false);
+        expect(supportsVersion({ version: 5 }, 5)).toBe(true);
+    });
+    it('renders outdated fallback when currentVersion is unknown', async () => {
+        const { __testing__ } = await import('./index');
+        const tab = new __testing__.AIProvidersFallbackSettingsTab(
+            mockApp,
+            mockPlugin,
+            {
+                reason: 'outdated',
+            }
+        );
+        await tab.display();
+        const html = (sanitizeHTMLToDom as unknown as Mock).mock.calls.at(
+            -1
+        )[0] as string;
+        expect(html).toContain('outdated');
+        expect(html).toContain('Current service API: unknown');
+        expect(html).toContain('1.12.0+');
+        expect(html).toContain(String(AI_PROVIDERS_SERVICE_VERSION));
     });
 
     it('rethrows compatibility errors that are not version mismatches', async () => {
@@ -448,6 +547,11 @@ describe('initAI', () => {
         expect(
             fallbackTab.containerEl.querySelector('.ai-providers-notice')
         ).toBeTruthy();
+        const html = (sanitizeHTMLToDom as unknown as Mock).mock.calls.at(
+            -1
+        )[0] as string;
+        expect(html).toContain('to be installed');
+        expect(html).not.toContain('outdated');
 
         vi.restoreAllMocks();
     });
