@@ -8,6 +8,7 @@ import {
     IAIDocument,
 } from '@obsidian-ai-providers/sdk';
 import { logger } from './utils/logger';
+import { I18n } from './i18n';
 import { AI_PROVIDERS_SERVICE_VERSION } from './constants/serviceApiVersion';
 
 // Mock the handlers
@@ -26,7 +27,9 @@ vi.mock('./utils/logger', () => ({
 
 vi.mock('./i18n', () => ({
     I18n: {
-        t: (key: string) => key,
+        t: vi.fn((key: string, params?: Record<string, string>) =>
+            params ? `${key}:${JSON.stringify(params)}` : key
+        ),
     },
 }));
 
@@ -826,7 +829,7 @@ describe('AIProvidersService', () => {
                 currentVersion?: number;
                 pluginVersion?: string;
             };
-            expect(compatibilityError.message).toBe(
+            expect(compatibilityError.message).toContain(
                 'errors.aiProvidersOutdated'
             );
             expect(compatibilityError.code).toBe('version_mismatch');
@@ -834,14 +837,49 @@ describe('AIProvidersService', () => {
             expect(compatibilityError.currentVersion).toBe(
                 AI_PROVIDERS_SERVICE_VERSION
             );
+            // Error still reports the installed plugin version (metadata).
             expect(compatibilityError.pluginVersion).toBe('1.12.0');
         }
     });
 
-    it('checkCompatibility falls back to 1.12.0 when pluginVersion is empty', () => {
+    it('checkCompatibility Notice uses known plugin mapping for API 5', () => {
+        (service as any).version = 4;
+        try {
+            service.checkCompatibility(5);
+            throw new Error('Expected compatibility error');
+        } catch {
+            expect(I18n.t).toHaveBeenCalledWith(
+                'errors.aiProvidersOutdatedFormatted',
+                {
+                    required: '5',
+                    current: '4',
+                    pluginVersion: '1.12.0+',
+                }
+            );
+        }
+    });
+
+    it('checkCompatibility Notice states required API for unmapped levels', () => {
+        // Installed plugin is 1.12.0 (API 5); requiring API 6 must not say "1.12.0+".
+        try {
+            service.checkCompatibility(6);
+            throw new Error('Expected compatibility error');
+        } catch {
+            expect(I18n.t).toHaveBeenCalledWith(
+                'errors.aiProvidersOutdatedFormatted',
+                {
+                    required: '6',
+                    current: String(AI_PROVIDERS_SERVICE_VERSION),
+                    pluginVersion: 'API v6',
+                }
+            );
+        }
+    });
+
+    it('checkCompatibility does not invent a plugin release when pluginVersion is empty', () => {
         (service as any).pluginVersion = '';
         try {
-            service.checkCompatibility(999);
+            service.checkCompatibility(6);
             throw new Error('Expected compatibility error');
         } catch (error) {
             const compatibilityError = error as Error & {
@@ -850,6 +888,10 @@ describe('AIProvidersService', () => {
             };
             expect(compatibilityError.code).toBe('version_mismatch');
             expect(compatibilityError.pluginVersion).toBe('');
+            expect(I18n.t).toHaveBeenCalledWith(
+                'errors.aiProvidersOutdatedFormatted',
+                expect.objectContaining({ pluginVersion: 'API v6' })
+            );
         }
     });
 

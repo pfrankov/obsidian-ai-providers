@@ -14,6 +14,7 @@ import {
     IAIProvidersRetrievalResult,
     IAIProvidersService,
     IChunkHandler,
+    recommendedPluginVersionForApi,
 } from '@obsidian-ai-providers/sdk';
 import { OpenAIHandler } from './handlers/OpenAIHandler';
 import { OllamaHandler } from './handlers/OllamaHandler';
@@ -394,11 +395,14 @@ export class AIProvidersService implements IAIProvidersService {
     // Allows not passing version with every method call
     checkCompatibility(requiredVersion: number) {
         if (requiredVersion > this.version) {
+            // Known API levels map to a plugin release; unknown (≥6, etc.) stay as "API vN"
+            // — never recommend the already-installed pluginVersion as the upgrade target.
+            const recommended = recommendedPluginVersionForApi(requiredVersion);
             new Notice(
                 I18n.t('errors.aiProvidersOutdatedFormatted', {
                     required: String(requiredVersion),
                     current: String(this.version),
-                    pluginVersion: this.pluginVersion || '1.12.0',
+                    pluginVersion: recommended,
                 })
             );
             const error = new Error(

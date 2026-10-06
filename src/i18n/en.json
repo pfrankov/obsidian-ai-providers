@@ -73,6 +73,6 @@
         "providerNameExists": "A provider with the name \"{{name}}\" already exists",
         "ollamaGenerationLimitReached": "Ollama stopped generating for \"{{model}}\" after reaching a generation limit. The partial answer was kept.",
         "aiProvidersOutdated": "AI Providers must be updated (need API {{required}}, have {{current}})",
-        "aiProvidersOutdatedFormatted": "Update AI Providers to {{pluginVersion}}+ (need service API {{required}}; current API {{current}})"
+        "aiProvidersOutdatedFormatted": "Update AI Providers to {{pluginVersion}} (need service API {{required}}; current API {{current}})"
     }
 }

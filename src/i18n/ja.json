@@ -73,6 +73,6 @@
         "providerNameExists": "名前が \"{{name}}\" のプロバイダーは既に存在します",
         "ollamaGenerationLimitReached": "Ollama は生成上限に達したため「{{model}}」の生成を停止しました。途中までの回答は保持されています。",
         "aiProvidersOutdated": "AI Providers の更新が必要です（API {{required}} が必要、現在 {{current}}）",
-        "aiProvidersOutdatedFormatted": "AI Providers を {{pluginVersion}}+ に更新してください（サービス API {{required}} が必要、現在 {{current}}）"
+        "aiProvidersOutdatedFormatted": "AI Providers を {{pluginVersion}} に更新してください（サービス API {{required}} が必要、現在 {{current}}）"
     }
 }

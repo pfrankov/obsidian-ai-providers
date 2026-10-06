@@ -73,6 +73,6 @@
         "providerNameExists": "名为\"{{name}}\"的提供商已存在",
         "ollamaGenerationLimitReached": "Ollama 在达到生成上限后停止为“{{model}}”生成。已保留部分回复。",
         "aiProvidersOutdated": "需要更新 AI Providers（需要 API {{required}}，当前 {{current}}）",
-        "aiProvidersOutdatedFormatted": "请将 AI Providers 更新到 {{pluginVersion}}+（需要服务 API {{required}}；当前 {{current}}）"
+        "aiProvidersOutdatedFormatted": "请将 AI Providers 更新到 {{pluginVersion}}（需要服务 API {{required}}；当前 {{current}}）"
     }
 }

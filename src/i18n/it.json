@@ -73,6 +73,6 @@
         "providerNameExists": "Esiste già un provider con il nome \"{{name}}\"",
         "ollamaGenerationLimitReached": "Ollama ha interrotto la generazione per «{{model}}» dopo aver raggiunto un limite di generazione. La risposta parziale è stata conservata.",
         "aiProvidersOutdated": "AI Providers deve essere aggiornato (serve API {{required}}, disponibile {{current}})",
-        "aiProvidersOutdatedFormatted": "Aggiorna AI Providers a {{pluginVersion}}+ (serve API di servizio {{required}}; attuale {{current}})"
+        "aiProvidersOutdatedFormatted": "Aggiorna AI Providers a {{pluginVersion}} (serve API di servizio {{required}}; attuale {{current}})"
     }
 }

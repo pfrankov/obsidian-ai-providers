@@ -73,6 +73,6 @@
         "providerNameExists": "\"{{name}}\" 이름을 가진 공급자가 이미 존재합니다",
         "ollamaGenerationLimitReached": "Ollama가 생성 한도에 도달하여 \"{{model}}\"의 생성을 중단했습니다. 부분 답변은 유지되었습니다.",
         "aiProvidersOutdated": "AI Providers를 업데이트해야 합니다(API {{required}} 필요, 현재 {{current}})",
-        "aiProvidersOutdatedFormatted": "AI Providers를 {{pluginVersion}}+로 업데이트하세요(서비스 API {{required}} 필요, 현재 {{current}})"
+        "aiProvidersOutdatedFormatted": "AI Providers를 {{pluginVersion}}로 업데이트하세요(서비스 API {{required}} 필요, 현재 {{current}})"
     }
 }
