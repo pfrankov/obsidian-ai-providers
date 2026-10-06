@@ -436,7 +436,7 @@ describe('initAI', () => {
         const { recommendedPluginVersionForApi } = await import('./index');
         expect(recommendedPluginVersionForApi(4)).toBe('1.11.0+');
         expect(recommendedPluginVersionForApi(5)).toBe('1.12.0+');
-        expect(recommendedPluginVersionForApi(6)).toBe('1.12.0+');
+        expect(recommendedPluginVersionForApi(6)).toBe('API v6');
         expect(recommendedPluginVersionForApi(0)).toBe('API v0');
     });
 

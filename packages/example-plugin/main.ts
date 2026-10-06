@@ -1,5 +1,5 @@
 import { App, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
-import { initAI, waitForAI } from '@obsidian-ai-providers/sdk';
+import { initAI, waitForAI, supportsVersion } from '@obsidian-ai-providers/sdk';
 import { RAGSearchComponent } from './RAGSearchComponent';
 import { ToolCallingComponent } from './ToolCallingComponent';
 
@@ -12,9 +12,14 @@ export default class AIProvidersExamplePlugin extends Plugin {
 
     async onload() {
         // Soft floor: load against AI Providers API v4+; reasoning UI is gated below.
-        initAI(this.app, this, async () => {
-            this.addSettingTab(new SampleSettingTab(this.app, this));
-        }, { minVersion: 4 });
+        initAI(
+            this.app,
+            this,
+            async () => {
+                this.addSettingTab(new SampleSettingTab(this.app, this));
+            },
+            { minVersion: 4 }
+        );
     }
 }
 
@@ -88,9 +93,12 @@ class SampleSettingTab extends PluginSettingTab {
             }
 
             let reasoningMode: string | undefined;
-            const reasoningModes =
-                aiProviders.getModelCapabilities({ provider })
-                    ?.reasoningModes || [];
+            // Reasoning controls + execute field require service API 5+.
+            const reasoningApi = supportsVersion(aiProviders, 5);
+            const reasoningModes = reasoningApi
+                ? aiProviders.getModelCapabilities?.({ provider })
+                      ?.reasoningModes || []
+                : [];
             if (reasoningModes.length) {
                 new Setting(containerEl)
                     .setName('Reasoning mode for this test')
@@ -126,7 +134,9 @@ class SampleSettingTab extends PluginSettingTab {
                             const fullText = await aiProviders.execute({
                                 provider,
                                 prompt: 'What is the capital of Great Britain?',
-                                reasoningMode,
+                                ...(reasoningApi && reasoningMode
+                                    ? { reasoningMode }
+                                    : {}),
                                 abortController,
                                 onProgress: (_chunk, accumulatedText) => {
                                     paragraph.setText(accumulatedText);

@@ -41,10 +41,11 @@ export interface InitAIOptions {
  * Unknown levels fall back to an "API vN" label.
  */
 export function recommendedPluginVersionForApi(apiVersion: number): string {
-    if (apiVersion >= 5) {
+    // Only known API↔plugin mappings get a concrete version string.
+    if (apiVersion === 5) {
         return `${RECOMMENDED_AI_PROVIDERS_PLUGIN_VERSION}+`;
     }
-    if (apiVersion >= 1) {
+    if (apiVersion >= 1 && apiVersion <= 4) {
         return '1.11.0+';
     }
     return `API v${apiVersion}`;

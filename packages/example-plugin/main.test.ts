@@ -8,6 +8,10 @@ import manifest from './manifest.json';
 vi.mock('@obsidian-ai-providers/sdk', () => ({
     initAI: vi.fn((app, plugin, callback) => callback()),
     waitForAI: vi.fn(),
+    supportsVersion: (
+        service: { version?: number } | null | undefined,
+        required: number
+    ) => typeof service?.version === 'number' && service.version >= required,
 }));
 
 // Mock Obsidian components that aren't available in test environment
@@ -52,7 +56,8 @@ const createMockAIResolver = (
         tool_calls: [],
     }),
     embed = vi.fn(),
-    retrieve = vi.fn()
+    retrieve = vi.fn(),
+    version = 5
 ) => ({
     promise: Promise.resolve({
         providers,
@@ -60,6 +65,7 @@ const createMockAIResolver = (
         toolsExecute,
         embed,
         retrieve,
+        version,
         getModelCapabilities: vi.fn().mockReturnValue(null),
     }),
 });
@@ -114,10 +120,62 @@ describe('AIProvidersExamplePlugin', () => {
         mode.dispatchEvent(new Event('change'));
         tab.containerEl.querySelector('button').click();
         await Promise.resolve();
-        expect(execute).toHaveBeenLastCalledWith(
-            expect.objectContaining({ reasoningMode: undefined })
-        );
+        expect(
+            execute.mock.calls[execute.mock.calls.length - 1][0]
+        ).not.toHaveProperty('reasoningMode');
     });
+
+    it('hides reasoning controls on API 4 even when declarations remain', async () => {
+        const provider = createMockProvider(
+            'reasoning',
+            'Synthetic',
+            'glm-5.3-flash'
+        );
+        const execute = vi.fn().mockResolvedValue('Synthetic answer');
+        const resolver = createMockAIResolver(
+            [provider],
+            execute,
+            undefined,
+            undefined,
+            undefined,
+            4
+        );
+        const service = await resolver.promise;
+        service.getModelCapabilities.mockReturnValue({
+            reasoningModes: ['low', 'high', 'max'],
+        } as any);
+        vi.mocked(waitForAI).mockResolvedValue(resolver as any);
+        await plugin.onload();
+        const tab = (plugin as any).settingTabs[0];
+        tab.selectedProvider = provider.id;
+        await tab.display();
+
+        // No reasoning mode select on API 4 (provider/file selects may exist).
+        const settingNames = Array.from(
+            tab.containerEl.querySelectorAll('.setting-item-name')
+        ).map(el => (el as HTMLElement).textContent);
+        expect(settingNames).not.toContain('Reasoning mode for this test');
+        const optionValues = Array.from(
+            tab.containerEl.querySelectorAll('select option')
+        ).map(el => (el as HTMLOptionElement).value);
+        expect(optionValues).not.toContain('low');
+        expect(optionValues).not.toContain('high');
+        expect(optionValues).not.toContain('max');
+
+        tab.containerEl.querySelector('button')?.click();
+        await Promise.resolve();
+        expect(execute).toHaveBeenCalled();
+        expect(
+            execute.mock.calls[execute.mock.calls.length - 1][0]
+        ).not.toHaveProperty('reasoningMode');
+        // UI must not call capabilities for reasoning on API 4, but retained
+        // declarations remain available to other consumers.
+        expect(service.getModelCapabilities).not.toHaveBeenCalled();
+        expect(
+            service.getModelCapabilities({ provider })?.reasoningModes
+        ).toEqual(['low', 'high', 'max']);
+    });
+
     it('should initialize plugin correctly', () => {
         expect(plugin).toBeInstanceOf(Plugin);
         expect(plugin.app).toBe(app);
@@ -125,12 +183,9 @@ describe('AIProvidersExamplePlugin', () => {
 
     it('should load plugin and initialize AI', async () => {
         await plugin.onload();
-        expect(initAI).toHaveBeenCalledWith(
-            app,
-            plugin,
-            expect.any(Function),
-            { minVersion: 4 }
-        );
+        expect(initAI).toHaveBeenCalledWith(app, plugin, expect.any(Function), {
+            minVersion: 4,
+        });
         expect((plugin as any).settingTabs.length).toBe(1);
     });
 
