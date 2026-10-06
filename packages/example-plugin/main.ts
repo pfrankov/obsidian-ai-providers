@@ -11,9 +11,10 @@ export default class AIProvidersExamplePlugin extends Plugin {
     settings: AIProvidersExampleSettings = { mySetting: '' };
 
     async onload() {
+        // Soft floor: load against AI Providers API v4+; reasoning UI is gated below.
         initAI(this.app, this, async () => {
             this.addSettingTab(new SampleSettingTab(this.app, this));
-        });
+        }, { minVersion: 4 });
     }
 }
 

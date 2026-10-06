@@ -125,7 +125,12 @@ describe('AIProvidersExamplePlugin', () => {
 
     it('should load plugin and initialize AI', async () => {
         await plugin.onload();
-        expect(initAI).toHaveBeenCalledWith(app, plugin, expect.any(Function));
+        expect(initAI).toHaveBeenCalledWith(
+            app,
+            plugin,
+            expect.any(Function),
+            { minVersion: 4 }
+        );
         expect((plugin as any).settingTabs.length).toBe(1);
     });
 
