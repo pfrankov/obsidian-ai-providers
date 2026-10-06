@@ -666,6 +666,10 @@ HTMLElement.prototype.addClass = function(className: string): void {
     this.classList.add(className);
 };
 
+HTMLElement.prototype.removeClass = function(className: string): void {
+    this.classList.remove(className);
+};
+
 export function sanitizeHTMLToDom(html: string): DocumentFragment {
     const template = document.createElement('template');
     template.innerHTML = html;

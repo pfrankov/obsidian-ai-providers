@@ -106,11 +106,28 @@ describe('ProviderFormModal', () => {
                 '[data-testid="model-capabilities-empty"]'
             )?.textContent
         ).toBe('settings.modelCapabilitiesSelectModel');
+        const checkButton = getElement<HTMLButtonElement>(
+            modal.contentEl,
+            '[data-testid="check-model-capabilities"]'
+        );
+        expect(checkButton.disabled).toBe(true);
+        for (const key of ['embedding', 'text', 'tools', 'vision']) {
+            const checkbox = getElement<HTMLInputElement>(
+                modal.contentEl,
+                `[data-testid="model-capability-${key}"]`
+            );
+            expect(checkbox.disabled).toBe(true);
+            expect(checkbox.checked).toBe(false);
+        }
+        // OpenAI vocabulary stays mounted (disabled) so modal height is stable.
+        expect(
+            modal.contentEl.querySelectorAll('[data-reasoning-mode]').length
+        ).toBe(7);
         expect(
             modal.contentEl.querySelector(
-                '[data-testid="check-model-capabilities"]'
+                '.ai-providers-model-capabilities-disabled'
             )
-        ).toBeFalsy();
+        ).toBeTruthy();
         expect(
             (
                 modal.contentEl.querySelector(
@@ -141,16 +158,21 @@ describe('ProviderFormModal', () => {
         input.dispatchEvent(new Event('input'));
         await flushPromises();
 
-        expect(
-            modal.contentEl.querySelector(
-                '[data-testid="check-model-capabilities"]'
-            )
-        ).toBeFalsy();
+        const disabledCheck = getElement<HTMLButtonElement>(
+            modal.contentEl,
+            '[data-testid="check-model-capabilities"]'
+        );
+        expect(disabledCheck.disabled).toBe(true);
         expect(
             modal.contentEl.querySelector(
                 '[data-testid="model-capabilities-empty"]'
             )?.textContent
         ).toBe('settings.modelCapabilitiesSelectModel');
+        expect(
+            modal.contentEl.querySelector(
+                '.ai-providers-model-capabilities-disabled'
+            )
+        ).toBeTruthy();
         expect(
             (
                 modal.contentEl.querySelector(
@@ -164,18 +186,45 @@ describe('ProviderFormModal', () => {
         suggest.selectSuggestion('gpt-3.5-turbo', new MouseEvent('click'));
         await flushPromises();
 
-        // Capabilities controls should return for the selected model
+        // Capabilities controls re-enable for the selected model
         expect(provider.model).toBe('gpt-3.5-turbo');
-        expect(
-            modal.contentEl.querySelector(
-                '[data-testid="check-model-capabilities"]'
-            )
-        ).toBeTruthy();
+        const enabledCheck = getElement<HTMLButtonElement>(
+            modal.contentEl,
+            '[data-testid="check-model-capabilities"]'
+        );
+        expect(enabledCheck.disabled).toBe(false);
         expect(
             modal.contentEl.querySelector(
                 '[data-testid="model-capabilities-empty"]'
             )
         ).toBeFalsy();
+        expect(
+            modal.contentEl.querySelector(
+                '.ai-providers-model-capabilities-disabled'
+            )
+        ).toBeFalsy();
+    });
+
+    it('keeps disabled capability controls inert when no model is selected', () => {
+        provider.model = '';
+        provider.type = 'openai';
+        modal.onOpen();
+
+        const tools = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-capability-tools"]'
+        );
+        tools.checked = true;
+        tools.dispatchEvent(new Event('change'));
+        expect(provider.modelCapabilities).toBeUndefined();
+
+        const reasoning = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-reasoning-mode="high"]'
+        );
+        reasoning.checked = true;
+        reasoning.dispatchEvent(new Event('change'));
+        expect(provider.modelCapabilities).toBeUndefined();
     });
 
     it('returns default capabilities when no model is selected', () => {

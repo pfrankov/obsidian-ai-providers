@@ -1,4 +1,5 @@
 import type {
+    AIProviderType,
     IAIProvider,
     IAIProvidersExecuteParams,
 } from '@obsidian-ai-providers/sdk';
@@ -15,9 +16,11 @@ const EFFORT_MODES = [
     'max',
 ];
 
-export function getReasoningModes(provider: IAIProvider): string[] {
-    if (!provider.model) return [];
-    switch (provider.type) {
+/** Wire vocabulary offered by an adapter, independent of model selection. */
+export function getAdapterReasoningVocabulary(
+    type: AIProviderType | IAIProvider['type']
+): string[] {
+    switch (type) {
         case 'openai':
         case 'openrouter':
             return EFFORT_MODES;
@@ -29,6 +32,11 @@ export function getReasoningModes(provider: IAIProvider): string[] {
         default:
             return [];
     }
+}
+
+export function getReasoningModes(provider: IAIProvider): string[] {
+    if (!provider.model) return [];
+    return getAdapterReasoningVocabulary(provider.type);
 }
 
 /** Resolve only an explicitly selected, manually declared native mode. */

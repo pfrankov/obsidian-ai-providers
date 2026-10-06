@@ -1,4 +1,8 @@
-import { getReasoningModes, reasoningRequestFields } from './reasoningModes';
+import {
+    getAdapterReasoningVocabulary,
+    getReasoningModes,
+    reasoningRequestFields,
+} from './reasoningModes';
 import type { IAIProvider } from '@obsidian-ai-providers/sdk';
 
 const zai: IAIProvider = {
@@ -91,6 +95,24 @@ describe('native reasoning declarations', () => {
 
     it('offers no modes without a selected model', () => {
         expect(getReasoningModes({ ...zai, model: undefined })).toEqual([]);
+    });
+
+    it('exposes adapter vocabulary without requiring a selected model', () => {
+        expect(getAdapterReasoningVocabulary('openai')).toEqual([
+            'none',
+            'minimal',
+            'low',
+            'medium',
+            'high',
+            'xhigh',
+            'max',
+        ]);
+        expect(getAdapterReasoningVocabulary('zai')).toEqual([
+            'low',
+            'high',
+            'max',
+        ]);
+        expect(getAdapterReasoningVocabulary('anthropic')).toEqual([]);
     });
 
     it('omits settings for existing consumers, even with native options', () => {
