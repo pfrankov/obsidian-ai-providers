@@ -372,6 +372,9 @@ export class ProviderFormModal extends Modal {
     private invalidateCapabilityCheck() {
         this.capabilityCheckRequest = undefined;
         this.modelCapabilitiesStatus = '';
+        this.contentEl
+            .querySelector('.ai-providers-model-capabilities-status')
+            ?.remove();
     }
 
     // URL/API-key edits must only discard in-flight tokens. Rebuilding the

@@ -72,6 +72,72 @@ describe('ProviderFormModal', () => {
         (Platform as any).isMobileApp = false;
     });
 
+    it.each([
+        ['url', false],
+        ['url', true],
+        ['apiKey', false],
+        ['apiKey', true],
+    ] as const)(
+        'clears completed probe status on %s edit (failed=%s) without replacing inputs',
+        async (field, failed) => {
+            vi.spyOn(plugin, 'saveSettings').mockResolvedValue(undefined);
+            if (failed) {
+                (probeModelCapabilities as Mock).mockRejectedValueOnce(
+                    new Error('Synthetic failure')
+                );
+            } else {
+                (probeModelCapabilities as Mock).mockResolvedValueOnce({
+                    embedding: false,
+                    text: true,
+                    tools: false,
+                    vision: false,
+                });
+            }
+            modal.onOpen();
+            getElement<HTMLButtonElement>(
+                modal.contentEl,
+                '[data-testid="check-model-capabilities"]'
+            ).click();
+            await flushPromises();
+            expect(
+                modal.contentEl.querySelector(
+                    '.ai-providers-model-capabilities-status'
+                )?.textContent
+            ).toBe(
+                failed
+                    ? 'settings.modelCapabilitiesCheckFailed'
+                    : 'settings.modelCapabilitiesUpdated'
+            );
+            const url = getElement<HTMLInputElement>(
+                modal.contentEl,
+                'input[data-field="provider-url"]'
+            );
+            const apiKey = getElement<HTMLInputElement>(
+                modal.contentEl,
+                'input[placeholder="settings.apiKeyPlaceholder"]'
+            );
+            const input = field === 'url' ? url : apiKey;
+            input.value = 'synthetic-edit';
+            input.setSelectionRange(3, 3);
+            input.dispatchEvent(new Event('input'));
+            expect(
+                modal.contentEl.querySelector(
+                    '.ai-providers-model-capabilities-status'
+                )
+            ).toBeNull();
+            expect(
+                getElement(modal.contentEl, 'input[data-field="provider-url"]')
+            ).toBe(url);
+            expect(
+                getElement(
+                    modal.contentEl,
+                    'input[placeholder="settings.apiKeyPlaceholder"]'
+                )
+            ).toBe(apiKey);
+            expect(input.selectionStart).toBe(3);
+        }
+    );
+
     it('should render form elements correctly', () => {
         modal.onOpen();
         expect(
