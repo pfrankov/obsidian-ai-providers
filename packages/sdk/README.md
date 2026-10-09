@@ -431,7 +431,12 @@ const textModels = Object.entries(models)
 ```
 
 ### Check model capabilities
-Use `checkModelCapabilities` to probe a model's capabilities by making real API calls. Results are automatically saved in AI Providers settings.
+Use `checkModelCapabilities` to probe a model's capabilities by making real API calls. Results are saved in AI Providers settings only if the provider still exists with
+the same ID, type, URL, and API key when the check completes. The check uses a
+snapshot of the provider and target model; changing the default model does not
+change which model receives the results. Results are still returned to the caller
+if the provider was edited or deleted. Manual reasoning-mode declarations on a
+matching saved provider are preserved.
 
 ```typescript
 const provider = aiProviders.providers[0];
