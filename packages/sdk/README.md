@@ -500,6 +500,25 @@ try {
 }
 ```
 
+### OpenCode Go sessions
+
+The `opencode-go` provider uses Chat Completions only. Enter a model ID with that
+endpoint in the [Go endpoint table](https://opencode.ai/docs/go/#endpoints).
+`fetchModels` and `embed` reject locally for this provider. Go is intended for
+[coding-agent traffic](https://opencode.ai/docs/go/#where-can-i-use-it); configuring
+it does not establish that a consuming plugin's use is permitted.
+
+For a multi-call conversation or tool loop, generate `const conversationId = crypto.randomUUID()`
+once, then pass that same `conversationId` to every related `execute` and
+`toolsExecute` call. Generate a new UUID for a new conversation. Never use note
+paths, user identifiers, or content. Only random v4 UUIDs are accepted.
+
+The plugin sends it as `x-opencode-session`, alongside its own
+`User-Agent: obsidian-ai-providers/<version>`. If omitted, a fresh UUID is created
+for each logical call and retained through SDK retries and transport fallback.
+No conversation state is stored by the adapter. Other providers ignore this
+optional field. This requires a plugin build that includes OpenCode Go.
+
 ### Tool-calling with `toolsExecute`
 
 Use `toolsExecute` when you need tool-call metadata (`tool_calls`) in addition to assistant text.
