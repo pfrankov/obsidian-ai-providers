@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS, AIProvidersSettingTab } from './settings';
 import { AIProvidersService } from './AIProvidersService';
 import { logger } from './utils/logger';
 import {
+    openCodeGoIcon,
     openAIIcon,
     ollamaIcon,
     ollamaOpenWebUIIcon,
@@ -39,6 +40,7 @@ export default class AIProvidersPlugin extends Plugin {
 
     async onload() {
         await this.loadSettings();
+        addIcon('ai-providers-opencode-go', openCodeGoIcon);
         addIcon('ai-providers-openai', openAIIcon);
         addIcon('ai-providers-ollama', ollamaIcon);
         addIcon('ai-providers-ollama-openwebui', ollamaOpenWebUIIcon);

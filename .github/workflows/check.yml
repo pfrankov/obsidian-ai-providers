@@ -38,5 +38,7 @@ jobs:
             - run: npm ci
             - name: Smoke test Electron streaming
               run: node_modules/.bin/electron test-utils/electronFetch.smoke.cjs
+            - name: Smoke test OpenCode Go wire headers
+              run: node_modules/.bin/electron test-utils/opencodeGo.smoke.cjs
             - name: Smoke test Electron embeddings cache
               run: node_modules/.bin/electron test-utils/embeddingsCache.smoke.cjs

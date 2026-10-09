@@ -17,6 +17,7 @@ import {
     recommendedPluginVersionForApi,
 } from '@obsidian-ai-providers/sdk';
 import { OpenAIHandler } from './handlers/OpenAIHandler';
+import { OpenCodeGoHandler } from './handlers/OpenCodeGoHandler';
 import { OllamaHandler } from './handlers/OllamaHandler';
 import { I18n } from './i18n';
 import AIProvidersPlugin from './main';
@@ -48,6 +49,7 @@ export class AIProvidersService implements IAIProvidersService {
 
         // Initialize handlers for each provider type
         this.handlers = {
+            'opencode-go': new OpenCodeGoHandler(plugin.settings),
             openai: new OpenAIHandler(plugin.settings),
             openrouter: new OpenAIHandler(plugin.settings),
             ollama: new OllamaHandler(plugin.settings),

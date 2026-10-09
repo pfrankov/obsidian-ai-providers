@@ -1,5 +1,11 @@
 # @obsidian-ai-providers/sdk changelog
 
+## Unreleased
+
+- Add the `opencode-go` provider type and optional `conversationId` on `execute`
+  and `toolsExecute`. OpenCode Go expects an opaque random v4 UUID, reused for
+  related calls. Other providers ignore this field.
+
 ## 1.8.0
 
 ### Added
