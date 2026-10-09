@@ -178,6 +178,14 @@ rebuild can take time and incur provider charges; no background rebuild or
 startup provider request is performed. Concurrent writes preserve each call's
 new entries, but simultaneous misses can still send the same text more than once.
 
+### Debug logging
+
+Transport logs omit raw request/response header fields and the full request body.
+They retain request method, status, body presence, and lifecycle details. This is
+not comprehensive log sanitization: URLs, error objects, tool-message previews,
+and explicitly enabled chunk logs may still contain private data. Review logs
+before sharing them.
+
 ### Development checks
 
 Use Node.js 24 and install the committed dependencies with `npm ci`.

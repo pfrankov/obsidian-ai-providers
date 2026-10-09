@@ -28,7 +28,6 @@ export const obsidianFetch = async (
     logger.debug('obsidianFetch request:', {
         url,
         method: options.method || 'GET',
-        headers,
         hasBody: !!options.body,
     });
 
@@ -41,8 +40,6 @@ export const obsidianFetch = async (
 
     if (options.body) {
         requestParams.body = options.body as string;
-
-        logger.debug('Request body prepared:', requestParams.body);
     }
 
     try {
@@ -52,7 +49,6 @@ export const obsidianFetch = async (
 
         logger.debug('Response received:', {
             status: obsidianResponse.status,
-            headers: obsidianResponse.headers,
             contentLength: obsidianResponse.text.length,
         });
 
@@ -63,7 +59,7 @@ export const obsidianFetch = async (
 
         return new Response(obsidianResponse.text, responseInit);
     } catch (error) {
-        logger.error('Request failed:', error, { headers });
+        logger.error('Request failed:', error);
         throw error;
     }
 };

@@ -33,7 +33,6 @@ export async function electronFetch(
     logger.debug('electronFetch request:', {
         url,
         method: options.method || 'GET',
-        headers,
         hasBody: !!options.body,
         platform: Platform.isMobileApp ? 'mobile' : 'desktop',
     });
@@ -100,7 +99,6 @@ export async function electronFetch(
 
             logger.debug('Response received:', {
                 status: response.statusCode,
-                headers: response.headers,
             });
 
             const { readable, writable } = new TransformStream({
