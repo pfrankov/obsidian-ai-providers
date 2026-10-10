@@ -28,6 +28,7 @@
         "model": "Модель",
         "modelDesc": "Выберите AI модель для этого провайдера.",
         "modelTextDesc": "Введите название AI модели.",
+        "openCodeGoModelDesc": "Введите ID модели с эндпоинтом /chat/completions из <a href=\"https://opencode.ai/docs/go/#endpoints\">документации OpenCode Go</a>. Responses, Messages и эмбеддинги не поддерживаются. Go предназначен для <a href=\"https://opencode.ai/docs/go/#where-can-i-use-it\">запросов от coding-агентов</a>.",
         "modelTextOnlyDesc": "Введите название AI модели для этого провайдера.",
         "modelSearchPlaceholder": "Поиск моделей...",
         "loadingModels": "Загрузка моделей...",

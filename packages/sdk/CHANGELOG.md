@@ -1,5 +1,14 @@
 # @obsidian-ai-providers/sdk changelog
 
+## 1.9.0
+
+- Require service API 6 (AI Providers 1.13.0+) by default. Consumers using a lower
+  `minVersion` must feature-detect API 6 before using OpenCode Go or its sessions.
+
+- Add the `opencode-go` provider type and optional `conversationId` on `execute`
+  and `toolsExecute`. OpenCode Go expects an opaque random v4 UUID, reused for
+  related calls. Other providers ignore this field.
+
 ## 1.8.0
 
 ### Added
