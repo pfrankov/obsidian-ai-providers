@@ -5,6 +5,7 @@ export type ObsidianEvents = {
 };
 
 export type AIProviderType =
+    | 'opencode-go'
     | 'openai'
     | 'ollama'
     | 'ollama-openwebui'
@@ -187,6 +188,8 @@ export interface IAIProvidersExecuteParamsBase {
     model?: string;
     /** Opt-in native mode declared in this model's capabilities. Requires service API 5. */
     reasoningMode?: string;
+    /** Requires service API 6. OpenCode Go conversation UUID (crypto.randomUUID()). Reuse for related calls; omit for a fresh session per call. Never use note paths or user identifiers. */
+    conversationId?: string;
     images?: string[];
     options?: {
         temperature?: number;
@@ -223,6 +226,8 @@ export type IAIProvidersToolsExecuteParams = {
     model?: string;
     /** Opt-in native mode declared in this model's capabilities. Requires service API 5. */
     reasoningMode?: string;
+    /** Requires service API 6. OpenCode Go conversation UUID (crypto.randomUUID()). Reuse for related calls; omit for a fresh session per call. Never use note paths or user identifiers. */
+    conversationId?: string;
     messages: IChatMessage[];
     tools: IAIToolDefinition[];
     tool_choice?: IAIToolChoice;

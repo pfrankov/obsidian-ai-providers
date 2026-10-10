@@ -28,6 +28,7 @@
         "model": "Model",
         "modelDesc": "Select the AI model for this provider.",
         "modelTextDesc": "Enter the AI model name.",
+        "openCodeGoModelDesc": "Enter a model ID listed with /chat/completions in the <a href=\"https://opencode.ai/docs/go/#endpoints\">OpenCode Go docs</a>. Responses, Messages and embeddings are not supported. Go is intended for <a href=\"https://opencode.ai/docs/go/#where-can-i-use-it\">coding-agent traffic</a>.",
         "modelTextOnlyDesc": "Enter the AI model name for this provider.",
         "modelSearchPlaceholder": "Search models...",
         "loadingModels": "Loading models...",

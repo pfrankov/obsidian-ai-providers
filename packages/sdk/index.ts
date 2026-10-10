@@ -3,12 +3,12 @@ import { ExtendedApp, IAIProvidersService } from './types';
 
 const FALLBACK_TIMEOUT = 100;
 /** Latest service API version this SDK was published against. */
-const REQUIRED_AI_PROVIDERS_VERSION = 5;
+const REQUIRED_AI_PROVIDERS_VERSION = 6;
 /**
- * Minimum AI Providers *plugin* version that ships service API 5
- * (reasoning modes). Shown in outdated-fallback copy.
+ * Minimum AI Providers *plugin* version that ships service API 6
+ * (OpenCode Go and conversation sessions). Shown in outdated-fallback copy.
  */
-const RECOMMENDED_AI_PROVIDERS_PLUGIN_VERSION = '1.12.0';
+const RECOMMENDED_AI_PROVIDERS_PLUGIN_VERSION = '1.13.0';
 const AI_PROVIDERS_READY_EVENT = 'ai-providers-ready';
 
 let aiProvidersReadyAiResolver: {
@@ -42,8 +42,11 @@ export interface InitAIOptions {
  */
 export function recommendedPluginVersionForApi(apiVersion: number): string {
     // Only known API↔plugin mappings get a concrete version string.
-    if (apiVersion === 5) {
+    if (apiVersion === 6) {
         return `${RECOMMENDED_AI_PROVIDERS_PLUGIN_VERSION}+`;
+    }
+    if (apiVersion === 5) {
+        return '1.12.0+';
     }
     if (apiVersion >= 1 && apiVersion <= 4) {
         return '1.11.0+';
