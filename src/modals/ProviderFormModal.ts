@@ -37,6 +37,11 @@ interface ProviderConfig {
 }
 
 const PROVIDER_CONFIGS: Record<AIProviderType, ProviderConfig> = {
+    'opencode-go': {
+        url: 'https://opencode.ai/zen/go/v1',
+        name: 'OpenCode Go',
+        options: { modelsFetching: false },
+    },
     openai: {
         url: 'https://api.openai.com/v1',
         name: 'OpenAI',
@@ -280,6 +285,9 @@ export class ProviderFormModal extends Modal {
     }
 
     private getModelDescription(forceText: boolean): string {
+        if (this.provider.type === 'opencode-go') {
+            return I18n.t('settings.openCodeGoModelDesc');
+        }
         if (forceText) {
             return I18n.t('settings.modelTextOnlyDesc');
         }

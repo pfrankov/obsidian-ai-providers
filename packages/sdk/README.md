@@ -23,7 +23,7 @@ SDK 1.7.0 (Service API v4) adds `toolsExecute()` for OpenAI-style tool-calling l
 
 ### Soft compatibility (SDK 1.8.0+)
 
-By default `initAI` still calls `checkCompatibility(5)` (hard gate). Consumers that
+SDK 1.9 defaults to `checkCompatibility(6)` (AI Providers 1.13.0+). Consumers that
 must keep working when the user has not upgraded AI Providers yet can soft-load:
 
 ```typescript
@@ -39,7 +39,7 @@ initAI(this.app, this, async () => {
 }, { minVersion: 4 });
 ```
 
-`recommendedPluginVersionForApi(5)` returns `1.12.0+` for user-facing copy.
+`recommendedPluginVersionForApi(5)` returns `1.12.0+`; API 6 maps to `1.13.0+`.
 The service also exposes optional `pluginVersion` (manifest version string).
 
 ### 1. Wait for AI Providers plugin in your plugin
@@ -431,7 +431,12 @@ const textModels = Object.entries(models)
 ```
 
 ### Check model capabilities
-Use `checkModelCapabilities` to probe a model's capabilities by making real API calls. Results are automatically saved in AI Providers settings.
+Use `checkModelCapabilities` to probe a model's capabilities by making real API calls. Results are saved in AI Providers settings only if the provider still exists with
+the same ID, type, URL, and API key when the check completes. The check uses a
+snapshot of the provider and target model; changing the default model does not
+change which model receives the results. Results are still returned to the caller
+if the provider was edited or deleted. Manual reasoning-mode declarations on a
+matching saved provider are preserved.
 
 ```typescript
 const provider = aiProviders.providers[0];
@@ -499,6 +504,27 @@ try {
 	console.error(error);
 }
 ```
+
+### OpenCode Go sessions
+
+The `opencode-go` provider uses Chat Completions only. Enter a model ID with that
+endpoint in the [Go endpoint table](https://opencode.ai/docs/go/#endpoints).
+`fetchModels` and `embed` reject locally for this provider. Go is intended for
+[coding-agent traffic](https://opencode.ai/docs/go/#where-can-i-use-it); configuring
+it does not establish that a consuming plugin's use is permitted.
+
+For a multi-call conversation or tool loop, generate `const conversationId = crypto.randomUUID()`
+once, then pass that same `conversationId` to every related `execute` and
+`toolsExecute` call. Generate a new UUID for a new conversation. Never use note
+paths, user identifiers, or content. Only random v4 UUIDs are accepted.
+
+The plugin sends it as `x-opencode-session`, alongside its own
+`User-Agent: obsidian-ai-providers/<version>`. If omitted, a fresh UUID is created
+for each logical call and retained through SDK retries and transport fallback.
+No conversation state is stored by the adapter. Other providers ignore this
+optional field. OpenCode Go and `conversationId` require service API 6
+(AI Providers 1.13.0+). Consumers using a lower `minVersion` must check
+`supportsVersion(ai, 6)` before using this provider or its sessions.
 
 ### Tool-calling with `toolsExecute`
 

@@ -33,6 +33,7 @@ type StreamedOpenAIResult = {
 
 export class OpenAIHandler implements IAIHandler {
     private fetchSelector: FetchSelector;
+    protected defaultBaseURL = 'http://localhost:1234/v1';
 
     constructor(private settings: IAIProvidersPluginSettings) {
         this.fetchSelector = new FetchSelector(settings);
@@ -428,13 +429,21 @@ export class OpenAIHandler implements IAIHandler {
         return requestOptions;
     }
 
-    private getClient(provider: IAIProvider, fetchImpl: FetchFunction): OpenAI {
+    protected getRequestHeaders(_params: {
+        conversationId?: string;
+    }): Record<string, string> {
+        return {};
+    }
+
+    private getClient(
+        provider: IAIProvider,
+        fetchImpl: FetchFunction,
+        headers: Record<string, string> = {}
+    ): OpenAI {
         const openai = new OpenAI({
             baseURL:
                 provider.url ||
-                (provider.type === 'openai'
-                    ? undefined
-                    : 'http://localhost:1234/v1'),
+                (provider.type === 'openai' ? undefined : this.defaultBaseURL),
             apiKey: provider.apiKey || 'placeholder-key',
             dangerouslyAllowBrowser: true,
             fetch: fetchImpl,
@@ -447,6 +456,7 @@ export class OpenAIHandler implements IAIHandler {
                 'x-stainless-runtime': null,
                 'x-stainless-runtime-version': null,
                 'x-stainless-timeout': null,
+                ...headers,
             },
         });
 
@@ -648,12 +658,17 @@ export class OpenAIHandler implements IAIHandler {
         const { abortController: externalAbort, onProgress } = params;
 
         this.ensureNotAborted(externalAbort);
+        const headers = this.getRequestHeaders(params);
 
         try {
             return await this.fetchSelector.execute(
                 params.provider,
                 async fetchImpl => {
-                    const openai = this.getClient(params.provider, fetchImpl);
+                    const openai = this.getClient(
+                        params.provider,
+                        fetchImpl,
+                        headers
+                    );
                     return this.executeOpenAIGeneration({
                         params,
                         openai,
@@ -685,12 +700,17 @@ export class OpenAIHandler implements IAIHandler {
         const { abortController: externalAbort, onProgress } = params;
 
         this.ensureNotAborted(externalAbort);
+        const headers = this.getRequestHeaders(params);
 
         try {
             return await this.fetchSelector.execute(
                 params.provider,
                 async fetchImpl => {
-                    const openai = this.getClient(params.provider, fetchImpl);
+                    const openai = this.getClient(
+                        params.provider,
+                        fetchImpl,
+                        headers
+                    );
                     return this.executeOpenAIToolsGeneration({
                         params,
                         openai,

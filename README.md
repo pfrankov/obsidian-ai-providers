@@ -20,6 +20,7 @@ embeddings and ranks document chunks locally for vector-based retrieval.
 ## Supported providers
 - OpenAI
 - OpenRouter
+- OpenCode Go (Chat Completions models)
 - Anthropic
 - Google Gemini
 - Mistral AI
@@ -136,6 +137,27 @@ There are several options to run local OpenAI-like server:
 2. Set `Provider URL` to `https://openrouter.ai/api/v1`
 3. Retrieve and paste your `API key` from the [API keys page](https://openrouter.ai/settings/keys)
 4. Click refresh button and select the model that suits your needs (e.g. `anthropic/claude-3.7-sonnet`)
+
+### OpenCode Go
+1. Select `OpenCode Go` in `Provider type`. The default URL is `https://opencode.ai/zen/go/v1`.
+2. Enter your OpenCode Go API key.
+3. Enter a model ID whose [documented endpoint](https://opencode.ai/docs/go/#endpoints)
+   ends in `/chat/completions` (for example, `glm-5.2`).
+
+This adapter supports Chat Completions only. Responses and Messages models and
+embeddings are not supported. Model entry is manual because Go's `/models` list
+mixes protocols without identifying the API type. No model is selected automatically;
+check the current endpoint table before entering an ID. Unsupported model errors
+from the service are surfaced without switching protocols.
+
+[OpenCode Go is intended for coding-agent traffic](https://opencode.ai/docs/go/#where-can-i-use-it).
+Adding the provider does not make a consuming plugin a coding agent or establish
+that other uses are permitted. Requests identify this plugin as
+`obsidian-ai-providers/<version>` and include an opaque session UUID. SDK consumers
+should reuse `conversationId` for related calls; without one, each call gets a
+fresh UUID that remains stable during SDK retries and transport fallback. Go
+always uses the existing Electron/Obsidian HTTP transport, ignoring the developer
+Use native fetch setting, because Chromium fetch drops the required User-Agent.
 
 ### Google Gemini
 1. Select `Google Gemini` in `Provider type`

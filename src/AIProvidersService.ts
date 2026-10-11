@@ -17,6 +17,7 @@ import {
     recommendedPluginVersionForApi,
 } from '@obsidian-ai-providers/sdk';
 import { OpenAIHandler } from './handlers/OpenAIHandler';
+import { OpenCodeGoHandler } from './handlers/OpenCodeGoHandler';
 import { OllamaHandler } from './handlers/OllamaHandler';
 import { I18n } from './i18n';
 import AIProvidersPlugin from './main';
@@ -48,6 +49,7 @@ export class AIProvidersService implements IAIProvidersService {
 
         // Initialize handlers for each provider type
         this.handlers = {
+            'opencode-go': new OpenCodeGoHandler(plugin.settings),
             openai: new OpenAIHandler(plugin.settings),
             openrouter: new OpenAIHandler(plugin.settings),
             ollama: new OllamaHandler(plugin.settings),
@@ -328,32 +330,31 @@ export class AIProvidersService implements IAIProvidersService {
         model?: string;
     }): Promise<IAIModelCapabilities> {
         const targetModel = model || provider.model;
-        const probeProvider = model ? { ...provider, model } : provider;
+        const probeProvider = { ...provider, model: targetModel };
 
         const probed = await probeModelCapabilities({
             aiProviders: this,
             provider: probeProvider,
         });
-        const currentProvider =
-            this.plugin.settings.providers?.find(p => p.id === provider.id) ||
-            provider;
+        // Only save results for the configuration that was actually probed.
+        // The default model may change: results belong to the captured targetModel.
+        const identityFields = ['id', 'type', 'url', 'apiKey'] as const;
+        const settingsProvider = this.plugin.settings.providers?.find(p =>
+            identityFields.every(field => p[field] === probeProvider[field])
+        );
+        const currentProvider = settingsProvider || probeProvider;
         const capabilities = {
             ...currentProvider.modelCapabilities?.[targetModel || ''],
             ...probed,
         };
 
         // Persist capabilities in settings
-        if (targetModel) {
-            const settingsProvider = this.plugin.settings.providers?.find(
-                (p: IAIProvider) => p.id === provider.id
-            );
-            if (settingsProvider) {
-                settingsProvider.modelCapabilities = {
-                    ...settingsProvider.modelCapabilities,
-                    [targetModel]: capabilities,
-                };
-                await this.plugin.saveSettings();
-            }
+        if (targetModel && settingsProvider) {
+            settingsProvider.modelCapabilities = {
+                ...settingsProvider.modelCapabilities,
+                [targetModel]: capabilities,
+            };
+            await this.plugin.saveSettings();
         }
 
         return capabilities;

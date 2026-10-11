@@ -682,6 +682,189 @@ describe('AIProvidersService', () => {
         expect(mockPlugin.saveSettings).not.toHaveBeenCalled();
     });
 
+    describe('pending capability checks', () => {
+        const originalCapabilities = {
+            text: false,
+            embedding: false,
+            tools: false,
+            vision: false,
+            reasoningModes: ['low'],
+        };
+        let finishProbe: () => void;
+        let observedProviders: IAIProvider[];
+
+        beforeEach(() => {
+            mockProvider.url = 'https://original.example/v1';
+            mockProvider.modelCapabilities = {
+                [mockProvider.model!]: { ...originalCapabilities },
+            };
+            mockPlugin.settings.providers = [mockProvider];
+            const pending = new Promise<void>(resolve => {
+                finishProbe = resolve;
+            });
+            observedProviders = [];
+            const handlers = (service as any).handlers;
+            handlers.openai.execute = vi.fn(async ({ provider }) => {
+                await pending;
+                observedProviders.push({ ...provider });
+                return 'OK';
+            });
+            handlers.openai.toolsExecute = vi.fn(async ({ provider }) => {
+                await pending;
+                observedProviders.push({ ...provider });
+                return { role: 'assistant', content: null };
+            });
+            (service as any).cachedEmbeddingsService = {
+                embedWithCache: vi.fn(async ({ provider }) => {
+                    await pending;
+                    observedProviders.push({ ...provider });
+                    return [[0.1]];
+                }),
+            };
+        });
+
+        it.each([
+            ['url', 'https://replacement.example/v1'],
+            ['apiKey', 'replacement-key'],
+            ['type', 'anthropic'],
+            ['id', 'replacement-id'],
+        ] as const)(
+            'does not save after replacing provider %s',
+            async (field, value) => {
+                const pending = service.checkModelCapabilities({
+                    provider: mockProvider,
+                });
+                const replacement = {
+                    ...mockProvider,
+                    [field]: value,
+                    modelCapabilities: {
+                        [mockProvider.model!]: {
+                            ...originalCapabilities,
+                            reasoningModes: ['high'],
+                        },
+                    },
+                };
+                mockPlugin.settings.providers = [replacement];
+                finishProbe();
+
+                expect(await pending).toEqual({
+                    ...originalCapabilities,
+                    text: true,
+                    embedding: true,
+                    vision: true,
+                });
+                expect(
+                    replacement.modelCapabilities?.[mockProvider.model!]
+                ).toEqual({
+                    ...originalCapabilities,
+                    reasoningModes: ['high'],
+                });
+                expect(mockPlugin.saveSettings).not.toHaveBeenCalled();
+            }
+        );
+
+        it.each([
+            ['url', 'https://replacement.example/v1'],
+            ['apiKey', 'replacement-key'],
+            ['type', 'anthropic'],
+            ['id', 'replacement-id'],
+        ] as const)(
+            'snapshots probes and does not save after editing %s in place',
+            async (field, value) => {
+                const original = { ...mockProvider };
+                const pending = service.checkModelCapabilities({
+                    provider: mockProvider,
+                });
+                Object.assign(mockProvider, { [field]: value });
+                finishProbe();
+                await pending;
+
+                expect(observedProviders).toHaveLength(4);
+                expect(
+                    observedProviders.every(
+                        provider => provider[field] === original[field]
+                    )
+                ).toBe(true);
+                expect(
+                    mockProvider.modelCapabilities?.[mockProvider.model!]
+                ).toEqual(originalCapabilities);
+                expect(mockPlugin.saveSettings).not.toHaveBeenCalled();
+            }
+        );
+
+        it('saves an unchanged provider without changing a duplicate sharing its capability map', async () => {
+            const duplicate = { ...mockProvider, id: 'duplicate' };
+            mockPlugin.settings.providers = [mockProvider, duplicate];
+            const pending = service.checkModelCapabilities({
+                provider: mockProvider,
+            });
+            finishProbe();
+            const result = await pending;
+
+            expect(
+                mockProvider.modelCapabilities?.[mockProvider.model!]
+            ).toEqual(result);
+            expect(duplicate.modelCapabilities?.[mockProvider.model!]).toEqual(
+                originalCapabilities
+            );
+            expect(mockPlugin.saveSettings).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not save after the provider is deleted', async () => {
+            const pending = service.checkModelCapabilities({
+                provider: mockProvider,
+            });
+            mockPlugin.settings.providers = [];
+            finishProbe();
+            expect((await pending).text).toBe(true);
+            expect(mockPlugin.saveSettings).not.toHaveBeenCalled();
+        });
+
+        it.each([undefined, 'override-model'])(
+            'saves the captured model %s after unrelated edits and reordering',
+            async model => {
+                const targetModel = model || mockProvider.model!;
+                const pending = service.checkModelCapabilities({
+                    provider: mockProvider,
+                    model,
+                });
+                const duplicate = { ...mockProvider, id: 'duplicate' };
+                const replacement = {
+                    ...mockProvider,
+                    name: 'Renamed',
+                    model: 'new-default-model',
+                    availableModels: ['new-default-model'],
+                    modelCapabilities: {
+                        ...mockProvider.modelCapabilities,
+                        [targetModel]: {
+                            ...originalCapabilities,
+                            reasoningModes: ['high'],
+                        },
+                    },
+                };
+                mockProvider.model = 'new-default-model';
+                mockPlugin.settings.providers = [duplicate, replacement];
+                finishProbe();
+                const result = await pending;
+
+                expect(observedProviders).toHaveLength(4);
+                expect(
+                    observedProviders.every(
+                        provider => provider.model === targetModel
+                    )
+                ).toBe(true);
+                expect(result.reasoningModes).toEqual(['high']);
+                expect(replacement.modelCapabilities[targetModel]).toEqual(
+                    result
+                );
+                expect(
+                    duplicate.modelCapabilities?.[targetModel]?.text
+                ).not.toBe(true);
+                expect(mockPlugin.saveSettings).toHaveBeenCalledTimes(1);
+            }
+        );
+    });
+
     it('legacy execute propagates handler errors', async () => {
         const handlers = (service as any).handlers;
         handlers.openai.execute = vi.fn().mockRejectedValue('boom');
@@ -860,17 +1043,17 @@ describe('AIProvidersService', () => {
     });
 
     it('checkCompatibility Notice states required API for unmapped levels', () => {
-        // Installed plugin is 1.12.0 (API 5); requiring API 6 must not say "1.12.0+".
+        // Unknown future API levels must not suggest an existing plugin release.
         try {
-            service.checkCompatibility(6);
+            service.checkCompatibility(7);
             throw new Error('Expected compatibility error');
         } catch {
             expect(I18n.t).toHaveBeenCalledWith(
                 'errors.aiProvidersOutdatedFormatted',
                 {
-                    required: '6',
+                    required: '7',
                     current: String(AI_PROVIDERS_SERVICE_VERSION),
-                    pluginVersion: 'API v6',
+                    pluginVersion: 'API v7',
                 }
             );
         }
@@ -879,7 +1062,7 @@ describe('AIProvidersService', () => {
     it('checkCompatibility does not invent a plugin release when pluginVersion is empty', () => {
         (service as any).pluginVersion = '';
         try {
-            service.checkCompatibility(6);
+            service.checkCompatibility(7);
             throw new Error('Expected compatibility error');
         } catch (error) {
             const compatibilityError = error as Error & {
@@ -890,7 +1073,7 @@ describe('AIProvidersService', () => {
             expect(compatibilityError.pluginVersion).toBe('');
             expect(I18n.t).toHaveBeenCalledWith(
                 'errors.aiProvidersOutdatedFormatted',
-                expect.objectContaining({ pluginVersion: 'API v6' })
+                expect.objectContaining({ pluginVersion: 'API v7' })
             );
         }
     });

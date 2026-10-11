@@ -72,6 +72,43 @@ describe('ProviderFormModal', () => {
         (Platform as any).isMobileApp = false;
     });
 
+    it('offers OpenCode Go with manual Chat Completions model selection', () => {
+        provider = { id: 'go', name: '', type: 'opencode-go' };
+        modal = new ProviderFormModal(app, plugin, provider, onSaveMock, true);
+        modal.onOpen();
+        const type = getElement<HTMLSelectElement>(
+            modal.contentEl,
+            '[data-testid="provider-type-dropdown"]'
+        );
+        expect(type.value).toBe('opencode-go');
+        expect(type.selectedOptions[0].textContent).toBe('OpenCode Go');
+        expect(provider.name).toBe('OpenCode Go');
+        expect(provider.url).toBe('https://opencode.ai/zen/go/v1');
+        expect(modal.contentEl.textContent).toContain(
+            'settings.openCodeGoModelDesc'
+        );
+        const model = getElement<HTMLInputElement>(
+            modal.contentEl,
+            '[data-testid="model-input"]'
+        );
+        expect(model.disabled).toBe(false);
+        model.value = 'glm-5.2';
+        model.dispatchEvent(new Event('input'));
+        expect(provider.model).toBe('glm-5.2');
+        expect(
+            modal.contentEl.querySelector(
+                '[data-testid="refresh-models-button"]'
+            )
+        ).toBeNull();
+        type.value = 'openai';
+        type.dispatchEvent(new Event('change'));
+        expect(modal.contentEl.textContent).not.toContain(
+            'settings.openCodeGoModelDesc'
+        );
+        expect(provider.model).toBeUndefined();
+        modal.onClose();
+    });
+
     it.each([
         ['url', false],
         ['url', true],
